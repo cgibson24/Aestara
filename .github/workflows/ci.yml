@@ -23,6 +23,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
+          # Its automatic pnpm cache runs before corepack has installed pnpm and fails.
+          package-manager-cache: false
 
       - name: Enable pnpm (corepack, version from package.json)
         run: corepack enable
@@ -72,7 +74,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -84,6 +86,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false # this job uses npm/npx only; pnpm is not installed
 
       - name: Schema validity + database behaviour suite (PostgreSQL 18)
         env:
