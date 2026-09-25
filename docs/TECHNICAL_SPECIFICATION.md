@@ -1,13 +1,14 @@
 # Aesthetic Platform — Technical Specification
 
-**Version 0.1 · Pre-Layer-0 baseline · 2026-09-25**
+**Version 1.0 · LOCKED baseline · 2026-09-25**
 
 | Item | Value |
 |---|---|
-| Status | **DRAFT — awaiting owner review.** Nothing in this document is implemented yet. |
+| Status | **LOCKED.** Owner decisions recorded 2026-09-25 (§10.2, `ARCHITECTURE_DECISIONS.md`). Changes to a locked decision go through change control: a new ADR plus a `CHANGELOG.md` entry, *before* implementation [B §0]. |
 | Source of truth | `Aesthetic_Platform_Software_Production_Bible_v1.0.pdf` (repository root, 52 pages, dated 2026-09-25) |
 | Authority | Production Bible **>** this specification. If they ever disagree, the Bible wins and this document gets corrected. |
 | Purpose | Turn the Bible into an engineering-ready baseline: **tech stack**, **database schema**, **API contracts**. It also names every gap the Bible leaves open, so none of them gets quietly assumed in code. |
+| Decisions | [`ARCHITECTURE_DECISIONS.md`](ARCHITECTURE_DECISIONS.md) (ADR log) · [`CHANGELOG.md`](CHANGELOG.md) |
 | Feeds | The Layer 0 documentation pack (Bible §31): `ARCHITECTURE_DECISIONS.md`, `DATABASE_SCHEMA.md`, `API_CONTRACTS.md`, `AUTHORIZATION_RBAC.md`, `SECURITY_REQUIREMENTS.md`, and others (see §9.2). |
 | Companion files | [`technical-spec/schema.prisma`](technical-spec/schema.prisma): full draft relational schema (validated). [`technical-spec/constraints.sql`](technical-spec/constraints.sql): integrity rules Prisma cannot express (validated). [`technical-spec/verification/`](technical-spec/verification/): the checks behind §11, re-runnable. |
 
@@ -141,11 +142,11 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | Object storage | **Amazon S3**, private, SSE-KMS, versioning, Block Public Access | — | [B §25.3] | No public buckets and no public CDN for patient media [B §21.2, §25.3]. |
 | Queues & events | **SQS** (work queues) + **EventBridge** (domain events), fed by a **transactional outbox** | — | [B §25.3] · [P] outbox | The outbox (`OutboxEvent`) guarantees events are published only when the DB change commits: no lost or phantom events. |
 | Workers | NestJS worker processes (same codebase, separate deployables) | — | [B §25.2] "worker" | Exports, sync, derivatives, retention jobs; the UI always exposes job status [B §22.4]. |
-| Image processing | **Python 3.13** service using OpenCV + libvips (pyvips) | — | [P] · [UD-06] | Registration and alignment need OpenCV. Keeping all pixel work in one language avoids two imaging stacks. Bible §25.1 prefers TypeScript "or another approved strongly typed framework", so Python (typed with mypy strict) needs explicit approval. |
+| Image processing | **Python 3.13** service using OpenCV + libvips (pyvips) | — | [P] · [UD-06] | Registration and alignment need OpenCV. Keeping all pixel work in one language avoids two imaging stacks. Bible §25.1 prefers TypeScript "or another approved strongly typed framework", so Python (typed, mypy strict) is adopted by delegation (ADR-0008). |
 | AI gateway | NestJS (TypeScript) | — | [P] | Authenticated internal job API, model routing, provenance [B §25.2]. |
-| AI inference | Python + PyTorch / ONNX Runtime in a **private** GPU environment (no public egress) | — | [B §2.1] "Private AI Jobs" (privacy) · [P] Python · [UD-04] hosting | Patient images never go to third-party AI APIs unless a separately approved BAA-covered service is chosen. Python is the de facto ML runtime but is not the Bible's preferred backend language (§25.1), so it needs approval as part of UD-04. |
+| AI inference | Python + PyTorch / ONNX Runtime in a **private** GPU environment (no public egress) | — | [B §2.1] "Private AI Jobs" (privacy) · [P] Python · [UD-04] hosting | Patient images never go to third-party AI APIs unless a separately approved BAA-covered service is chosen. Python is the de facto ML runtime but is not the Bible's preferred backend language (§25.1), so it is adopted by delegation (ADR-0008). |
 | Notifications | APNs (token auth), Amazon SES (email), AWS End User Messaging (SMS) | — | [P] | HIPAA-eligible AWS services; payloads are generic text only [B §14.3]. |
-| Authentication | First-party OIDC-compatible auth module: `jose` (JWT), `@node-rs/argon2` (Argon2id), `otplib` (TOTP), `@simplewebauthn/server` (passkeys) | jose 6.2, argon2 2.2, otplib 13.5, simplewebauthn 14.0 | [B §21.1] OIDC-compatible · [UD-02] build vs buy | See §4.2. The schema supports either outcome. |
+| Authentication | First-party OIDC-compatible auth module: `jose` (JWT), `@node-rs/argon2` (Argon2id), `otplib` (TOTP), `@simplewebauthn/server` (passkeys) | jose 6.2, argon2 2.2, otplib 13.5, simplewebauthn 14.0 | [B §21.1] OIDC-compatible · **D-02** first-party | See §4.2. Enterprise SSO federation can be added later behind an identity-provider adapter. |
 | Telehealth video | Vendor adapter (BAA-capable vendor) | — | [UD-05] | Layer 6 decision; the schema is vendor-agnostic (`TelehealthSession.vendor`). |
 | Malware scanning | Scanning worker on quarantined uploads | — | [UD-22] | Required for patient uploads and attachments [B §13.4, §14.4]. |
 | Logging | `pino` structured JSON with **allow-list** redaction | pino 10.3 | [B §26] · [P] | Only IDs and codes are logged, never request bodies. |
@@ -161,8 +162,8 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | Xcode project generation | **Tuist** (Swift manifests) | [B §31] "reproducible method" · [P] | Built for heavily modular apps; XcodeGen is the fallback. |
 | iOS API client | Apple **swift-openapi-generator** from the OpenAPI 3.1 contract | [P] | The client is generated, never hand-written, so it can't drift from the server. |
 | iOS offline store | **GRDB** (SQLite) + **SQLCipher**, key held in Keychain; Data Protection class *Complete* | [B §23.3] "all cached sensitive data encrypted" · [P] | Explicit schema/migrations plus a deterministic mutation queue (§8). |
-| Minimum OS | iOS/iPadOS **26** proposed | [UD-12] | Current major minus one at September 2026. Confirm against pilot practices' iPads. |
-| Admin web | **React 19 + TypeScript + Vite 8** single-page app, TanStack Router/Query, generated TS client | [UD-01] | The Bible does not name a web framework. A static SPA fits "CloudFront/WAF (admin/public static assets only)" [B §25.3]: no server-side rendering tier handles PHI. |
+| Minimum OS | iOS/iPadOS **26** | **D-05** | Current major minus one at September 2026. Owner requirement: **controls must be intuitive** on both iPhone and iPad. The interaction rules are in `DESIGN_SYSTEM.md`. |
+| Admin web | **React 19 + TypeScript + Vite 8** single-page app, TanStack Router/Query, generated TS client | **D-03** | The Bible does not name a web framework. A static SPA fits "CloudFront/WAF (admin/public static assets only)" [B §25.3]: no server-side rendering tier handles PHI. |
 
 ### 2.3 Infrastructure, delivery & quality
 
@@ -289,7 +290,7 @@ sequenceDiagram
 | 2. Guard | Membership must be `ACTIVE`; permission evaluated for that org only | [B §3.3] |
 | 3. Data access | Tenant-scoped repository layer: a Prisma client extension **requires** a tenant context and injects `organizationId` into every query on tenant-owned models. Unscoped access is only possible through an explicitly named platform repository (used by SUPER_ADMIN tooling and migrations). | [P] |
 | 4. Database | **Composite foreign keys** `(organizationId, …)` on every parent/child link, plus CHECKs wherever a nullable composite FK could otherwise be skipped by Postgres `MATCH SIMPLE`. An automated query confirms every such FK is covered (§11). The database rejects cross-tenant links even if application code has a bug (verified A1–A5, C5, D9, E6, F7, R1–R2, R18). A few links are application-enforced only (§5.1). | [P] |
-| 5. Database (optional) | PostgreSQL Row-Level Security keyed on `SET LOCAL app.organization_id`, as a second net | [UD-03] |
+| 5. Database | PostgreSQL Row-Level Security on every tenant-owned table, keyed on `SET LOCAL app.organization_id` set per request transaction. The application DB role has no `BYPASSRLS`; migrations run as a separate owner role. **Performance gate:** the Layer 1 benchmark must show ≤ 10% added p95 latency and ≤ 5 ms absolute on core endpoints (login, patient search, patient open), otherwise the policy design is revised before Layer 1 ships | **D-04** |
 | 6. Tests | Every tenant-scoped endpoint is run by an automated cross-tenant test generator (tenant B credentials against tenant A IDs must return 404, with no timing or message difference) | [B §27.1, §36] |
 
 ---
@@ -304,7 +305,7 @@ sequenceDiagram
 - **Platform-level** (no `organizationId`, by design): `User` (one person may work for several organizations), `Permission` (catalog), system `Role`s, `AIModel`/`AIModelVersion` (registry), and platform-default `FeatureFlag`/`AIModelRollout` rows.
 - Practice/location scoping is added where operationally relevant: appointments, consultations, procedures, sessions, settings, role assignments.
 
-### 4.2 Authentication [B §21.1] (design depends on [UD-02])
+### 4.2 Authentication [B §21.1] (first-party identity, D-02)
 
 | Concern | Design |
 |---|---|
@@ -461,11 +462,11 @@ authorize(request, requiredPermission, resource):
   org       = session.organizationId                     // never from client input
   member    = Membership(org, session.userId) ACTIVE     // 401 SESSION_INVALID if not
   grants    = UserRole where user=session.userId, org=org, revokedAt IS NULL
-  if resource has practice/location:
-      applicable = grants where scope = ORGANIZATION
+  if action creates/changes a practice-owned resource      // consultation, appointment,
+      applicable = grants where scope = ORGANIZATION       // procedure, photo session, plan
                    or (scope = PRACTICE and practiceId = resource.practiceId)
                    or (scope = LOCATION and locationId = resource.locationId)
-  else applicable = grants
+  else applicable = grants            // reads span the whole organization (D-01)
   if requiredPermission ∉ permissions(applicable.roles):
       if caller cannot even see the resource -> 404 <RESOURCE>_NOT_FOUND (generic)
       else                                    -> 403 PERMISSION_DENIED
@@ -473,7 +474,7 @@ authorize(request, requiredPermission, resource):
   load resource WITH organizationId = org (and scope filter)  // 404 if absent
 ```
 
-Patient records carry `organizationId` plus an optional primary practice. **Whether patient data may be seen across the practices of one organization is [UD-09]**: Bible §1.2 prohibits "cross-practice patient data sharing" without an approved feature. It must be decided before Layer 1 builds patient search.
+**Patient visibility (D-01, owner decision):** patient data **may be shared across the practices of the same organization**, and **never across organizations** (other customers of the platform). Bible §1.2's "cross-practice" means cross-*organization*. A staff member with a read permission can find and read any patient of their organization. Their role scope (practice/location) limits where they may **create or change** practice-owned records. Cross-organization access is impossible by construction (token-bound tenant, composite FKs, RLS).
 
 ### 4.7 Patient-app authorization [B §13.2]
 
@@ -514,7 +515,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | Optimistic concurrency [B §20.3] | Concurrently editable records carry `version Int`, exposed as the `ETag` and checked via `If-Match` (§6.1.7). |
 | Money | `Decimal(12,2)` plus ISO-4217 `currency`. Totals are computed server-side; clients never submit totals. |
 | Immutability | Enforced **in the database** by triggers (error `AE001` → API `409 IMMUTABLE_RECORD`): originals, storage objects, derivatives, document versions, published template versions, executed consents, signatures, completed simulation versions, model versions, permission history, audit and login ledgers. |
-| Naming | Physical names equal the Prisma names (PascalCase tables, camelCase columns) so the spec, ORM and SQL line up 1:1. Switching to snake_case via `@@map` is a one-time choice to make before the first migration [UD-26]. |
+| Naming | Physical names equal the Prisma names (PascalCase tables, camelCase columns) so the spec, ORM and SQL line up 1:1. Owner decision **D-07**: keep the default names (no `@@map`). |
 
 ### 5.2 Entity catalog
 
@@ -535,7 +536,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | UserRole | Scoped role assignment | Scope shape CHECK; requires membership (composite FK); one active duplicate max | 1 |
 | Device | Registered app install, APNs token | Unique `(userId, installationIdHash)`; revocable | 1 |
 | Session | Server-side session, rotating refresh token | Revocation reason required when revoked | 1 |
-| ✚ UserCredential | Password / TOTP / passkey (conditional on UD-02) | Shape CHECK per type; one active password | 1 |
+| ✚ UserCredential | Password / TOTP / passkey (first-party identity, D-02) | Shape CHECK per type; one active password | 1 |
 
 #### Provider & patient (6 + 1)
 
@@ -600,7 +601,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | OutcomeMeasurement | Measured comparison values (Layer 9) | Method + model provenance | 9 |
 | ✚ AIModelRollout | Which version is active, platform-wide or per org (§9.7 rollback, §17.1 rollout) | One `ACTIVE` per (model, org), NULLs included | 7 |
 | ✚ SimulationVersionSource | Source asset IDs per generation (§9.4, §34.2 #23) | Same-patient composite FK | 8 |
-| ✚ CaseLibraryEntry | Consented historical case in **the practice's** library (§10) | Practice-scoped; authorized by a MediaRelease (revoking it withdraws the entry) | 9 |
+| ✚ CaseLibraryEntry | Consented historical case in the organization's library (§10; shared across the org's practices per D-01, never across organizations) | `practiceId` records the originating practice for filtering; authorized by a MediaRelease (revoking it withdraws the entry) | 9 |
 
 #### Documents, consents, instructions & education (9 + 1)
 
@@ -1567,68 +1568,61 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 
 ### 10.1 Assumptions (Bible §31 "A") [P]
 
-1. First deployments are in the **United States** on AWS, under HIPAA with a BAA covering every service that touches PHI [B §21.3]. Single production region, multi-AZ [B §25.4 "~10 practices"].
+1. Deployments are in the **United States only (D-06)** on AWS, under HIPAA with a BAA covering every service that touches PHI [B §21.3]. Single production region (us-east-1), multi-AZ [B §25.4 "~10 practices"].
 2. English-only UI at launch; strings are externalized from day one so localization can follow.
 3. Pilot scale is ~10 practices; the design must not block ~1,000 [B §1.1, §25.4].
 4. The platform operator runs a single shared multi-tenant deployment (not one deployment per customer).
 5. Clinical media are photographs (HEIC/JPEG/PNG). Video capture of patients is out of scope. Education *content* may be video.
 6. All AI models are commercially licensable for this use, run privately, and are introduced only through the registry with validation evidence (Layers 7–8).
 
-### 10.2 Unresolved decisions register
+### 10.2 Decision register
 
-Ordered by when they block work. "Rec." is this spec's recommendation.
+**Owner decisions, 2026-09-25 (locked).** Recorded as ADRs in [`ARCHITECTURE_DECISIONS.md`](ARCHITECTURE_DECISIONS.md).
 
-**Must decide before Layer 0 locks the architecture**
-
-| ID | Decision | Why it matters | Options → Rec. |
-|---|---|---|---|
-| UD-02 | Identity: build first-party auth vs a managed IdP | Permanent dependency for every client and all session semantics | (a) First-party OIDC-compatible module (`UserCredential`); (b) Amazon Cognito; (c) Auth0/Okta or WorkOS (BAA plans). **Rec. (a)** for reproducible local dev (Layer 1 acceptance), full control of server-side revocation/audit, no per-user vendor cost, keeping SSO federation possible later. Risk: security-critical code in-house, mitigated with vetted libraries plus a pen-test before production. |
-| UD-01 | Admin web framework | The Bible doesn't name one | **Rec.** React 19 + Vite static SPA (fits "static assets only" CloudFront). Alternative: Next.js (adds a server tier handling PHI). |
-| UD-03 | PostgreSQL Row-Level Security as a second isolation net | Defense in depth vs complexity/perf with Prisma | **Rec.** Adopt for patient-data tables in Layer 1 using `SET LOCAL` in a Prisma transaction extension, *if* the Layer 1 spike shows < 10% latency cost; otherwise rely on layers 1–4 + 6 of §3.5. |
-| UD-12 | Minimum iOS/iPadOS version and device list | Determines usable APIs (camera, Vision, SwiftUI) | **Rec.** iOS/iPadOS 26+, pending pilot device inventory. |
-| UD-13 | Jurisdictions & data residency | NPI field, region, languages, legal texts | **Rec.** US-only for v1 (assumption 1); design keeps region/locale configurable. |
-| UD-26 | Physical DB naming (PascalCase vs snake_case) | Irreversible once the first migration ships | **Rec.** Keep Prisma names (no mapping) for 1:1 spec/ORM/SQL traceability. |
-
-**Must decide before Layer 1**
-
-| ID | Decision | Options → Rec. |
+| ID | Was | Decision |
 |---|---|---|
-| UD-09 | **What "cross-practice patient data sharing is prohibited" [B §1.2] means**, and so which staff can see which patients. Reading (a): *practice* means tenant (organization), so patients are organization-level and visible across that org's practices. Reading (b): the practices of one organization may not share patient data either. The same question governs the similar-case library [B §10 "the practice's … library"] | **Rec.** Build for (b), the stricter default, because it's easy to relax later and hard to tighten: patients are visible to staff scoped to their `primaryPracticeId` or to a practice where they have a consultation/appointment/procedure, and ORGANIZATION-scope assignments grant administrative reach but not clinical patient access. The case library is practice-scoped (already in schema). An org can move to (a) only if you confirm that reading, via an organization setting. |
-| UD-16 | Missing permission keys and endpoint → permission mappings (§4.4 tables) | **Rec.** Approve the listed additions/mappings, or adjust. |
-| UD-17 | Default role → permission matrix (§4.5) | **Rec.** Approve as least-privilege defaults. |
-| UD-07 | May organizations create custom roles? | **Rec.** Not in Layer 1 (system roles only); schema already supports it for later. |
-| UD-18 | Session lifetimes & MFA policy defaults (§4.2) | **Rec.** Approve defaults; configurable per org. |
-| UD-19 | Audit naming interpretation + proposed events (§7.3), incl. DOCUMENT_VIEWED and the simulation/consent status events | **Rec.** Approve interpretation and additions. |
-| UD-24 | Retention defaults and legal hold | **Rec.** No automated deletion until a customer policy exists; add legal hold (per patient/record flag that blocks purge) before any DELETE policy is enabled. |
-| UD-27 | Rate-limit store (ElastiCache Valkey) timing | **Rec.** WAF + DB-backed login lockout in Layer 1; Valkey when running > 1 API task per service. |
+| **D-01** | UD-09 | Patient data **may be shared across practices of the same organization; never across organizations**. Reads span the organization; practice/location scope limits writes to practice-owned records; the similar-case library is organization-wide. |
+| **D-02** | UD-02 | **First-party, OIDC-compatible identity** in the API (Argon2id, TOTP + passkeys, rotating refresh tokens, server-side sessions). Chosen by the owner's delegation: reproducible local development, full control of revocation and audit, no per-user vendor cost; enterprise SSO can federate in later. Mitigation for the in-house risk: vetted libraries, threat model, external penetration test before production. |
+| **D-03** | UD-01 | **Admin web = React 19 + TypeScript + Vite static SPA.** |
+| **D-04** | UD-03 | **PostgreSQL Row-Level Security adopted** as a second isolation net, subject to the Layer 1 performance gate (≤ 10% p95, ≤ 5 ms; §3.5). |
+| **D-05** | UD-12 | **Minimum iOS/iPadOS 26.** Controls must be intuitive on iPhone and iPad (`DESIGN_SYSTEM.md` interaction rules). |
+| **D-06** | UD-13 | **United States only.** HIPAA posture, US English, USD, US time zones, NPI; single AWS region (us-east-1) + multi-AZ; region/locale kept configurable in code. |
+| **D-07** | UD-26 | **Default database naming** (Prisma names; no `@@map`). |
 
-**Later layers**
+**Adopted by delegation.** The owner delegated the remaining choices ("choose what you feel is best"). Each recommendation below is the **working baseline**. It is re-confirmed, or changed through an ADR, at the kickoff of the layer that first needs it.
 
-| ID | Decision | Needed by | Rec. |
+| ID | Topic | Adopted baseline | Confirm at |
 |---|---|---|---|
-| UD-06 | image-processing language (Python/OpenCV vs Node/sharp) | L2 | Python (registration needs OpenCV) |
-| UD-21 | Permission scope granularity shown to users (patient-wide vs session vs photo) | L2 | Schema supports all three; start with patient-wide + photo exceptions |
-| UD-22 | Malware scanning (ClamAV worker vs GuardDuty Malware Protection for S3) | L2 | Managed service if in the BAA scope; else ClamAV |
-| UD-25 | Offline cache policy defaults | L2 | 25 most recent patients, 7 days, purge on sign-out |
-| UD-15 | Final consultation notes: immutable with addenda? | L3 | Yes (immutable; corrections as addenda) |
-| UD-33 | Which §5.1 "mandatory sequence" steps gate consultation completion (§5.4.1 table) | L3 | Approve the proposed preconditions |
-| UD-28 | Consultation transitions not drawn in the Bible (§5.4.1 P rows) | L3 | Approve P rows |
-| UD-11 | Estimate vs Quote semantics | L4 | Estimate = frozen priced snapshot; Quote = formal accepted offer referencing an estimate, or drop Quote if not needed |
-| UD-14 | In-clinic plan acceptance; do sibling options (A/B/C) auto-decline on acceptance? | L4 | Allow staff-recorded acceptance with patient attestation; siblings → DECLINED automatically |
-| UD-23 | Void before completion; minors/guardian signers | L4 | Allow pre-completion void with reason; add GUARDIAN signer role if minors are in scope |
-| UD-31 | Staff-assisted in-clinic patient signing (device hand-off) before the patient app exists | L4 | Yes: consent-scoped hand-off session, staff re-auth to exit, identity attestation recorded |
-| UD-08 | One patient login across organizations; proxy/guardian access | L5 | One identity with per-org links; no cross-org data view; proxy access deferred |
-| UD-20 | Does the patient's own simulation/photo in the portal require the PATIENT_APP media grant? | L5/L8 | Yes, apply B §7.3 uniformly (conservative) |
-| UD-30 | Portal visibility of procedures, appointments and telehealth (§4.7 rows) | L5 | Approve the proposed rows; everything else stays deny-by-default |
-| UD-32 | Which media-permission category a photo needs to be a simulation source (CLINICAL_USE? INTERNAL_AI_EVALUATION is for model evaluation, not clinical use) | L8 | Require a current CLINICAL_USE grant; keep INTERNAL_AI_EVALUATION and AI_TRAINING for dataset use only (§7.7) |
-| UD-05 | Telehealth vendor | L6 | BAA-capable vendor; evaluate Amazon Chime SDK first for AWS alignment |
-| UD-04 | AI inference hosting & model sourcing/licensing | L7 | ECS on EC2 GPU in a private subnet; SageMaker async as alternative |
-| UD-29 | Simulation REJECTED/FAILED → REGENERATING; SIMULATION_GENERATED emission point | L8 | Approve §5.4.2 P rows |
-| UD-10 | Which media category authorizes the similar-case library; de-identification standard | L9 | Require EDUCATION grant + de-identified display derivative |
+| UD-16 | Missing permission keys & endpoint → permission mappings | §4.4 tables as written | L1 |
+| UD-17 | Default role → permission matrix | §4.5 as written (least privilege) | L1 |
+| UD-07 | Custom roles per organization | Not in Layer 1; system roles only (schema ready) | L1 |
+| UD-18 | Session lifetimes & MFA defaults | §4.2 defaults, configurable per org | L1 |
+| UD-19 | Audit naming + proposed events | §7.3 as written | L1 |
+| UD-24 | Retention defaults, legal hold | No automated deletion without a customer policy; legal hold before any DELETE policy | L1–L2 |
+| UD-27 | Rate-limit store | WAF + DB-backed lockout in L1; Valkey when > 1 API task | L1 |
+| UD-06 | image-processing language | Python (OpenCV/libvips) | L2 |
+| UD-21 | Permission scope granularity in UI | Patient-wide + per-photo exceptions | L2 |
+| UD-22 | Malware scanning | Managed scanning if in BAA scope, else ClamAV worker | L2 |
+| UD-25 | Offline cache policy | 25 recent patients, 7 days, purge on sign-out | L2 |
+| UD-15 | Final notes | Immutable; corrections as addenda | L3 |
+| UD-28 | Consultation P transitions | §5.4.1 P rows | L3 |
+| UD-33 | Completion preconditions | §5.4.1 table | L3 |
+| UD-11 | Estimate vs Quote | Estimate = frozen priced snapshot; Quote = formal offer referencing an estimate (drop if unused) | L4 |
+| UD-14 | In-clinic plan acceptance | Staff-recorded with patient attestation; sibling options auto-decline | L4 |
+| UD-23 | Pre-completion void; minors | Pre-completion void with reason; GUARDIAN signer if minors are in scope | L4 |
+| UD-31 | Staff-assisted in-clinic signing | Yes (consent-scoped hand-off, staff re-auth to exit) | L4 |
+| UD-08 | Patient login across organizations | One identity, per-org links, no cross-org view; proxy access deferred | L5 |
+| UD-20 | PATIENT_APP grant for own media in portal | Required (applies §7.3 uniformly) | L5 |
+| UD-30 | Portal visibility of procedures/appointments/telehealth | §4.7 rows; everything else deny-by-default | L5 |
+| UD-05 | Telehealth vendor | BAA-capable; evaluate Amazon Chime SDK first | L6 |
+| UD-04 | AI inference hosting | ECS on EC2 GPU, private subnet (SageMaker async as alternative) | L7 |
+| UD-32 | Media grant for simulation sources | Current CLINICAL_USE grant; AI_TRAINING / INTERNAL_AI_EVALUATION for datasets only | L8 |
+| UD-29 | Simulation P transitions, GENERATED timing | §5.4.2 as written | L8 |
+| UD-10 | Case-library permission; de-identification | EDUCATION grant + de-identified display derivative | L9 |
 
-### 10.3 Proposals requiring approval [P]
+### 10.3 Proposals adopted [P]
 
-Accepting this specification approves **every item tagged [P] in §§2–8** as a Layer 0 ADR, unless you strike or amend it. The most consequential ones:
+With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 is adopted** and becomes a Layer 0 ADR. Any of them can still be changed through change control. The most consequential ones:
 
 1. Toolchain details: TypeScript 6.0 (until NestJS supports 7), Fastify adapter, Turborepo, Zod → OpenAPI 3.1, Tuist, swift-openapi-generator, GRDB + SQLCipher, GitHub Actions, Vitest/Testcontainers/Playwright.
 2. PostgreSQL 18 target (≥ 15 required); Prisma 7.x (not 8 RC).
@@ -1653,10 +1647,10 @@ Accepting this specification approves **every item tagged [P] in §§2–8** as 
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| In-house authentication (if UD-02 = a) has a security defect | Account takeover, PHI exposure | Vetted libraries only, no custom crypto; threat model + external penetration test before production; MFA for admins; refresh-reuse detection |
+| In-house authentication (D-02) has a security defect | Account takeover, PHI exposure | Vetted libraries only, no custom crypto; threat model + external penetration test before production; MFA for admins; refresh-reuse detection |
 | AI visualization quality or identity drift in real practice photos | Patient trust, regulatory exposure | Registry + validation harness (Layer 7) before any category ships; thresholds enforced before review; provider approval + separate release; disclaimer by construction |
 | Regulatory scope creep (visualization read as clinical decision support) | Needs regulatory clearance | Product language and G5/G6 guardrails; intended-use review before claims expand [B §21.4] |
-| Misreading §1.2 cross-practice sharing (UD-09) | Rework of patient access or a privacy breach | Decide before Layer 1; build the stricter reading by default |
+| Cross-organization data exposure | Privacy breach | D-01 fixes the boundary at the organization; token-bound tenant + composite FKs + RLS (D-04) + generated cross-tenant tests |
 | Prisma limits (partial indexes, triggers, partitioning live in raw SQL) | Drift between schema and DB | `constraints.sql` fragments ship inside Prisma migrations; CI applies migrations to a fresh DB and runs the behavior suite |
 | Layer boundaries slip because code generation is cheap | Unreviewed scope, weaker tests | Per-layer table/API rollout (§5.8, §9.1); acceptance review and a stop at each layer [B §30] |
 | Vendor dependencies without BAAs (video, SMS, crash reporting, AI) | Compliance gap | Only HIPAA-eligible services under BAA; each vendor decision recorded as a UD/ADR |
@@ -1709,7 +1703,7 @@ Accepting this specification approves **every item tagged [P] in §§2–8** as 
 | 6 | High | Attachment download needed only thread membership [B §14.1] | Requires `message.send` + participation (portal: active link + participation) |
 | 7 | High | Platform operators / org admins could grant themselves patient access [B §17.2] | Separation-of-duties rules (§4.5); DB CHECK against self-assignment (R4); authorization tests |
 | 8 | High | Portal procedures had no visibility rule | §4.7 rows for procedures/appointments/telehealth + **deny-by-default**; UD-30 |
-| 9 | High | Case library was organization-wide; §1.2 cross-practice ambiguity unaddressed | `CaseLibraryEntry.practiceId`; UD-09 restated around §1.2 with stricter default |
+| 9 | High | Case library was organization-wide; §1.2 cross-practice ambiguity unaddressed | `CaseLibraryEntry.practiceId`; UD-09 restated around §1.2, then decided by the owner as **D-01** (shared within an organization, never across) |
 | 10 | High | FRONT_DESK/PHOTOGRAPHER could read clinical data via `patient.read` | `patient.read` = demographics only; clinical reads mapped to clinical keys; `document.read` proposed |
 | 11 | Med | READY_FOR_PROVIDER_REVIEW → FAILED omitted; invented FAILED sources labelled B | Added as B; pipeline failures tagged P |
 | 12 | Med | Authorization algorithm couldn't authorize SUPER_ADMIN | Explicit platform-scope branch (§4.6) |
@@ -1746,9 +1740,9 @@ Accepting this specification approves **every item tagged [P] in §§2–8** as 
 
 1. **No application code exists yet.** API contracts are verified for coverage and consistency, not executed. Contract, authorization, portal-visibility and cross-tenant suites arrive with Layer 1 onward (§6.8, §7.5).
 2. The DB was exercised on **PostgreSQL 16**; production targets 18. Nothing used is version-specific beyond ≥ 15.
-3. The role → permission matrix, every **[P]** item and every **UD** are proposals. They are internally consistent but not approved. Layer 1 cannot seed roles until UD-09, UD-16 and UD-17 are decided.
+3. The owner decided D-01…D-07; everything else is **adopted by delegation** (§10.2) and re-confirmed at the kickoff of the layer that needs it. Adopted items are internally consistent, but only real usage validates product choices such as the role matrix.
 4. Tenant isolation is proven at the **database** layer for enforced relations. The few application-enforced links (§5.1) and all API-level isolation are proven only when the Layer 1 test suites run.
-5. AI thresholds, models and validation datasets are out of scope until Layers 7–8 (UD-04, UD-32).
+5. AI thresholds, models and validation datasets are out of scope until Layers 7–8.
 6. Legal/compliance readiness (BAAs, retention periods, intended-use review) cannot be verified by software [B §21.3, §36].
 
 ### 11.5 Conclusion
@@ -1758,6 +1752,6 @@ The foundation is **complete against the Bible and internally consistent**:
 - Every entity, permission, role, audit event, state and resource the Bible defines has a place in the schema and the contracts.
 - The database enforces the Bible's hardest rules (tenancy, immutable originals, versioned consents and permissions, append-only audit, explicit AI review and release, no silent model replacement) independently of application code, proven by 89 passing behavior tests.
 - An independent review found 30 issues; all are resolved, and the risky ones are locked in by regression tests.
-- Every remaining gap is a tagged decision, not an assumption buried in code.
+- Every gap was surfaced as a tagged decision rather than buried in code, and every decision is now recorded (§10.2).
 
-**Before Layer 0 can lock the architecture**, the owner needs to decide the six "before Layer 0" items in §10.2 (UD-01, 02, 03, 12, 13, 26) and accept or amend the [P] proposals (§10.3). **Before Layer 1**, UD-09 (the §1.2 cross-practice question), UD-16, UD-17 and the other Layer 1 items need answers.
+**Status: LOCKED (v1.0, 2026-09-25).** The owner decided D-01…D-07 and delegated the rest. The next steps are set out in the development roadmap (`DEVELOPMENT_ROADMAP.md`).

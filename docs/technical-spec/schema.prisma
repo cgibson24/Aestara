@@ -121,7 +121,7 @@ model User {
   phone              String?
   displayName        String?
   status             UserStatus @default(INVITED)
-  /// Populated only if UD-02 resolves to an external identity provider.
+  /// Reserved for future enterprise SSO federation (identity is first-party, D-02).
   externalIdpSubject String?    @unique
   lastLoginAt        DateTime?  @db.Timestamptz(3)
   createdAt          DateTime   @default(now()) @db.Timestamptz(3)
@@ -210,8 +210,7 @@ model User {
   @@unique([kind, email])
 }
 
-/// Conditional on UD-02 (first-party identity). Replaced by externalIdpSubject
-/// mapping if an external IdP is chosen. Secrets are never stored in plaintext.
+/// First-party credentials (D-02). Secrets are never stored in plaintext.
 model UserCredential {
   id                   String         @id @default(uuid(7)) @db.Uuid
   userId               String         @db.Uuid
@@ -727,7 +726,8 @@ model PatientConcern {
 }
 
 /// Links a PATIENT-kind User to exactly one Patient record in one organization
-/// (patient-app access, Layer 5). Cross-organization identity: UD-08.
+/// (patient-app access, Layer 5). One login may link to several organizations,
+/// but data never crosses organizations (UD-08 baseline).
 model PatientUserLink {
   id             String            @id @default(uuid(7)) @db.Uuid
   organizationId String            @db.Uuid
@@ -2047,9 +2047,10 @@ model AIValidationRecord {
   @@index([modelVersionId])
 }
 
-/// Practice-owned, permission-gated historical case library (Bible 10: "the
-/// practice's ... library"). Library use is authorized by a MediaRelease (which
-/// pins the permission versions relied on); revoking it withdraws the entry.
+/// Permission-gated historical case library (Bible 10). Shared across the
+/// practices of one organization, never across organizations (D-01); practiceId
+/// records the originating practice. Library use is authorized by a MediaRelease
+/// (which pins the permission versions relied on); revoking it withdraws the entry.
 model CaseLibraryEntry {
   id                  String            @id @default(uuid(7)) @db.Uuid
   organizationId      String            @db.Uuid
