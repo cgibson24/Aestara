@@ -1,0 +1,3232 @@
+// =============================================================================
+// Aesthetic Platform - DRAFT relational schema
+// Companion to docs/TECHNICAL_SPECIFICATION.md (section 5)
+//
+// Source of truth : Software Production Bible v1.0, section 19 (Canonical Data Model)
+// Status          : DRAFT for Layer 0 review. This file is NOT a migration.
+//                   Layer 0 promotes it to packages/database/prisma/schema.prisma.
+// Companion SQL   : docs/technical-spec/constraints.sql (constraints Prisma
+//                   cannot express: partial uniques, CHECKs, append-only triggers).
+//
+// Conventions (see spec section 5.1):
+//   - Primary keys are UUIDv7 (time-ordered) stored as native uuid.
+//   - Every tenant-owned table carries organizationId.
+//   - Child rows reference parents through COMPOSITE foreign keys that include
+//     organizationId (and patientId where the Bible requires same-patient
+//     guarantees) so the database itself rejects cross-tenant links.
+//   - Lifecycle objects use explicit status enums (Bible Appendix A).
+//   - Json columns hold intentionally flexible metadata only (Bible 19.1).
+//   - Concurrently editable records carry `version` (drives ETag / If-Match).
+// =============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// 1. IDENTITY & TENANCY
+//    Bible entities: User, Organization, Practice, Location, Membership, Role,
+//    Permission, RolePermission, UserRole, Device, Session
+//    Additions: UserCredential (conditional on UD-02)
+// =============================================================================
+
+enum UserKind {
+  WORKFORCE
+  PATIENT
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  LOCKED
+  DISABLED
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  OFFBOARDED
+}
+
+enum OperationalStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum RoleAssignmentScope {
+  PLATFORM
+  ORGANIZATION
+  PRACTICE
+  LOCATION
+}
+
+enum ClientApp {
+  IOS_PROVIDER
+  IOS_PATIENT
+  ADMIN_WEB
+}
+
+enum CredentialType {
+  PASSWORD
+  TOTP
+  WEBAUTHN
+}
+
+enum SessionRevokedReason {
+  LOGOUT
+  ADMIN_REVOKED
+  DEVICE_REVOKED
+  REFRESH_TOKEN_REUSE
+  CREDENTIAL_CHANGED
+  MEMBERSHIP_DISABLED
+  USER_DISABLED
+}
+
+enum LoginEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+}
+
+enum LoginFailureReason {
+  INVALID_CREDENTIALS
+  ACCOUNT_LOCKED
+  ACCOUNT_DISABLED
+  NO_ACTIVE_MEMBERSHIP
+  MFA_REQUIRED
+  MFA_FAILED
+  RATE_LIMITED
+}
+
+/// Platform-level identity. NOT tenant-owned: one workforce user may hold
+/// memberships in several organizations. Tenant access always flows through
+/// Membership + UserRole (staff) or PatientUserLink (patients), never User alone.
+model User {
+  id                 String     @id @default(uuid(7)) @db.Uuid
+  kind               UserKind
+  /// Stored normalized (trimmed, lower-cased). Unique per kind.
+  email              String
+  emailVerifiedAt    DateTime?  @db.Timestamptz(3)
+  phone              String?
+  displayName        String?
+  status             UserStatus @default(INVITED)
+  /// Populated only if UD-02 resolves to an external identity provider.
+  externalIdpSubject String?    @unique
+  lastLoginAt        DateTime?  @db.Timestamptz(3)
+  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
+  version            Int        @default(1)
+
+  // --- back-relations (required by Prisma; not columns) ---
+  memberships                 Membership[]            @relation("MembershipUser")
+  membershipsDisabled         Membership[]            @relation("MembershipDisabledBy")
+  roleAssignments             UserRole[]              @relation("UserRoleUser")
+  roleAssignmentsGranted      UserRole[]              @relation("UserRoleAssignedBy")
+  roleAssignmentsRevoked      UserRole[]              @relation("UserRoleRevokedBy")
+  credentials                 UserCredential[]
+  devices                     Device[]                @relation("DeviceUser")
+  devicesRevoked              Device[]                @relation("DeviceRevokedBy")
+  sessions                    Session[]               @relation("SessionUser")
+  sessionsRevoked             Session[]               @relation("SessionRevokedBy")
+  loginEvents                 LoginEvent[]
+  patientsCreated             Patient[]               @relation("PatientCreatedBy")
+  patientsUpdated             Patient[]               @relation("PatientUpdatedBy")
+  patientsArchived            Patient[]               @relation("PatientArchivedBy")
+  patientContactsCreated      PatientContact[]
+  medicalHistoryRecorded      PatientMedicalHistory[]
+  concernsRecorded            PatientConcern[]
+  appointmentsCreated         Appointment[]
+  consultationsCreated        Consultation[]          @relation("ConsultationCreatedBy")
+  consultationsCompleted      Consultation[]          @relation("ConsultationCompletedBy")
+  consultationsCancelled      Consultation[]          @relation("ConsultationCancelledBy")
+  consultationNotes           ConsultationNote[]
+  proceduresCreated           Procedure[]
+  treatmentPlansCreated       TreatmentPlan[]
+  protocolsCreated            PhotographyProtocol[]
+  photoSessionsCaptured       PhotoSession[]
+  photosCaptured              PatientPhoto[]          @relation("PhotoCapturedBy")
+  photosReviewed              PatientPhoto[]          @relation("PhotoReviewedBy")
+  derivativesCreated          PhotoDerivative[]
+  annotations                 PhotoAnnotation[]
+  photoTags                   PhotoTag[]
+  photoPermissionsRecorded    PhotoPermission[]
+  mediaReleasesReleased       MediaRelease[]          @relation("MediaReleaseReleasedBy")
+  mediaReleasesRevoked        MediaRelease[]          @relation("MediaReleaseRevokedBy")
+  beforeAfterSets             BeforeAfterSet[]
+  photoRequests               PhotoRequest[]
+  storageObjectsUploaded      StorageObject[]
+  aiModelVersionsRegistered   AIModelVersion[]
+  aiModelRolloutsChanged      AIModelRollout[]
+  aiJobsRequested             AIJob[]
+  simulationsCreated          Simulation[]            @relation("SimulationCreatedBy")
+  simulationsReleased         Simulation[]            @relation("SimulationReleasedBy")
+  simulationVersionsGenerated SimulationVersion[]
+  simulationReviews           SimulationApproval[]
+  similarCasesShown           SimilarCaseMatch[]
+  caseLibraryEntriesAdded     CaseLibraryEntry[]
+  outcomeMeasurements         OutcomeMeasurement[]
+  consentTemplatesCreated     ConsentTemplate[]
+  consentVersionsCreated      ConsentTemplateVersion[] @relation("ConsentVersionCreatedBy")
+  consentVersionsPublished    ConsentTemplateVersion[] @relation("ConsentVersionPublishedBy")
+  consentsAssigned            ConsentAssignment[]     @relation("ConsentAssignedBy")
+  consentsVoided              ConsentAssignment[]     @relation("ConsentVoidedBy")
+  consentSignatures           ConsentSignature[]
+  documentsCreated            Document[]              @relation("DocumentCreatedBy")
+  documentsReleased           Document[]              @relation("DocumentReleasedBy")
+  documentVersionsCreated     DocumentVersion[]
+  educationContentCreated     EducationContent[]
+  educationVersionsPublished  EducationContentVersion[]
+  contentAssigned             ContentAssignment[]
+  instructionsAssigned        PatientInstruction[]    @relation("InstructionAssignedBy")
+  instructionsCompleted       PatientInstruction[]    @relation("InstructionCompletedBy")
+  threadsCreated              MessageThread[]
+  threadParticipations        ThreadParticipant[]
+  messagesSent                Message[]
+  notifications               Notification[]
+  syncEventsRequested         EMRSyncEvent[]
+  deadLettersResolved         IntegrationDeadLetter[]
+  estimatesCreated            Estimate[]              @relation("EstimateCreatedBy")
+  estimatesIssued             Estimate[]              @relation("EstimateIssuedBy")
+  quotesCreated               Quote[]
+  featureFlagsUpdated         FeatureFlag[]
+  practiceSettingsUpdated     PracticeSetting[]
+  organizationSettingsUpdated OrganizationSetting[]
+  retentionPoliciesCreated    RetentionPolicy[]
+  dataExportsRequested        DataExportJob[]
+  patientLinks                PatientUserLink[]       @relation("PatientLinkUser")
+  patientLinksInvited         PatientUserLink[]       @relation("PatientLinkInvitedBy")
+  patientLinksRevoked         PatientUserLink[]       @relation("PatientLinkRevokedBy")
+
+  @@unique([kind, email])
+}
+
+/// Conditional on UD-02 (first-party identity). Replaced by externalIdpSubject
+/// mapping if an external IdP is chosen. Secrets are never stored in plaintext.
+model UserCredential {
+  id                   String         @id @default(uuid(7)) @db.Uuid
+  userId               String         @db.Uuid
+  type                 CredentialType
+  /// Argon2id PHC string (PASSWORD only).
+  passwordHash         String?
+  /// KMS envelope-encrypted TOTP seed (TOTP only).
+  totpSecretCiphertext Bytes?
+  webauthnCredentialId Bytes?         @unique
+  webauthnPublicKey    Bytes?
+  webauthnSignCount    BigInt?
+  label                String?
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  lastUsedAt           DateTime?      @db.Timestamptz(3)
+  revokedAt            DateTime?      @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, type])
+}
+
+model Organization {
+  id        String             @id @default(uuid(7)) @db.Uuid
+  name      String
+  /// URL-safe identifier used by admin tooling; never proof of entitlement.
+  slug      String             @unique
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime           @updatedAt @db.Timestamptz(3)
+  version   Int                @default(1)
+
+  practices            Practice[]
+  memberships          Membership[]
+  roles                Role[]
+  sessions             Session[]
+  loginEvents          LoginEvent[]
+  patients             Patient[]
+  appointmentTypes     AppointmentType[]
+  treatmentCategories  TreatmentCategory[]
+  photographyProtocols PhotographyProtocol[]
+  storageObjects       StorageObject[]
+  aiModelRollouts      AIModelRollout[]
+  aiJobs               AIJob[]
+  consentTemplates     ConsentTemplate[]
+  educationContent     EducationContent[]
+  notifications        Notification[]
+  integrations         Integration[]
+  featureFlags         FeatureFlag[]
+  organizationSettings OrganizationSetting[]
+  retentionPolicies    RetentionPolicy[]
+  dataExportJobs       DataExportJob[]
+}
+
+model Practice {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  organizationId String            @db.Uuid
+  name           String
+  /// IANA time zone, e.g. America/New_York.
+  timezone       String
+  status         OperationalStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  version        Int               @default(1)
+
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  locations        Location[]
+  roleAssignments  UserRole[]
+  patients         Patient[]
+  appointmentTypes AppointmentType[]
+  appointments     Appointment[]
+  consultations    Consultation[]
+  procedures       Procedure[]
+  treatmentPlans   TreatmentPlan[]
+  protocols        PhotographyProtocol[]
+  consentTemplates ConsentTemplate[]
+  messageThreads   MessageThread[]
+  integrations     Integration[]
+  featureFlags     FeatureFlag[]
+  settings         PracticeSetting[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
+}
+
+model Location {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  organizationId String            @db.Uuid
+  practiceId     String            @db.Uuid
+  name           String
+  timezone       String
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  region         String?
+  postalCode     String?
+  countryCode    String?           @db.Char(2)
+  status         OperationalStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  version        Int               @default(1)
+
+  practice        Practice       @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  roleAssignments UserRole[]
+  appointments    Appointment[]
+  consultations   Consultation[]
+  procedures      Procedure[]
+  photoSessions   PhotoSession[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, practiceId, id])
+  @@index([organizationId, practiceId])
+}
+
+/// A workforce user's membership in one organization. user.disable acts here
+/// (per-organization), not on the platform-level User.
+model Membership {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  status         MembershipStatus @default(INVITED)
+  invitedAt      DateTime?        @db.Timestamptz(3)
+  activatedAt    DateTime?        @db.Timestamptz(3)
+  disabledAt     DateTime?        @db.Timestamptz(3)
+  disabledById   String?          @db.Uuid
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+  version        Int              @default(1)
+
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  user            User             @relation("MembershipUser", fields: [userId], references: [id])
+  disabledBy      User?            @relation("MembershipDisabledBy", fields: [disabledById], references: [id], onDelete: Restrict)
+  roleAssignments UserRole[]
+  providerProfile ProviderProfile?
+  staffProfile    StaffProfile?
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+/// organizationId NULL = platform-defined system role (the Bible 3.2 roles).
+/// Non-null = organization custom role (creation of custom roles is UD-07).
+model Role {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String?  @db.Uuid
+  /// Stable machine key, e.g. SURGEON_PHYSICIAN, FRONT_DESK.
+  key            String
+  name           String
+  description    String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  permissions  RolePermission[]
+  assignments  UserRole[]
+
+  @@unique([organizationId, key])
+}
+
+/// Platform catalog of permission keys (Bible 3.3). Not tenant-owned.
+model Permission {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// e.g. patient.read, simulation.approve
+  key         String   @unique
+  description String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+}
+
+/// Role assignment with explicit scope. PLATFORM scope has no organization
+/// (SUPER_ADMIN); all other scopes require an active Membership in that
+/// organization, enforced by the composite FK to Membership.
+model UserRole {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  userId         String              @db.Uuid
+  organizationId String?             @db.Uuid
+  roleId         String              @db.Uuid
+  scope          RoleAssignmentScope
+  practiceId     String?             @db.Uuid
+  locationId     String?             @db.Uuid
+  assignedById   String?             @db.Uuid
+  assignedAt     DateTime            @default(now()) @db.Timestamptz(3)
+  revokedAt      DateTime?           @db.Timestamptz(3)
+  revokedById    String?             @db.Uuid
+
+  user       User        @relation("UserRoleUser", fields: [userId], references: [id])
+  membership Membership? @relation(fields: [organizationId, userId], references: [organizationId, userId], onDelete: Restrict)
+  role       Role        @relation(fields: [roleId], references: [id])
+  practice   Practice?   @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
+  location   Location?   @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
+  assignedBy User?       @relation("UserRoleAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  revokedBy  User?       @relation("UserRoleRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@index([userId, organizationId])
+  @@index([organizationId, roleId])
+}
+
+model Device {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  userId             String    @db.Uuid
+  clientApp          ClientApp
+  /// Hash of the per-install identifier; the raw identifier is never stored.
+  installationIdHash String
+  name               String?
+  model              String?
+  osVersion          String?
+  appVersion         String?
+  apnsToken          String?
+  apnsTokenUpdatedAt DateTime? @db.Timestamptz(3)
+  lastSeenAt         DateTime? @db.Timestamptz(3)
+  revokedAt          DateTime? @db.Timestamptz(3)
+  revokedById        String?   @db.Uuid
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  user              User               @relation("DeviceUser", fields: [userId], references: [id])
+  revokedBy         User?              @relation("DeviceRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  sessions          Session[]
+  consentSignatures ConsentSignature[]
+
+  @@unique([userId, installationIdHash])
+}
+
+/// Server-side session enabling revocation (Bible 21.1). Refresh tokens rotate
+/// on every use; a presented token whose generation is behind
+/// refreshGeneration is treated as reuse and revokes the session.
+model Session {
+  id                String                @id @default(uuid(7)) @db.Uuid
+  userId            String                @db.Uuid
+  /// Active tenant context bound into issued access tokens.
+  organizationId    String?               @db.Uuid
+  deviceId          String?               @db.Uuid
+  clientApp         ClientApp
+  refreshTokenHash  String                @unique
+  refreshGeneration Int                   @default(0)
+  mfaVerifiedAt     DateTime?             @db.Timestamptz(3)
+  ipAddress         String?               @db.Inet
+  userAgent         String?
+  createdAt         DateTime              @default(now()) @db.Timestamptz(3)
+  lastUsedAt        DateTime?             @db.Timestamptz(3)
+  idleExpiresAt     DateTime              @db.Timestamptz(3)
+  absoluteExpiresAt DateTime              @db.Timestamptz(3)
+  revokedAt         DateTime?             @db.Timestamptz(3)
+  revokedById       String?               @db.Uuid
+  revokedReason     SessionRevokedReason?
+
+  user         User          @relation("SessionUser", fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  device       Device?       @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  revokedBy    User?         @relation("SessionRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt])
+  @@index([deviceId])
+}
+
+/// Security record of authentication activity. The submitted identifier is
+/// stored only as a keyed hash so brute-force patterns can be correlated
+/// without retaining arbitrary typed input.
+model LoginEvent {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  eventType      LoginEventType
+  userId         String?             @db.Uuid
+  organizationId String?             @db.Uuid
+  clientApp      ClientApp?
+  failureReason  LoginFailureReason?
+  identifierHash String?
+  sessionId      String?             @db.Uuid
+  deviceId       String?             @db.Uuid
+  ipAddress      String?             @db.Inet
+  userAgent      String?
+  requestId      String
+  occurredAt     DateTime            @default(now()) @db.Timestamptz(3)
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([userId, occurredAt])
+  @@index([identifierHash, occurredAt])
+  @@index([occurredAt])
+}
+
+// =============================================================================
+// 2. PROVIDER & PATIENT
+//    Bible entities: ProviderProfile, StaffProfile, Patient, PatientContact,
+//    PatientMedicalHistory, PatientConcern
+//    Additions: PatientUserLink (patient-app account link, Layer 5)
+// =============================================================================
+
+enum PatientStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+  DECEASED
+}
+
+enum PatientContactKind {
+  EMERGENCY_CONTACT
+  GUARDIAN
+  CAREGIVER
+  OTHER
+}
+
+enum MedicalHistoryCategory {
+  ALLERGY
+  MEDICATION
+  CONDITION
+  PRIOR_PROCEDURE
+  PRIOR_AESTHETIC_TREATMENT
+  OTHER
+}
+
+enum RecordSource {
+  STAFF
+  PATIENT_INTAKE
+  INTEGRATION
+}
+
+enum PatientLinkStatus {
+  INVITED
+  ACTIVE
+  REVOKED
+}
+
+/// Clinical/provider identity inside one organization. Every "provider" field
+/// elsewhere references (organizationId, userId) here, so a provider from
+/// another tenant can never be attached to a record.
+model ProviderProfile {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  displayName    String
+  /// e.g. "MD, FACS"
+  credentials    String?
+  specialty      String?
+  /// US National Provider Identifier (jurisdiction scope: UD-13).
+  npi            String?  @db.Char(10)
+  bio            String?
+  isBookable     Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  membership          Membership          @relation(fields: [organizationId, userId], references: [organizationId, userId])
+  appointments        Appointment[]
+  consultations       Consultation[]
+  procedures          Procedure[]
+  treatmentPlans      TreatmentPlan[]
+  treatmentPlanItems  TreatmentPlanItem[]
+  telehealthSessions  TelehealthSession[]
+
+  @@unique([organizationId, userId])
+}
+
+model StaffProfile {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  displayName    String
+  jobTitle       String?
+  department     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  membership Membership @relation(fields: [organizationId, userId], references: [organizationId, userId])
+
+  @@unique([organizationId, userId])
+}
+
+/// Bible 4.2 minimum patient entity. organizationId is always server-assigned.
+model Patient {
+  id                    String        @id @default(uuid(7)) @db.Uuid
+  organizationId        String        @db.Uuid
+  /// Optional or required per deployment policy (OrganizationSetting).
+  primaryPracticeId     String?       @db.Uuid
+  firstName             String
+  middleName            String?
+  lastName              String
+  preferredName         String?
+  dateOfBirth           DateTime      @db.Date
+  email                 String?
+  phone                 String?
+  /// Internal or externally mapped identifier; unique within the organization.
+  mrn                   String?
+  externalEmrIdentifier String?
+  status                PatientStatus @default(ACTIVE)
+  archivedAt            DateTime?     @db.Timestamptz(3)
+  archivedById          String?       @db.Uuid
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+  /// NULL only when created by an integration/system actor.
+  createdById           String?       @db.Uuid
+  updatedById           String?       @db.Uuid
+  version               Int           @default(1)
+
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  primaryPractice  Practice?    @relation(fields: [organizationId, primaryPracticeId], references: [organizationId, id], onDelete: Restrict)
+  createdBy        User?        @relation("PatientCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy        User?        @relation("PatientUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  archivedBy       User?        @relation("PatientArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+
+  contacts           PatientContact[]
+  medicalHistory     PatientMedicalHistory[]
+  concerns           PatientConcern[]
+  userLinks          PatientUserLink[]
+  appointments       Appointment[]
+  consultations      Consultation[]
+  procedures         Procedure[]
+  treatmentPlans     TreatmentPlan[]
+  photoSessions      PhotoSession[]
+  photos             PatientPhoto[]
+  photoPermissions   PhotoPermission[]
+  mediaReleases      MediaRelease[]
+  beforeAfterSets    BeforeAfterSet[]
+  photoRequests      PhotoRequest[]
+  aiJobs             AIJob[]
+  simulations        Simulation[]
+  similarCaseQueries SimilarCaseMatch[]
+  outcomeMeasurements OutcomeMeasurement[]
+  consentAssignments ConsentAssignment[]
+  documents          Document[]
+  contentAssignments ContentAssignment[]
+  instructions       PatientInstruction[]
+  messageThreads     MessageThread[]
+  telehealthSessions TelehealthSession[]
+  estimates          Estimate[]
+  quotes             Quote[]
+  invoiceReferences  InvoiceReference[]
+  dataExportJobs     DataExportJob[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, mrn])
+  @@index([organizationId, lastName, firstName])
+  @@index([organizationId, dateOfBirth])
+  @@index([organizationId, status])
+}
+
+model PatientContact {
+  id             String             @id @default(uuid(7)) @db.Uuid
+  organizationId String             @db.Uuid
+  patientId      String             @db.Uuid
+  kind           PatientContactKind
+  fullName       String
+  relationship   String?
+  phone          String?
+  email          String?
+  isPrimary      Boolean            @default(false)
+  notes          String?
+  createdById    String?            @db.Uuid
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @db.Timestamptz(3)
+  version        Int                @default(1)
+
+  patient   Patient @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, patientId])
+}
+
+model PatientMedicalHistory {
+  id             String                 @id @default(uuid(7)) @db.Uuid
+  organizationId String                 @db.Uuid
+  patientId      String                 @db.Uuid
+  category       MedicalHistoryCategory
+  description    String
+  /// Structured detail that varies by category (flexible metadata).
+  details        Json?
+  onsetDate      DateTime?              @db.Date
+  resolvedAt     DateTime?              @db.Date
+  source         RecordSource           @default(STAFF)
+  recordedById   String?                @db.Uuid
+  recordedAt     DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  version        Int                    @default(1)
+
+  patient    Patient @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  recordedBy User?   @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, patientId, category])
+}
+
+model PatientConcern {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @db.Uuid
+  patientId      String    @db.Uuid
+  /// Anatomical/aesthetic area, e.g. LIPS, NOSE, ABDOMEN.
+  area           String
+  description    String
+  recordedById   String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  resolvedAt     DateTime? @db.Timestamptz(3)
+
+  patient       Patient               @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  recordedBy    User?                 @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  consultations ConsultationConcern[]
+
+  @@unique([organizationId, patientId, id])
+}
+
+/// Links a PATIENT-kind User to exactly one Patient record in one organization
+/// (patient-app access, Layer 5). Cross-organization identity: UD-08.
+model PatientUserLink {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  organizationId String            @db.Uuid
+  patientId      String            @db.Uuid
+  userId         String            @db.Uuid
+  status         PatientLinkStatus @default(INVITED)
+  invitedById    String            @db.Uuid
+  invitedAt      DateTime          @default(now()) @db.Timestamptz(3)
+  activatedAt    DateTime?         @db.Timestamptz(3)
+  revokedAt      DateTime?         @db.Timestamptz(3)
+  revokedById    String?           @db.Uuid
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  patient   Patient @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  user      User    @relation("PatientLinkUser", fields: [userId], references: [id])
+  invitedBy User    @relation("PatientLinkInvitedBy", fields: [invitedById], references: [id])
+  revokedBy User?   @relation("PatientLinkRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, patientId, userId])
+  @@index([userId])
+}
+
+// =============================================================================
+// 3. SCHEDULING & CONSULTATION
+//    Bible entities: Appointment, Consultation, ConsultationNote, Procedure,
+//    Treatment, TreatmentCategory, TreatmentPlan, TreatmentPlanItem
+//    Additions: AppointmentType, ConsultationConcern
+// =============================================================================
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  LOCAL
+  PATIENT_APP
+  INTEGRATION
+}
+
+enum ConsultationStatus {
+  DRAFT
+  IN_PROGRESS
+  AWAITING_INFORMATION
+  READY_FOR_REVIEW
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum NoteStatus {
+  DRAFT
+  FINAL
+}
+
+enum ProcedureStatus {
+  PLANNED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum TreatmentPlanStatus {
+  DRAFT
+  PROPOSED
+  SENT_TO_PATIENT
+  VIEWED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model AppointmentType {
+  id                     String            @id @default(uuid(7)) @db.Uuid
+  organizationId         String            @db.Uuid
+  practiceId             String?           @db.Uuid
+  name                   String
+  defaultDurationMinutes Int
+  isTelehealth           Boolean           @default(false)
+  status                 OperationalStatus @default(ACTIVE)
+  createdAt              DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  practice     Practice?     @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
+  appointments Appointment[]
+
+  @@unique([organizationId, id])
+}
+
+model Appointment {
+  id                     String            @id @default(uuid(7)) @db.Uuid
+  organizationId         String            @db.Uuid
+  patientId              String            @db.Uuid
+  practiceId             String            @db.Uuid
+  locationId             String?           @db.Uuid
+  providerUserId         String?           @db.Uuid
+  appointmentTypeId      String?           @db.Uuid
+  startsAt               DateTime          @db.Timestamptz(3)
+  endsAt                 DateTime          @db.Timestamptz(3)
+  /// IANA zone the appointment was booked in (display + DST-safe recurrence).
+  timezone               String
+  status                 AppointmentStatus @default(REQUESTED)
+  reason                 String?
+  consultationId         String?           @db.Uuid
+  procedureId            String?           @db.Uuid
+  sourceSystem           AppointmentSource @default(LOCAL)
+  integrationId          String?           @db.Uuid
+  externalId             String?
+  externalVersion        String?
+  lastSyncedAt           DateTime?         @db.Timestamptz(3)
+  /// Set when inbound data conflicts with local edits; conflicts are surfaced,
+  /// never silently overwritten (Bible 15.3).
+  syncConflictDetectedAt DateTime?         @db.Timestamptz(3)
+  cancelledAt            DateTime?         @db.Timestamptz(3)
+  cancellationReason     String?
+  createdById            String?           @db.Uuid
+  createdAt              DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @db.Timestamptz(3)
+  version                Int               @default(1)
+
+  patient           Patient            @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  practice          Practice           @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  location          Location?          @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
+  provider          ProviderProfile?   @relation(fields: [organizationId, providerUserId], references: [organizationId, userId], onDelete: Restrict)
+  appointmentType   AppointmentType?   @relation(fields: [organizationId, appointmentTypeId], references: [organizationId, id], onDelete: Restrict)
+  consultation      Consultation?      @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  procedure         Procedure?         @relation(fields: [organizationId, patientId, procedureId], references: [organizationId, patientId, id], onDelete: Restrict)
+  integration       Integration?       @relation(fields: [organizationId, integrationId], references: [organizationId, id], onDelete: Restrict)
+  createdBy         User?              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  telehealthSession TelehealthSession?
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@unique([integrationId, externalId])
+  @@index([organizationId, practiceId, startsAt])
+  @@index([organizationId, patientId, startsAt])
+  @@index([organizationId, providerUserId, startsAt])
+}
+
+model Consultation {
+  id                    String             @id @default(uuid(7)) @db.Uuid
+  organizationId        String             @db.Uuid
+  patientId             String             @db.Uuid
+  practiceId            String             @db.Uuid
+  locationId            String?            @db.Uuid
+  primaryProviderUserId String?            @db.Uuid
+  status                ConsultationStatus @default(DRAFT)
+  reason                String?
+  startedAt             DateTime?          @db.Timestamptz(3)
+  readyForReviewAt      DateTime?          @db.Timestamptz(3)
+  completedAt           DateTime?          @db.Timestamptz(3)
+  completedById         String?            @db.Uuid
+  cancelledAt           DateTime?          @db.Timestamptz(3)
+  cancelledById         String?            @db.Uuid
+  cancellationReason    String?
+  archivedAt            DateTime?          @db.Timestamptz(3)
+  createdById           String             @db.Uuid
+  createdAt             DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @db.Timestamptz(3)
+  version               Int                @default(1)
+
+  patient         Patient          @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  practice        Practice         @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  location        Location?        @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
+  primaryProvider ProviderProfile? @relation(fields: [organizationId, primaryProviderUserId], references: [organizationId, userId], onDelete: Restrict)
+  createdBy       User             @relation("ConsultationCreatedBy", fields: [createdById], references: [id])
+  completedBy     User?            @relation("ConsultationCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
+  cancelledBy     User?            @relation("ConsultationCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+
+  concerns           ConsultationConcern[]
+  notes              ConsultationNote[]
+  appointments       Appointment[]
+  procedures         Procedure[]
+  treatmentPlans     TreatmentPlan[]
+  photoSessions      PhotoSession[]
+  beforeAfterSets    BeforeAfterSet[]
+  simulations        Simulation[]
+  similarCaseMatches SimilarCaseMatch[]
+  consentAssignments ConsentAssignment[]
+  documents          Document[]
+  contentAssignments ContentAssignment[]
+  instructions       PatientInstruction[]
+  telehealthSessions TelehealthSession[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@index([organizationId, patientId, createdAt])
+  @@index([organizationId, practiceId, status])
+}
+
+/// Concerns selected for a consultation (Bible 5.1 "Select reason / concerns").
+model ConsultationConcern {
+  organizationId   String   @db.Uuid
+  patientId        String   @db.Uuid
+  consultationId   String   @db.Uuid
+  patientConcernId String   @db.Uuid
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  consultation Consultation   @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id])
+  concern      PatientConcern @relation(fields: [organizationId, patientId, patientConcernId], references: [organizationId, patientId, id])
+
+  @@id([consultationId, patientConcernId])
+}
+
+model ConsultationNote {
+  /// Client-generated UUIDv7 accepted for offline-drafted notes (spec 8).
+  id             String     @id @default(uuid(7)) @db.Uuid
+  organizationId String     @db.Uuid
+  patientId      String     @db.Uuid
+  consultationId String     @db.Uuid
+  authorUserId   String     @db.Uuid
+  status         NoteStatus @default(DRAFT)
+  body           String
+  finalizedAt    DateTime?  @db.Timestamptz(3)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
+  version        Int        @default(1)
+
+  consultation Consultation @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id])
+  author       User         @relation(fields: [authorUserId], references: [id])
+
+  @@index([organizationId, consultationId])
+}
+
+model TreatmentCategory {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  organizationId String            @db.Uuid
+  parentId       String?           @db.Uuid
+  name           String
+  sortOrder      Int               @default(0)
+  status         OperationalStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  parent       TreatmentCategory?  @relation("TreatmentCategoryTree", fields: [organizationId, parentId], references: [organizationId, id], onDelete: Restrict)
+  children     TreatmentCategory[] @relation("TreatmentCategoryTree")
+  treatments   Treatment[]
+
+  @@unique([organizationId, id])
+}
+
+/// Organization treatment/procedure catalog (admin module 17.1).
+model Treatment {
+  id                 String              @id @default(uuid(7)) @db.Uuid
+  organizationId     String              @db.Uuid
+  categoryId         String              @db.Uuid
+  name               String
+  code               String?
+  description        String?
+  /// Pricing unit label only (e.g. "syringe", "area"). Never an AI output.
+  unitLabel          String?
+  defaultUnitPrice   Decimal?            @db.Decimal(12, 2)
+  /// Links catalog entries to the visualization categories of Bible 9.6.
+  simulationCategory SimulationCategory?
+  status             OperationalStatus   @default(ACTIVE)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+
+  category            TreatmentCategory   @relation(fields: [organizationId, categoryId], references: [organizationId, id])
+  procedures          Procedure[]
+  treatmentPlanItems  TreatmentPlanItem[]
+  caseLibraryEntries  CaseLibraryEntry[]
+  educationContent    EducationContent[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, code])
+}
+
+/// A planned or performed procedure for a patient ("Procedures" tab, 4.3/13.1).
+model Procedure {
+  id                  String          @id @default(uuid(7)) @db.Uuid
+  organizationId      String          @db.Uuid
+  patientId           String          @db.Uuid
+  practiceId          String          @db.Uuid
+  locationId          String?         @db.Uuid
+  treatmentId         String          @db.Uuid
+  treatmentPlanItemId String?         @db.Uuid
+  consultationId      String?         @db.Uuid
+  performedByUserId   String?         @db.Uuid
+  status              ProcedureStatus @default(PLANNED)
+  area                String?
+  scheduledFor        DateTime?       @db.Timestamptz(3)
+  performedAt         DateTime?       @db.Timestamptz(3)
+  notes               String?
+  externalId          String?
+  createdById         String?         @db.Uuid
+  createdAt           DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime        @updatedAt @db.Timestamptz(3)
+  version             Int             @default(1)
+
+  patient           Patient            @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  practice          Practice           @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  location          Location?          @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
+  treatment         Treatment          @relation(fields: [organizationId, treatmentId], references: [organizationId, id])
+  treatmentPlanItem TreatmentPlanItem? @relation(fields: [organizationId, patientId, treatmentPlanItemId], references: [organizationId, patientId, id], onDelete: Restrict)
+  consultation      Consultation?      @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  performedBy       ProviderProfile?   @relation(fields: [organizationId, performedByUserId], references: [organizationId, userId], onDelete: Restrict)
+  createdBy         User?              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  appointments       Appointment[]
+  photoSessions      PhotoSession[]
+  consentAssignments ConsentAssignment[]
+  contentAssignments ContentAssignment[]
+  instructions       PatientInstruction[]
+  invoiceReferences  InvoiceReference[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@unique([organizationId, patientId, treatmentPlanItemId])
+  @@index([organizationId, patientId, status])
+}
+
+/// One plan option (Plan A / B / C) for a patient. Acceptance is NOT medical
+/// authorization or consent (Bible 11.1).
+model TreatmentPlan {
+  id                 String              @id @default(uuid(7)) @db.Uuid
+  organizationId     String              @db.Uuid
+  patientId          String              @db.Uuid
+  consultationId     String?             @db.Uuid
+  practiceId         String              @db.Uuid
+  providerUserId     String?             @db.Uuid
+  /// "Plan A", "Plan B", "Plan C"
+  optionLabel        String?
+  title              String
+  status             TreatmentPlanStatus @default(DRAFT)
+  /// ISO 4217
+  currency           String              @default("USD") @db.Char(3)
+  /// Server-computed from items; clients never submit totals.
+  subtotal           Decimal             @default(0) @db.Decimal(12, 2)
+  discountTotal      Decimal             @default(0) @db.Decimal(12, 2)
+  estimatedTotal     Decimal             @default(0) @db.Decimal(12, 2)
+  financingReference String?
+  notes              String?
+  proposedDate       DateTime?           @db.Date
+  sentAt             DateTime?           @db.Timestamptz(3)
+  viewedAt           DateTime?           @db.Timestamptz(3)
+  respondedAt        DateTime?           @db.Timestamptz(3)
+  expiresAt          DateTime?           @db.Timestamptz(3)
+  createdById        String              @db.Uuid
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  version            Int                 @default(1)
+
+  patient      Patient          @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  consultation Consultation?    @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  practice     Practice         @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  provider     ProviderProfile? @relation(fields: [organizationId, providerUserId], references: [organizationId, userId], onDelete: Restrict)
+  createdBy    User             @relation(fields: [createdById], references: [id])
+
+  items              TreatmentPlanItem[]
+  estimates          Estimate[]
+  consentAssignments ConsentAssignment[]
+  invoiceReferences  InvoiceReference[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@index([organizationId, patientId, status])
+}
+
+model TreatmentPlanItem {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  organizationId  String    @db.Uuid
+  patientId       String    @db.Uuid
+  treatmentPlanId String    @db.Uuid
+  treatmentId     String    @db.Uuid
+  area            String?
+  providerUserId  String?   @db.Uuid
+  description     String?
+  /// Provider-entered quantity for pricing only (Bible 11.1).
+  quantity        Decimal?  @db.Decimal(10, 2)
+  unitPrice       Decimal   @db.Decimal(12, 2)
+  discountAmount  Decimal   @default(0) @db.Decimal(12, 2)
+  lineTotal       Decimal   @db.Decimal(12, 2)
+  notes           String?
+  proposedDate    DateTime? @db.Date
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  treatmentPlan TreatmentPlan    @relation(fields: [organizationId, patientId, treatmentPlanId], references: [organizationId, patientId, id])
+  treatment     Treatment        @relation(fields: [organizationId, treatmentId], references: [organizationId, id])
+  provider      ProviderProfile? @relation(fields: [organizationId, providerUserId], references: [organizationId, userId], onDelete: Restrict)
+  procedure     Procedure?
+
+  @@unique([organizationId, patientId, id])
+  @@index([treatmentPlanId])
+}
+
+// =============================================================================
+// 4. PHOTOGRAPHY & MEDIA
+//    Bible entities: PhotographyProtocol, PhotographyProtocolView, PhotoSession,
+//    PatientPhoto, PhotoDerivative, PhotoAnnotation, PhotoTag, PhotoPermission,
+//    MediaRelease, BeforeAfterSet
+//    Additions: StorageObject (Media Service ledger), PhotoRequest (13.4)
+// =============================================================================
+
+enum ProtocolStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum BodyRegion {
+  FACE
+  BREAST
+  ABDOMEN_BODY
+  OTHER
+}
+
+enum PhotoSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum PhotoSource {
+  PROVIDER_CAPTURE
+  PATIENT_UPLOAD
+  IMPORT
+}
+
+enum PhotoStatus {
+  UPLOAD_PENDING
+  QUARANTINED
+  PENDING_REVIEW
+  ACCEPTED
+  RETAKE_REQUESTED
+  REJECTED
+  ARCHIVED
+}
+
+enum DerivativeKind {
+  THUMBNAIL
+  DISPLAY_PREVIEW
+  ANNOTATED_DERIVATIVE
+  BEFORE_AFTER_DERIVATIVE
+  AI_SIMULATION_DERIVATIVE
+  MARKETING_DERIVATIVE
+  EXPORT_DERIVATIVE
+}
+
+enum MediaPermissionCategory {
+  CLINICAL_USE
+  PATIENT_APP
+  EDUCATION
+  WEBSITE
+  SOCIAL_MEDIA
+  PAID_ADVERTISING
+  RESEARCH
+  AI_TRAINING
+  INTERNAL_AI_EVALUATION
+}
+
+enum PhotoPermissionState {
+  NOT_REQUESTED
+  REQUESTED
+  GRANTED
+  DECLINED
+  REVOKED
+  EXPIRED
+}
+
+enum PermissionScope {
+  PATIENT_WIDE
+  PHOTO_SESSION
+  PHOTO
+}
+
+enum PermissionEvidence {
+  SIGNED_CONSENT
+  PATIENT_APP_ACTION
+  STAFF_ATTESTATION
+  INTEGRATION_IMPORT
+}
+
+enum RegistrationMode {
+  NONE
+  AUTOMATIC
+  MANUAL
+}
+
+enum PhotoRequestStatus {
+  OPEN
+  SUBMITTED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum StorageObjectClass {
+  CLINICAL_ORIGINAL
+  CLINICAL_DERIVATIVE
+  AI_ARTIFACT
+  DOCUMENT
+  SIGNATURE
+  MESSAGE_ATTACHMENT
+  CONTENT_MEDIA
+  DATA_EXPORT
+  INTEGRATION_PAYLOAD
+}
+
+enum StorageObjectStatus {
+  PENDING_UPLOAD
+  QUARANTINED
+  AVAILABLE
+  REJECTED
+  PURGED
+}
+
+enum MalwareScanStatus {
+  NOT_REQUIRED
+  PENDING
+  CLEAN
+  INFECTED
+  ERROR
+}
+
+/// Ledger of every object in private object storage. Objects are write-once:
+/// once AVAILABLE, bucket/key/checksum never change (trigger in constraints.sql).
+/// Storage keys are never returned by the public API.
+model StorageObject {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  organizationId String              @db.Uuid
+  objectClass    StorageObjectClass
+  bucket         String
+  objectKey      String              @unique
+  contentType    String
+  byteSize       BigInt?
+  /// Hex SHA-256 declared at upload intent and verified on completion.
+  sha256         String?
+  status         StorageObjectStatus @default(PENDING_UPLOAD)
+  scanStatus     MalwareScanStatus   @default(PENDING)
+  kmsKeyAlias    String?
+  uploadedById   String?             @db.Uuid
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  verifiedAt     DateTime?           @db.Timestamptz(3)
+  purgedAt       DateTime?           @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  originalOf              PatientPhoto?
+  derivativeOf            PhotoDerivative?
+  simulationMaskOf        SimulationVersion?
+  documentVersion         DocumentVersion?
+  consentSignature        ConsentSignature?
+  messageAttachment       MessageAttachment?
+  educationContentVersion EducationContentVersion[]
+  dataExportJob           DataExportJob?
+  deadLetter              IntegrationDeadLetter?
+
+  @@unique([organizationId, id])
+  @@index([organizationId, objectClass, createdAt])
+}
+
+/// Standard protocols (Bible 6.2) are seeded into each organization on
+/// creation, so every protocol row is tenant-owned. Views are frozen once the
+/// protocol is ACTIVE; changes create a new protocol that supersedes it.
+model PhotographyProtocol {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  organizationId String         @db.Uuid
+  practiceId     String?        @db.Uuid
+  name           String
+  bodyRegion     BodyRegion
+  description    String?
+  status         ProtocolStatus @default(DRAFT)
+  supersedesId   String?        @db.Uuid
+  createdById    String?        @db.Uuid
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+  version        Int            @default(1)
+
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  practice     Practice?            @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
+  supersedes   PhotographyProtocol? @relation("ProtocolSupersession", fields: [organizationId, supersedesId], references: [organizationId, id], onDelete: Restrict)
+  supersededBy PhotographyProtocol? @relation("ProtocolSupersession")
+  createdBy    User?                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  views         PhotographyProtocolView[]
+  photoSessions PhotoSession[]
+  photoRequests PhotoRequest[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, supersedesId])
+  @@index([organizationId, status])
+}
+
+model PhotographyProtocolView {
+  id                  String   @id @default(uuid(7)) @db.Uuid
+  organizationId      String   @db.Uuid
+  protocolId          String   @db.Uuid
+  /// Stable key, e.g. FRONT, LEFT_45, RIGHT_45, LEFT_PROFILE, BACK.
+  viewKey             String
+  name                String
+  sortOrder           Int
+  isRequired          Boolean
+  captureInstructions String?
+  /// Target pose/framing tolerances used by live guidance (flexible metadata).
+  poseTarget          Json?
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+
+  protocol PhotographyProtocol @relation(fields: [organizationId, protocolId], references: [organizationId, id])
+  photos   PatientPhoto[]
+
+  @@unique([organizationId, id])
+  @@unique([protocolId, viewKey])
+}
+
+model PhotoSession {
+  /// Client-generated UUIDv7 accepted for offline capture (spec 8).
+  id               String             @id @default(uuid(7)) @db.Uuid
+  organizationId   String             @db.Uuid
+  patientId        String             @db.Uuid
+  protocolId       String             @db.Uuid
+  source           PhotoSource
+  status           PhotoSessionStatus @default(IN_PROGRESS)
+  capturedByUserId String?            @db.Uuid
+  consultationId   String?            @db.Uuid
+  procedureId      String?            @db.Uuid
+  practiceId       String?            @db.Uuid
+  locationId       String?            @db.Uuid
+  photoRequestId   String?            @db.Uuid
+  startedAt        DateTime           @db.Timestamptz(3)
+  completedAt      DateTime?          @db.Timestamptz(3)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+
+  patient      Patient             @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  protocol     PhotographyProtocol @relation(fields: [organizationId, protocolId], references: [organizationId, id])
+  capturedBy   User?               @relation(fields: [capturedByUserId], references: [id], onDelete: Restrict)
+  consultation Consultation?       @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  procedure    Procedure?          @relation(fields: [organizationId, patientId, procedureId], references: [organizationId, patientId, id], onDelete: Restrict)
+  location     Location?           @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
+  photoRequest PhotoRequest?       @relation(fields: [organizationId, patientId, photoRequestId], references: [organizationId, patientId, id], onDelete: Restrict)
+
+  photos      PatientPhoto[]
+  permissions PhotoPermission[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@index([organizationId, patientId, startedAt])
+}
+
+/// The clinical photo record. originalObjectId points at the immutable
+/// ORIGINAL; it can never be changed (trigger in constraints.sql).
+model PatientPhoto {
+  /// Client-generated UUIDv7 accepted for offline capture (spec 8).
+  id                 String      @id @default(uuid(7)) @db.Uuid
+  organizationId     String      @db.Uuid
+  patientId          String      @db.Uuid
+  photoSessionId     String?     @db.Uuid
+  protocolViewId     String?     @db.Uuid
+  viewKey            String?
+  source             PhotoSource
+  status             PhotoStatus @default(UPLOAD_PENDING)
+  originalObjectId   String      @db.Uuid
+  capturedByUserId   String?     @db.Uuid
+  capturedAt         DateTime    @db.Timestamptz(3)
+  widthPx            Int?
+  heightPx           Int?
+  /// Device/lens/exposure/pose estimates (flexible metadata; no free text).
+  captureMetadata    Json?
+  /// Post-capture quality check results (flexible metadata).
+  qualityChecks      Json?
+  /// Ghost-alignment photographic position-match score (0..1).
+  /// Never labelled medical accuracy (Bible 6.5).
+  positionMatchScore Decimal?    @db.Decimal(5, 4)
+  reviewedById       String?     @db.Uuid
+  reviewedAt         DateTime?   @db.Timestamptz(3)
+  reviewNote         String?
+  archivedAt         DateTime?   @db.Timestamptz(3)
+  createdAt          DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime    @updatedAt @db.Timestamptz(3)
+
+  patient      Patient                  @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  photoSession PhotoSession?            @relation(fields: [organizationId, patientId, photoSessionId], references: [organizationId, patientId, id], onDelete: Restrict)
+  protocolView PhotographyProtocolView? @relation(fields: [organizationId, protocolViewId], references: [organizationId, id], onDelete: Restrict)
+  original     StorageObject            @relation(fields: [organizationId, originalObjectId], references: [organizationId, id])
+  capturedBy   User?                    @relation("PhotoCapturedBy", fields: [capturedByUserId], references: [id], onDelete: Restrict)
+  reviewedBy   User?                    @relation("PhotoReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  derivatives         PhotoDerivative[]
+  annotations         PhotoAnnotation[]
+  tags                PhotoTag[]
+  permissions         PhotoPermission[]
+  mediaReleases       MediaRelease[]
+  beforeSets          BeforeAfterSet[]          @relation("BeforePhoto")
+  afterSets           BeforeAfterSet[]          @relation("AfterPhoto")
+  simulationSources   SimulationVersionSource[]
+  outcomeMeasurements OutcomeMeasurement[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@unique([organizationId, originalObjectId])
+  @@index([organizationId, patientId, capturedAt])
+  @@index([organizationId, patientId, viewKey])
+}
+
+/// Every derivative references its source photo and generation metadata
+/// (Bible 6.6). Derivatives are immutable; regeneration creates a new row.
+model PhotoDerivative {
+  id                 String         @id @default(uuid(7)) @db.Uuid
+  organizationId     String         @db.Uuid
+  patientId          String         @db.Uuid
+  sourcePhotoId      String         @db.Uuid
+  kind               DerivativeKind
+  storageObjectId    String         @db.Uuid
+  /// Generator name/version, parameters, transforms (flexible metadata).
+  generationMetadata Json
+  generatedByJobId   String?        @db.Uuid
+  beforeAfterSetId   String?        @db.Uuid
+  annotationId       String?        @db.Uuid
+  createdById        String?        @db.Uuid
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+
+  sourcePhoto    PatientPhoto     @relation(fields: [organizationId, patientId, sourcePhotoId], references: [organizationId, patientId, id])
+  storageObject  StorageObject    @relation(fields: [organizationId, storageObjectId], references: [organizationId, id])
+  generatedByJob AIJob?           @relation(fields: [organizationId, generatedByJobId], references: [organizationId, id], onDelete: Restrict)
+  beforeAfterSet BeforeAfterSet?  @relation(fields: [organizationId, patientId, beforeAfterSetId], references: [organizationId, patientId, id], onDelete: Restrict)
+  annotation     PhotoAnnotation? @relation(fields: [organizationId, patientId, annotationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  createdBy      User?            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  simulationOutputOf SimulationVersion?
+  mediaReleases      MediaRelease[]
+  caseLibraryDisplay CaseLibraryEntry[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@unique([organizationId, storageObjectId])
+  @@index([sourcePhotoId, kind])
+}
+
+/// Vector annotation layer (never burned into the original). Coordinates are
+/// normalized 0..1 relative to the original image.
+model PhotoAnnotation {
+  /// Client-generated UUIDv7 accepted for offline annotation (spec 8).
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @db.Uuid
+  patientId      String    @db.Uuid
+  photoId        String    @db.Uuid
+  authorUserId   String    @db.Uuid
+  schemaVersion  Int       @default(1)
+  layer          Json
+  label          String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt      DateTime? @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  photo                PatientPhoto      @relation(fields: [organizationId, patientId, photoId], references: [organizationId, patientId, id])
+  author               User              @relation(fields: [authorUserId], references: [id])
+  renderedDerivatives  PhotoDerivative[]
+
+  @@unique([organizationId, patientId, id])
+  @@index([photoId])
+}
+
+model PhotoTag {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  patientId      String   @db.Uuid
+  photoId        String   @db.Uuid
+  tag            String
+  createdById    String?  @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  photo     PatientPhoto @relation(fields: [organizationId, patientId, photoId], references: [organizationId, patientId, id])
+  createdBy User?        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([photoId, tag])
+  @@index([organizationId, tag])
+}
+
+/// Versioned, append-only media permission (Bible 7). Each change inserts a new
+/// row and stamps supersededAt on the previous one; exactly one current row per
+/// (patient, category, scope target) is enforced in constraints.sql.
+/// No category implies another.
+model PhotoPermission {
+  id                          String                  @id @default(uuid(7)) @db.Uuid
+  organizationId              String                  @db.Uuid
+  patientId                   String                  @db.Uuid
+  category                    MediaPermissionCategory
+  scope                       PermissionScope
+  photoSessionId              String?                 @db.Uuid
+  photoId                     String?                 @db.Uuid
+  state                       PhotoPermissionState
+  versionNumber               Int
+  previousVersionId           String?                 @db.Uuid
+  effectiveAt                 DateTime                @db.Timestamptz(3)
+  expiresAt                   DateTime?               @db.Timestamptz(3)
+  evidence                    PermissionEvidence?
+  evidenceConsentAssignmentId String?                 @db.Uuid
+  reason                      String?
+  recordedById                String?                 @db.Uuid
+  createdAt                   DateTime                @default(now()) @db.Timestamptz(3)
+  supersededAt                DateTime?               @db.Timestamptz(3)
+
+  patient            Patient            @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  photoSession       PhotoSession?      @relation(fields: [organizationId, patientId, photoSessionId], references: [organizationId, patientId, id], onDelete: Restrict)
+  photo              PatientPhoto?      @relation(fields: [organizationId, patientId, photoId], references: [organizationId, patientId, id], onDelete: Restrict)
+  previousVersion    PhotoPermission?   @relation("PhotoPermissionHistory", fields: [organizationId, patientId, previousVersionId], references: [organizationId, patientId, id], onDelete: Restrict)
+  nextVersion        PhotoPermission?   @relation("PhotoPermissionHistory")
+  evidenceConsent    ConsentAssignment? @relation(fields: [organizationId, patientId, evidenceConsentAssignmentId], references: [organizationId, patientId, id], onDelete: Restrict)
+  recordedBy         User?              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+
+  mediaReleases      MediaRelease[]
+  caseLibraryEntries CaseLibraryEntry[]
+
+  @@unique([organizationId, patientId, id])
+  @@unique([organizationId, patientId, previousVersionId])
+  @@index([organizationId, patientId, category])
+}
+
+/// Record that a specific asset was released/exported for a purpose, pinned to
+/// the exact PhotoPermission version that authorized it at that moment.
+model MediaRelease {
+  id               String                  @id @default(uuid(7)) @db.Uuid
+  organizationId   String                  @db.Uuid
+  patientId        String                  @db.Uuid
+  purpose          MediaPermissionCategory
+  photoId          String?                 @db.Uuid
+  derivativeId     String?                 @db.Uuid
+  beforeAfterSetId String?                 @db.Uuid
+  simulationId     String?                 @db.Uuid
+  permissionId     String                  @db.Uuid
+  releasedById     String                  @db.Uuid
+  releasedAt       DateTime                @default(now()) @db.Timestamptz(3)
+  revokedAt        DateTime?               @db.Timestamptz(3)
+  revokedById      String?                 @db.Uuid
+  revocationReason String?
+
+  patient        Patient          @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  photo          PatientPhoto?    @relation(fields: [organizationId, patientId, photoId], references: [organizationId, patientId, id], onDelete: Restrict)
+  derivative     PhotoDerivative? @relation(fields: [organizationId, patientId, derivativeId], references: [organizationId, patientId, id], onDelete: Restrict)
+  beforeAfterSet BeforeAfterSet?  @relation(fields: [organizationId, patientId, beforeAfterSetId], references: [organizationId, patientId, id], onDelete: Restrict)
+  simulation     Simulation?      @relation(fields: [organizationId, patientId, simulationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  permission     PhotoPermission  @relation(fields: [organizationId, patientId, permissionId], references: [organizationId, patientId, id])
+  releasedBy     User             @relation("MediaReleaseReleasedBy", fields: [releasedById], references: [id])
+  revokedBy      User?            @relation("MediaReleaseRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, patientId, purpose])
+}
+
+/// Both photos are constrained by composite FKs to the SAME organization and
+/// the SAME patient (Bible 8.1, acceptance 34.1 #12-13).
+model BeforeAfterSet {
+  id                    String           @id @default(uuid(7)) @db.Uuid
+  organizationId        String           @db.Uuid
+  patientId             String           @db.Uuid
+  beforePhotoId         String           @db.Uuid
+  afterPhotoId          String           @db.Uuid
+  consultationId        String?          @db.Uuid
+  viewKey               String?
+  title                 String?
+  registrationMode      RegistrationMode @default(NONE)
+  /// 2D transform (normalized coordinates) applied at display time only.
+  registrationTransform Json?
+  registrationJobId     String?          @db.Uuid
+  createdById           String           @db.Uuid
+  createdAt             DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime         @updatedAt @db.Timestamptz(3)
+  version               Int              @default(1)
+
+  patient         Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  beforePhoto     PatientPhoto  @relation("BeforePhoto", fields: [organizationId, patientId, beforePhotoId], references: [organizationId, patientId, id])
+  afterPhoto      PatientPhoto  @relation("AfterPhoto", fields: [organizationId, patientId, afterPhotoId], references: [organizationId, patientId, id])
+  consultation    Consultation? @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  registrationJob AIJob?        @relation(fields: [organizationId, registrationJobId], references: [organizationId, id], onDelete: Restrict)
+  createdBy       User          @relation(fields: [createdById], references: [id])
+
+  derivatives         PhotoDerivative[]
+  mediaReleases       MediaRelease[]
+  caseLibraryEntries  CaseLibraryEntry[]
+  outcomeMeasurements OutcomeMeasurement[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+}
+
+/// Provider request for patient-captured photos (Bible 13.4).
+model PhotoRequest {
+  id                String             @id @default(uuid(7)) @db.Uuid
+  organizationId    String             @db.Uuid
+  patientId         String             @db.Uuid
+  protocolId        String?            @db.Uuid
+  requestedViewKeys String[]
+  instructions      String?
+  status            PhotoRequestStatus @default(OPEN)
+  requestedById     String             @db.Uuid
+  dueAt             DateTime?          @db.Timestamptz(3)
+  submittedAt       DateTime?          @db.Timestamptz(3)
+  completedAt       DateTime?          @db.Timestamptz(3)
+  cancelledAt       DateTime?          @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+
+  patient       Patient              @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  protocol      PhotographyProtocol? @relation(fields: [organizationId, protocolId], references: [organizationId, id], onDelete: Restrict)
+  requestedBy   User                 @relation(fields: [requestedById], references: [id])
+  photoSessions PhotoSession[]
+
+  @@unique([organizationId, patientId, id])
+}
+
+// =============================================================================
+// 5. AI
+//    Bible entities: Simulation, SimulationVersion, SimulationParameter,
+//    SimulationApproval, AIJob, AIModel, AIModelVersion, AIValidationRecord,
+//    SimilarCaseMatch, OutcomeMeasurement
+//    Additions: AIModelRollout (17.1 rollout controls / 9.7 rollback),
+//    SimulationVersionSource (9.4 source asset IDs), CaseLibraryEntry (10)
+// =============================================================================
+
+enum AIModelTask {
+  INPUT_QUALITY
+  LANDMARK_DETECTION
+  SEGMENTATION
+  IDENTITY_REPRESENTATION
+  SIMULATION
+  ARTIFACT_DETECTION
+  IDENTITY_SIMILARITY
+  IMAGE_REGISTRATION
+  SIMILAR_CASE_EMBEDDING
+  OUTCOME_MEASUREMENT
+}
+
+enum AIModelVersionStatus {
+  REGISTERED
+  VALIDATING
+  VALIDATED
+  VALIDATION_FAILED
+  RETIRED
+}
+
+enum RolloutState {
+  ACTIVE
+  INACTIVE
+}
+
+enum AIJobType {
+  INPUT_QUALITY_CHECK
+  LANDMARK_DETECTION
+  SEGMENTATION
+  SIMULATION_GENERATION
+  OUTPUT_VALIDATION
+  IMAGE_REGISTRATION
+  SIMILAR_CASE_SEARCH
+  OUTCOME_MEASUREMENT
+}
+
+enum AIJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  TIMED_OUT
+}
+
+enum SimulationCategory {
+  LIP_FILLER
+  RHINOPLASTY
+  BOTULINUM_TOXIN
+  CHEEK_CHIN_JAW_FILLER
+  FACIAL_LIFT_PROCEDURES
+  BREAST_BODY_CONTOUR
+  SKIN_RESURFACING_TIGHTENING
+}
+
+enum SimulationStatus {
+  DRAFT
+  QUEUED
+  PROCESSING
+  VALIDATING
+  READY_FOR_PROVIDER_REVIEW
+  APPROVED
+  REJECTED
+  REGENERATING
+  RELEASED_TO_PATIENT
+  ARCHIVED
+  FAILED
+}
+
+enum SimulationReviewDecision {
+  APPROVED
+  REJECTED
+  REGENERATE_REQUESTED
+}
+
+enum SimulationSourceRole {
+  PRIMARY
+  ADDITIONAL_VIEW
+}
+
+enum ValidationCheckType {
+  INPUT_QUALITY
+  OUTSIDE_REGION_IDENTITY_SIMILARITY
+  ARTIFACT_DETECTION
+  OUTPUT_VALIDATION
+  MODEL_BENCHMARK
+  IDENTITY_PRESERVATION_REGRESSION
+}
+
+enum ValidationResult {
+  PASS
+  FLAG
+  FAIL
+}
+
+enum CaseLibraryStatus {
+  ACTIVE
+  WITHDRAWN
+}
+
+enum MeasurementMethod {
+  MANUAL
+  AUTOMATED
+}
+
+/// Platform-level model registry (not tenant-owned).
+model AIModel {
+  id                 String              @id @default(uuid(7)) @db.Uuid
+  key                String              @unique
+  name               String
+  task               AIModelTask
+  simulationCategory SimulationCategory?
+  description        String?
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+
+  versions AIModelVersion[]
+  rollouts AIModelRollout[]
+}
+
+/// Immutable once registered (trigger in constraints.sql). A production model
+/// is never silently replaced: activation happens only via AIModelRollout.
+model AIModelVersion {
+  id                String               @id @default(uuid(7)) @db.Uuid
+  modelId           String               @db.Uuid
+  version           String
+  /// SHA-256 digest of the weights / inference container image.
+  artifactDigest    String
+  /// Allow-list of provider controls and ranges. Contains no dosage, product,
+  /// drug, units, depth or technique fields (Bible 9.6 / 34.2 #31).
+  parameterSchema   Json
+  inferenceDefaults Json
+  /// Identity-similarity / artifact thresholds applied before review (9.5).
+  thresholds        Json
+  intendedUse       String
+  validationSummary Json?
+  status            AIModelVersionStatus @default(REGISTERED)
+  registeredById    String?              @db.Uuid
+  createdAt         DateTime             @default(now()) @db.Timestamptz(3)
+  validatedAt       DateTime?            @db.Timestamptz(3)
+  retiredAt         DateTime?            @db.Timestamptz(3)
+
+  model              AIModel              @relation(fields: [modelId], references: [id])
+  registeredBy       User?                @relation(fields: [registeredById], references: [id], onDelete: Restrict)
+  rollouts           AIModelRollout[]
+  jobs               AIJob[]
+  simulationVersions SimulationVersion[]
+  validationRecords  AIValidationRecord[]
+  measurements       OutcomeMeasurement[]
+
+  @@unique([modelId, version])
+  @@unique([modelId, id])
+}
+
+/// Which model version is active, platform-wide (organizationId NULL) or for
+/// one organization. One ACTIVE row per (model, organization) enforced in SQL.
+/// Rollback = activate a previous version; history is never rewritten.
+model AIModelRollout {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  modelId        String       @db.Uuid
+  modelVersionId String       @db.Uuid
+  organizationId String?      @db.Uuid
+  state          RolloutState
+  reason         String?
+  changedById    String       @db.Uuid
+  activatedAt    DateTime     @default(now()) @db.Timestamptz(3)
+  deactivatedAt  DateTime?    @db.Timestamptz(3)
+
+  model        AIModel        @relation(fields: [modelId], references: [id])
+  modelVersion AIModelVersion @relation(fields: [modelId, modelVersionId], references: [modelId, id])
+  organization Organization?  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  changedBy    User           @relation(fields: [changedById], references: [id])
+
+  @@index([modelId, organizationId, state])
+}
+
+model AIJob {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  organizationId String      @db.Uuid
+  patientId      String?     @db.Uuid
+  jobType        AIJobType
+  status         AIJobStatus @default(QUEUED)
+  modelVersionId String?     @db.Uuid
+  /// Prevents duplicate AI jobs on retry (Bible 20.3 / 23.3).
+  idempotencyKey String
+  requestedById  String?     @db.Uuid
+  attempt        Int         @default(0)
+  /// Identifiers and parameters only; never image bytes or free-text PHI.
+  inputSummary   Json?
+  /// Scores/metrics only; never image bytes or free-text PHI.
+  resultSummary  Json?
+  errorCode      String?
+  queuedAt       DateTime    @default(now()) @db.Timestamptz(3)
+  startedAt      DateTime?   @db.Timestamptz(3)
+  finishedAt     DateTime?   @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  patient      Patient?        @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Restrict)
+  modelVersion AIModelVersion? @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  requestedBy  User?           @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+
+  derivatives        PhotoDerivative[]
+  registrations      BeforeAfterSet[]
+  simulationVersion  SimulationVersion?
+  validationRecords  AIValidationRecord[]
+  similarCaseMatches SimilarCaseMatch[]
+  measurements       OutcomeMeasurement[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, idempotencyKey])
+  @@index([status, queuedAt])
+}
+
+/// A clinician-controlled visualization for one patient and category. The
+/// canonical state machine (Bible 9.3 / Appendix A) lives here; each generation
+/// attempt is a SimulationVersion.
+model Simulation {
+  id                String             @id @default(uuid(7)) @db.Uuid
+  organizationId    String             @db.Uuid
+  patientId         String             @db.Uuid
+  consultationId    String?            @db.Uuid
+  category          SimulationCategory
+  /// Specific procedure within the category, e.g. BLEPHAROPLASTY.
+  procedureKey      String?
+  treatmentRegion   String
+  status            SimulationStatus   @default(DRAFT)
+  /// The approved version released to the patient (set on RELEASED_TO_PATIENT).
+  releasedVersionId String?            @db.Uuid
+  createdById       String             @db.Uuid
+  releasedAt        DateTime?          @db.Timestamptz(3)
+  releasedById      String?            @db.Uuid
+  archivedAt        DateTime?          @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+  version           Int                @default(1)
+
+  patient         Patient            @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  consultation    Consultation?      @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  releasedVersion SimulationVersion? @relation("SimulationReleasedVersion", fields: [id, releasedVersionId], references: [simulationId, id], onDelete: Restrict)
+  createdBy       User               @relation("SimulationCreatedBy", fields: [createdById], references: [id])
+  releasedBy      User?              @relation("SimulationReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
+
+  versions           SimulationVersion[]  @relation("SimulationVersions")
+  approvals          SimulationApproval[]
+  mediaReleases      MediaRelease[]
+  similarCaseMatches SimilarCaseMatch[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@unique([id, releasedVersionId])
+  @@index([organizationId, patientId, status])
+}
+
+/// One generation attempt with full provenance (Bible 9.4). Immutable after
+/// completion (trigger in constraints.sql).
+model SimulationVersion {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  organizationId     String    @db.Uuid
+  patientId          String    @db.Uuid
+  simulationId       String    @db.Uuid
+  versionNumber      Int
+  aiJobId            String?   @db.Uuid
+  modelVersionId     String    @db.Uuid
+  /// Fully resolved inference configuration incl. provider-set parameters.
+  inferenceConfig    Json
+  outputDerivativeId String?   @db.Uuid
+  /// Segmentation mask, when retained (Bible 9.4).
+  maskObjectId       String?   @db.Uuid
+  generatedById      String    @db.Uuid
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  completedAt        DateTime? @db.Timestamptz(3)
+
+  simulation       Simulation       @relation("SimulationVersions", fields: [organizationId, patientId, simulationId], references: [organizationId, patientId, id])
+  aiJob            AIJob?           @relation(fields: [organizationId, aiJobId], references: [organizationId, id], onDelete: Restrict)
+  modelVersion     AIModelVersion   @relation(fields: [modelVersionId], references: [id])
+  outputDerivative PhotoDerivative? @relation(fields: [organizationId, patientId, outputDerivativeId], references: [organizationId, patientId, id], onDelete: Restrict)
+  maskObject       StorageObject?   @relation(fields: [organizationId, maskObjectId], references: [organizationId, id], onDelete: Restrict)
+  generatedBy      User             @relation(fields: [generatedById], references: [id])
+
+  sources           SimulationVersionSource[]
+  parameters        SimulationParameter[]
+  approvals         SimulationApproval[]
+  validationRecords AIValidationRecord[]
+  releasedFor       Simulation?               @relation("SimulationReleasedVersion")
+
+  @@unique([simulationId, versionNumber])
+  @@unique([simulationId, id])
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@unique([organizationId, aiJobId])
+  @@unique([organizationId, patientId, outputDerivativeId])
+  @@unique([organizationId, maskObjectId])
+}
+
+/// Source images for a generation. The composite FK to PatientPhoto includes
+/// patientId, so a simulation can never use another patient's photo.
+model SimulationVersionSource {
+  organizationId      String               @db.Uuid
+  patientId           String               @db.Uuid
+  simulationVersionId String               @db.Uuid
+  photoId             String               @db.Uuid
+  role                SimulationSourceRole
+
+  simulationVersion SimulationVersion @relation(fields: [organizationId, patientId, simulationVersionId], references: [organizationId, patientId, id])
+  photo             PatientPhoto      @relation(fields: [organizationId, patientId, photoId], references: [organizationId, patientId, id])
+
+  @@id([simulationVersionId, photoId])
+}
+
+/// Provider-set visualization parameter, validated against the model
+/// version's parameterSchema allow-list.
+model SimulationParameter {
+  id                  String   @id @default(uuid(7)) @db.Uuid
+  organizationId      String   @db.Uuid
+  simulationVersionId String   @db.Uuid
+  key                 String
+  numericValue        Decimal? @db.Decimal(10, 4)
+  optionValue         String?
+  unit                String?
+
+  simulationVersion SimulationVersion @relation(fields: [organizationId, simulationVersionId], references: [organizationId, id])
+
+  @@unique([simulationVersionId, key])
+}
+
+/// Append-only provider review decision on a specific version.
+model SimulationApproval {
+  id                  String                   @id @default(uuid(7)) @db.Uuid
+  organizationId      String                   @db.Uuid
+  patientId           String                   @db.Uuid
+  simulationId        String                   @db.Uuid
+  simulationVersionId String                   @db.Uuid
+  decision            SimulationReviewDecision
+  reviewerUserId      String                   @db.Uuid
+  reason              String?
+  decidedAt           DateTime                 @default(now()) @db.Timestamptz(3)
+
+  simulation        Simulation        @relation(fields: [organizationId, patientId, simulationId], references: [organizationId, patientId, id])
+  simulationVersion SimulationVersion @relation(fields: [simulationId, simulationVersionId], references: [simulationId, id])
+  reviewer          User              @relation(fields: [reviewerUserId], references: [id])
+
+  @@index([simulationId, decidedAt])
+}
+
+/// Validation evidence for a job/output (organization-scoped) or for a model
+/// version benchmark (organizationId NULL).
+model AIValidationRecord {
+  id                  String              @id @default(uuid(7)) @db.Uuid
+  organizationId      String?             @db.Uuid
+  aiJobId             String?             @db.Uuid
+  simulationVersionId String?             @db.Uuid
+  modelVersionId      String?             @db.Uuid
+  checkType           ValidationCheckType
+  result              ValidationResult
+  score               Decimal?            @db.Decimal(9, 6)
+  threshold           Decimal?            @db.Decimal(9, 6)
+  details             Json?
+  validatorVersion    String
+  createdAt           DateTime            @default(now()) @db.Timestamptz(3)
+
+  aiJob             AIJob?             @relation(fields: [organizationId, aiJobId], references: [organizationId, id], onDelete: Restrict)
+  simulationVersion SimulationVersion? @relation(fields: [organizationId, simulationVersionId], references: [organizationId, id], onDelete: Restrict)
+  modelVersion      AIModelVersion?    @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+
+  @@index([simulationVersionId])
+  @@index([modelVersionId])
+}
+
+/// Practice-owned, permission-gated historical case library (Bible 10).
+model CaseLibraryEntry {
+  id                  String            @id @default(uuid(7)) @db.Uuid
+  organizationId      String            @db.Uuid
+  patientId           String            @db.Uuid
+  beforeAfterSetId    String            @db.Uuid
+  treatmentId         String?           @db.Uuid
+  viewKey             String?
+  status              CaseLibraryStatus @default(ACTIVE)
+  /// The permission version that authorizes library use (category: UD-10).
+  permissionId        String            @db.Uuid
+  /// De-identified display derivative shown to other patients.
+  displayDerivativeId String?           @db.Uuid
+  addedById           String            @db.Uuid
+  addedAt             DateTime          @default(now()) @db.Timestamptz(3)
+  withdrawnAt         DateTime?         @db.Timestamptz(3)
+  withdrawalReason    String?
+
+  beforeAfterSet    BeforeAfterSet   @relation(fields: [organizationId, patientId, beforeAfterSetId], references: [organizationId, patientId, id])
+  treatment         Treatment?       @relation(fields: [organizationId, treatmentId], references: [organizationId, id], onDelete: Restrict)
+  permission        PhotoPermission  @relation(fields: [organizationId, patientId, permissionId], references: [organizationId, patientId, id])
+  displayDerivative PhotoDerivative? @relation(fields: [organizationId, patientId, displayDerivativeId], references: [organizationId, patientId, id], onDelete: Restrict)
+  addedBy           User             @relation(fields: [addedById], references: [id])
+  matches           SimilarCaseMatch[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, beforeAfterSetId])
+}
+
+/// Records which historical cases were shown, to whom and when (Bible 10).
+/// Results are labelled "Similar Historical Cases", never a predicted result.
+model SimilarCaseMatch {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  organizationId     String    @db.Uuid
+  /// The patient in consultation (the query), not the historical case owner.
+  patientId          String    @db.Uuid
+  consultationId     String?   @db.Uuid
+  simulationId       String?   @db.Uuid
+  caseLibraryEntryId String    @db.Uuid
+  searchJobId        String?   @db.Uuid
+  rank               Int
+  similarityScore    Decimal?  @db.Decimal(9, 6)
+  shownAt            DateTime? @db.Timestamptz(3)
+  shownById          String?   @db.Uuid
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+
+  patient          Patient          @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  consultation     Consultation?    @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  simulation       Simulation?      @relation(fields: [organizationId, patientId, simulationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  caseLibraryEntry CaseLibraryEntry @relation(fields: [organizationId, caseLibraryEntryId], references: [organizationId, id])
+  searchJob        AIJob?           @relation(fields: [organizationId, searchJobId], references: [organizationId, id], onDelete: Restrict)
+  shownBy          User?            @relation(fields: [shownById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, consultationId])
+}
+
+model OutcomeMeasurement {
+  id               String            @id @default(uuid(7)) @db.Uuid
+  organizationId   String            @db.Uuid
+  patientId        String            @db.Uuid
+  beforeAfterSetId String?           @db.Uuid
+  photoId          String?           @db.Uuid
+  measurementKey   String
+  value            Decimal           @db.Decimal(12, 4)
+  unit             String
+  method           MeasurementMethod
+  aiJobId          String?           @db.Uuid
+  modelVersionId   String?           @db.Uuid
+  measuredById     String?           @db.Uuid
+  measuredAt       DateTime          @db.Timestamptz(3)
+  notes            String?
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+
+  patient        Patient         @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  beforeAfterSet BeforeAfterSet? @relation(fields: [organizationId, patientId, beforeAfterSetId], references: [organizationId, patientId, id], onDelete: Restrict)
+  photo          PatientPhoto?   @relation(fields: [organizationId, patientId, photoId], references: [organizationId, patientId, id], onDelete: Restrict)
+  aiJob          AIJob?          @relation(fields: [organizationId, aiJobId], references: [organizationId, id], onDelete: Restrict)
+  modelVersion   AIModelVersion? @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  measuredBy     User?           @relation(fields: [measuredById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, patientId, measurementKey])
+}
+
+// =============================================================================
+// 6. DOCUMENTS, CONSENTS, INSTRUCTIONS & EDUCATION
+//    Bible entities: ConsentTemplate, ConsentTemplateVersion, ConsentAssignment,
+//    ConsentSignature, Document, DocumentVersion, PatientInstruction,
+//    EducationContent, ContentAssignment
+//    Additions: EducationContentVersion (12.5 / Layer 4 "versioned content")
+// =============================================================================
+
+enum TemplateVersionStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
+enum ConsentStatus {
+  DRAFT
+  ASSIGNED
+  VIEWED
+  IN_PROGRESS
+  SIGNED_BY_PATIENT
+  SIGNED_BY_PROVIDER
+  COMPLETE
+  VOIDED
+  SUPERSEDED
+}
+
+enum SignerRole {
+  PATIENT
+  PROVIDER
+  WITNESS
+}
+
+enum SignatureMethod {
+  DRAWN
+  TYPED
+}
+
+enum DocumentType {
+  CONSULTATION_SUMMARY
+  SIGNED_CONSENT
+  TREATMENT_PLAN
+  ESTIMATE
+  UPLOADED_CLINICAL
+  EXTERNAL_EMR
+  OTHER
+}
+
+enum DocumentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum EducationContentType {
+  VIDEO
+  IMAGE
+  ANIMATION
+  TEXT
+  PDF
+  PROCEDURE_EXPLANATION
+  FAQ
+  PRE_OP_INSTRUCTION
+  POST_OP_INSTRUCTION
+}
+
+enum ContentAssignmentStatus {
+  ASSIGNED
+  OPENED
+  VIEWED
+  COMPLETED
+  ACKNOWLEDGED
+}
+
+model ConsentTemplate {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @db.Uuid
+  practiceId     String?   @db.Uuid
+  name           String
+  description    String?
+  retiredAt      DateTime? @db.Timestamptz(3)
+  createdById    String    @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization Organization             @relation(fields: [organizationId], references: [id])
+  practice     Practice?                @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
+  createdBy    User                     @relation(fields: [createdById], references: [id])
+  versions     ConsentTemplateVersion[]
+
+  @@unique([organizationId, id])
+}
+
+/// Editable only while DRAFT; PUBLISHED versions are immutable (trigger).
+/// Executed documents never change when a template is edited (Bible 12.2).
+model ConsentTemplateVersion {
+  id                        String                @id @default(uuid(7)) @db.Uuid
+  organizationId            String                @db.Uuid
+  templateId                String                @db.Uuid
+  versionNumber             Int
+  status                    TemplateVersionStatus @default(DRAFT)
+  /// Ordered builder blocks (Bible 12.1), validated against a versioned JSON schema.
+  blocks                    Json
+  requiresProviderSignature Boolean               @default(false)
+  requiresWitnessSignature  Boolean               @default(false)
+  /// SHA-256 of the canonicalized blocks, set at publish.
+  contentHash               String?
+  createdById               String                @db.Uuid
+  publishedAt               DateTime?             @db.Timestamptz(3)
+  publishedById             String?               @db.Uuid
+  createdAt                 DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime              @updatedAt @db.Timestamptz(3)
+
+  template    ConsentTemplate     @relation(fields: [organizationId, templateId], references: [organizationId, id])
+  createdBy   User                @relation("ConsentVersionCreatedBy", fields: [createdById], references: [id])
+  publishedBy User?               @relation("ConsentVersionPublishedBy", fields: [publishedById], references: [id], onDelete: Restrict)
+  assignments ConsentAssignment[]
+
+  @@unique([templateId, versionNumber])
+  @@unique([organizationId, id])
+}
+
+/// A consent issued to a patient; carries the Bible 12.4 state machine.
+model ConsentAssignment {
+  id                        String        @id @default(uuid(7)) @db.Uuid
+  organizationId            String        @db.Uuid
+  patientId                 String        @db.Uuid
+  templateVersionId         String        @db.Uuid
+  consultationId            String?       @db.Uuid
+  procedureId               String?       @db.Uuid
+  treatmentPlanId           String?       @db.Uuid
+  status                    ConsentStatus @default(DRAFT)
+  /// Captured field values keyed by block id (checkboxes, initials, text, dates).
+  responses                 Json?
+  assignedById              String        @db.Uuid
+  assignedAt                DateTime?     @db.Timestamptz(3)
+  dueAt                     DateTime?     @db.Timestamptz(3)
+  firstViewedAt             DateTime?     @db.Timestamptz(3)
+  patientSignedAt           DateTime?     @db.Timestamptz(3)
+  providerSignedAt          DateTime?     @db.Timestamptz(3)
+  completedAt               DateTime?     @db.Timestamptz(3)
+  /// Immutable signed snapshot (PDF) + its SHA-256 (Bible 12.3).
+  signedDocumentVersionId   String?       @db.Uuid
+  signedSnapshotHash        String?
+  voidedAt                  DateTime?     @db.Timestamptz(3)
+  voidedById                String?       @db.Uuid
+  voidReason                String?
+  supersededAt              DateTime?     @db.Timestamptz(3)
+  supersededByAssignmentId  String?       @db.Uuid
+  createdAt                 DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime      @updatedAt @db.Timestamptz(3)
+  version                   Int           @default(1)
+
+  patient               Patient                @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  templateVersion       ConsentTemplateVersion @relation(fields: [organizationId, templateVersionId], references: [organizationId, id])
+  consultation          Consultation?          @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  procedure             Procedure?             @relation(fields: [organizationId, patientId, procedureId], references: [organizationId, patientId, id], onDelete: Restrict)
+  treatmentPlan         TreatmentPlan?         @relation(fields: [organizationId, patientId, treatmentPlanId], references: [organizationId, patientId, id], onDelete: Restrict)
+  assignedBy            User                   @relation("ConsentAssignedBy", fields: [assignedById], references: [id])
+  voidedBy              User?                  @relation("ConsentVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  signedDocumentVersion DocumentVersion?       @relation(fields: [organizationId, patientId, signedDocumentVersionId], references: [organizationId, patientId, id], onDelete: Restrict)
+  supersededBy          ConsentAssignment?     @relation("ConsentSupersession", fields: [organizationId, patientId, supersededByAssignmentId], references: [organizationId, patientId, id], onDelete: Restrict)
+  supersedes            ConsentAssignment?     @relation("ConsentSupersession")
+
+  signatures          ConsentSignature[]
+  permissionEvidenceFor PhotoPermission[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@unique([organizationId, patientId, signedDocumentVersionId])
+  @@unique([organizationId, patientId, supersededByAssignmentId])
+  @@index([organizationId, patientId, status])
+}
+
+model ConsentSignature {
+  id                  String          @id @default(uuid(7)) @db.Uuid
+  organizationId      String          @db.Uuid
+  patientId           String          @db.Uuid
+  consentAssignmentId String          @db.Uuid
+  signerRole          SignerRole
+  /// NULL for a witness who is not a platform user.
+  signerUserId        String?         @db.Uuid
+  signerName          String
+  method              SignatureMethod
+  signatureObjectId   String          @db.Uuid
+  /// Exact attestation text displayed at signing.
+  attestation         String
+  signedAt            DateTime        @default(now()) @db.Timestamptz(3)
+  ipAddress           String?         @db.Inet
+  deviceId            String?         @db.Uuid
+  /// Prevents duplicate signatures on retry (Bible 20.3 / 23.3).
+  idempotencyKey      String
+
+  consentAssignment ConsentAssignment @relation(fields: [organizationId, patientId, consentAssignmentId], references: [organizationId, patientId, id])
+  signer            User?             @relation(fields: [signerUserId], references: [id], onDelete: Restrict)
+  signatureObject   StorageObject     @relation(fields: [organizationId, signatureObjectId], references: [organizationId, id])
+  device            Device?           @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@unique([consentAssignmentId, signerRole])
+  @@unique([organizationId, idempotencyKey])
+  @@unique([organizationId, signatureObjectId])
+}
+
+model Document {
+  id                  String         @id @default(uuid(7)) @db.Uuid
+  organizationId      String         @db.Uuid
+  patientId           String         @db.Uuid
+  type                DocumentType
+  title               String
+  consultationId      String?        @db.Uuid
+  status              DocumentStatus @default(ACTIVE)
+  /// Patient-app visibility requires an explicit release (Bible 13.2).
+  releasedToPatientAt DateTime?      @db.Timestamptz(3)
+  releasedById        String?        @db.Uuid
+  createdById         String?        @db.Uuid
+  createdAt           DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @db.Timestamptz(3)
+
+  patient      Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  consultation Consultation? @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  releasedBy   User?         @relation("DocumentReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
+  createdBy    User?         @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  versions  DocumentVersion[]
+  messages  Message[]
+  estimates Estimate[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@index([organizationId, patientId, type])
+}
+
+/// Immutable file version (trigger). New content = new version.
+model DocumentVersion {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  organizationId  String   @db.Uuid
+  patientId       String   @db.Uuid
+  documentId      String   @db.Uuid
+  versionNumber   Int
+  storageObjectId String   @db.Uuid
+  sha256          String
+  changeNote      String?
+  createdById     String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  document      Document      @relation(fields: [organizationId, patientId, documentId], references: [organizationId, patientId, id])
+  storageObject StorageObject @relation(fields: [organizationId, storageObjectId], references: [organizationId, id])
+  createdBy     User?         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  signedConsent ConsentAssignment?
+
+  @@unique([documentId, versionNumber])
+  @@unique([organizationId, patientId, id])
+  @@unique([organizationId, storageObjectId])
+}
+
+/// Organization content library item (Bible 12.5). Content must be original
+/// or licensed - never copied vendor education content (Bible 0.1).
+model EducationContent {
+  id             String               @id @default(uuid(7)) @db.Uuid
+  organizationId String               @db.Uuid
+  contentType    EducationContentType
+  title          String
+  treatmentId    String?              @db.Uuid
+  retiredAt      DateTime?            @db.Timestamptz(3)
+  createdById    String?              @db.Uuid
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @db.Timestamptz(3)
+
+  organization Organization              @relation(fields: [organizationId], references: [id])
+  treatment    Treatment?                @relation(fields: [organizationId, treatmentId], references: [organizationId, id], onDelete: Restrict)
+  createdBy    User?                     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  versions     EducationContentVersion[]
+
+  @@unique([organizationId, id])
+}
+
+model EducationContentVersion {
+  id              String                @id @default(uuid(7)) @db.Uuid
+  organizationId  String                @db.Uuid
+  contentId       String                @db.Uuid
+  versionNumber   Int
+  status          TemplateVersionStatus @default(DRAFT)
+  /// Structured text / FAQ / instruction blocks (flexible content).
+  body            Json?
+  mediaObjectId   String?               @db.Uuid
+  durationSeconds Int?
+  publishedAt     DateTime?             @db.Timestamptz(3)
+  publishedById   String?               @db.Uuid
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @db.Timestamptz(3)
+
+  content     EducationContent @relation(fields: [organizationId, contentId], references: [organizationId, id])
+  mediaObject StorageObject?   @relation(fields: [organizationId, mediaObjectId], references: [organizationId, id], onDelete: Restrict)
+  publishedBy User?            @relation(fields: [publishedById], references: [id], onDelete: Restrict)
+
+  assignments  ContentAssignment[]
+  instructions PatientInstruction[]
+
+  @@unique([contentId, versionNumber])
+  @@unique([organizationId, id])
+}
+
+/// Education assigned to a patient; tracks the Bible 12.5 engagement states.
+model ContentAssignment {
+  id                        String                  @id @default(uuid(7)) @db.Uuid
+  organizationId            String                  @db.Uuid
+  patientId                 String                  @db.Uuid
+  contentVersionId          String                  @db.Uuid
+  consultationId            String?                 @db.Uuid
+  procedureId               String?                 @db.Uuid
+  status                    ContentAssignmentStatus @default(ASSIGNED)
+  assignedById              String                  @db.Uuid
+  assignedAt                DateTime                @default(now()) @db.Timestamptz(3)
+  presentedInConsultationAt DateTime?               @db.Timestamptz(3)
+  openedAt                  DateTime?               @db.Timestamptz(3)
+  viewedAt                  DateTime?               @db.Timestamptz(3)
+  completedAt               DateTime?               @db.Timestamptz(3)
+  acknowledgedAt            DateTime?               @db.Timestamptz(3)
+  createdAt                 DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime                @updatedAt @db.Timestamptz(3)
+
+  patient        Patient                 @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  contentVersion EducationContentVersion @relation(fields: [organizationId, contentVersionId], references: [organizationId, id])
+  consultation   Consultation?           @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  procedure      Procedure?              @relation(fields: [organizationId, patientId, procedureId], references: [organizationId, patientId, id], onDelete: Restrict)
+  assignedBy     User                    @relation(fields: [assignedById], references: [id])
+
+  @@index([organizationId, patientId, status])
+}
+
+/// Versioned instruction assigned by procedure or consultation. Patient
+/// acknowledgment is tracked separately from clinical completion (Bible 12.6).
+model PatientInstruction {
+  id                    String    @id @default(uuid(7)) @db.Uuid
+  organizationId        String    @db.Uuid
+  patientId             String    @db.Uuid
+  contentVersionId      String    @db.Uuid
+  procedureId           String?   @db.Uuid
+  consultationId        String?   @db.Uuid
+  assignedById          String    @db.Uuid
+  assignedAt            DateTime  @default(now()) @db.Timestamptz(3)
+  releasedToPatientAt   DateTime? @db.Timestamptz(3)
+  patientAcknowledgedAt DateTime? @db.Timestamptz(3)
+  clinicalCompletedAt   DateTime? @db.Timestamptz(3)
+  clinicalCompletedById String?   @db.Uuid
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  patient             Patient                 @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  contentVersion      EducationContentVersion @relation(fields: [organizationId, contentVersionId], references: [organizationId, id])
+  procedure           Procedure?              @relation(fields: [organizationId, patientId, procedureId], references: [organizationId, patientId, id], onDelete: Restrict)
+  consultation        Consultation?           @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  assignedBy          User                    @relation("InstructionAssignedBy", fields: [assignedById], references: [id])
+  clinicalCompletedBy User?                   @relation("InstructionCompletedBy", fields: [clinicalCompletedById], references: [id], onDelete: Restrict)
+  messages            Message[]
+
+  @@unique([organizationId, patientId, id])
+}
+
+// =============================================================================
+// 7. COMMUNICATION
+//    Bible entities: MessageThread, ThreadParticipant, Message,
+//    MessageAttachment, Notification, TelehealthSession
+// =============================================================================
+
+enum ThreadStatus {
+  OPEN
+  CLOSED
+}
+
+enum ParticipantKind {
+  PATIENT
+  STAFF
+}
+
+enum MessageStatus {
+  DRAFT
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum AttachmentKind {
+  IMAGE
+  DOCUMENT
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  SMS
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  SUPPRESSED
+}
+
+enum TelehealthStatus {
+  SCHEDULED
+  WAITING
+  ACTIVE
+  DISCONNECTED
+  ENDED
+  CANCELLED
+}
+
+model MessageThread {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  patientId      String       @db.Uuid
+  practiceId     String?      @db.Uuid
+  subject        String?
+  status         ThreadStatus @default(OPEN)
+  createdById    String       @db.Uuid
+  lastMessageAt  DateTime?    @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  patient      Patient             @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  practice     Practice?           @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
+  createdBy    User                @relation(fields: [createdById], references: [id])
+  participants ThreadParticipant[]
+  messages     Message[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@index([organizationId, patientId, lastMessageAt])
+}
+
+/// Access to a thread requires membership here PLUS the applicable permission.
+model ThreadParticipant {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  organizationId String          @db.Uuid
+  threadId       String          @db.Uuid
+  userId         String          @db.Uuid
+  kind           ParticipantKind
+  joinedAt       DateTime        @default(now()) @db.Timestamptz(3)
+  leftAt         DateTime?       @db.Timestamptz(3)
+  lastReadAt     DateTime?       @db.Timestamptz(3)
+
+  thread MessageThread @relation(fields: [organizationId, threadId], references: [organizationId, id])
+  user   User          @relation(fields: [userId], references: [id])
+
+  @@unique([threadId, userId])
+  @@index([userId])
+}
+
+model Message {
+  /// Client-generated UUIDv7 accepted so retried sends never duplicate.
+  id                   String        @id @default(uuid(7)) @db.Uuid
+  organizationId       String        @db.Uuid
+  patientId            String        @db.Uuid
+  threadId             String        @db.Uuid
+  senderUserId         String        @db.Uuid
+  body                 String?
+  status               MessageStatus @default(DRAFT)
+  documentId           String?       @db.Uuid
+  patientInstructionId String?       @db.Uuid
+  sentAt               DateTime?     @db.Timestamptz(3)
+  deliveredAt          DateTime?     @db.Timestamptz(3)
+  readAt               DateTime?     @db.Timestamptz(3)
+  failedAt             DateTime?     @db.Timestamptz(3)
+  failureCode          String?
+  retryCount           Int           @default(0)
+  nextRetryAt          DateTime?     @db.Timestamptz(3)
+  createdAt            DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
+
+  thread             MessageThread       @relation(fields: [organizationId, patientId, threadId], references: [organizationId, patientId, id])
+  sender             User                @relation(fields: [senderUserId], references: [id])
+  document           Document?           @relation(fields: [organizationId, patientId, documentId], references: [organizationId, patientId, id], onDelete: Restrict)
+  patientInstruction PatientInstruction? @relation(fields: [organizationId, patientId, patientInstructionId], references: [organizationId, patientId, id], onDelete: Restrict)
+  attachments        MessageAttachment[]
+
+  @@unique([organizationId, id])
+  @@index([threadId, createdAt])
+}
+
+model MessageAttachment {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  organizationId  String         @db.Uuid
+  messageId       String         @db.Uuid
+  storageObjectId String         @db.Uuid
+  kind            AttachmentKind
+  /// Sanitized display name; never used as a storage path.
+  fileName        String
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+
+  message       Message       @relation(fields: [organizationId, messageId], references: [organizationId, id])
+  storageObject StorageObject @relation(fields: [organizationId, storageObjectId], references: [organizationId, id])
+
+  @@unique([organizationId, storageObjectId])
+  @@index([messageId])
+}
+
+/// Outbound notification. Payload text comes from templateKey only and never
+/// contains patient or clinical content (Bible 14.3).
+model Notification {
+  id                String              @id @default(uuid(7)) @db.Uuid
+  organizationId    String?             @db.Uuid
+  userId            String              @db.Uuid
+  channel           NotificationChannel
+  /// e.g. NEW_SECURE_MESSAGE -> "You have a new secure message."
+  templateKey       String
+  status            NotificationStatus  @default(PENDING)
+  /// Opaque in-app route; the app re-authorizes before showing anything.
+  deepLink          String?
+  resourceType      String?
+  resourceId        String?             @db.Uuid
+  attempts          Int                 @default(0)
+  providerMessageId String?
+  lastErrorCode     String?
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  sentAt            DateTime?           @db.Timestamptz(3)
+  deliveredAt       DateTime?           @db.Timestamptz(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User          @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+/// Calls are NOT recorded (Bible 16.2); there is intentionally no recording field.
+model TelehealthSession {
+  id                 String           @id @default(uuid(7)) @db.Uuid
+  organizationId     String           @db.Uuid
+  patientId          String           @db.Uuid
+  appointmentId      String?          @db.Uuid
+  consultationId     String?          @db.Uuid
+  hostUserId         String           @db.Uuid
+  status             TelehealthStatus @default(SCHEDULED)
+  /// Video vendor adapter key (vendor selection: UD-05).
+  vendor             String
+  vendorSessionRef   String?
+  scheduledStartAt   DateTime         @db.Timestamptz(3)
+  waitingStartedAt   DateTime?        @db.Timestamptz(3)
+  activeStartedAt    DateTime?        @db.Timestamptz(3)
+  endedAt            DateTime?        @db.Timestamptz(3)
+  cancelledAt        DateTime?        @db.Timestamptz(3)
+  disconnectCount    Int              @default(0)
+  lastDisconnectedAt DateTime?        @db.Timestamptz(3)
+  /// Non-clinical call metadata (durations, network quality).
+  callMetadata       Json?
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+  version            Int              @default(1)
+
+  patient      Patient         @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  appointment  Appointment?    @relation(fields: [organizationId, patientId, appointmentId], references: [organizationId, patientId, id], onDelete: Restrict)
+  consultation Consultation?   @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  host         ProviderProfile @relation(fields: [organizationId, hostUserId], references: [organizationId, userId])
+
+  @@unique([organizationId, patientId, appointmentId])
+  @@index([organizationId, scheduledStartAt])
+}
+
+// =============================================================================
+// 8. INTEGRATION & AUDIT
+//    Bible entities: Integration, IntegrationMapping, EMRSyncEvent, AuditEvent,
+//    LoginEvent (defined in section 1)
+//    Additions: IntegrationDeadLetter (18.4 dead-letter / no silent data loss),
+//    OutboxEvent (2.1 event bus), IdempotencyKey (20.3)
+// =============================================================================
+
+enum IntegrationKind {
+  FHIR
+  VENDOR
+  CSV_SFTP
+}
+
+enum IntegrationStatus {
+  DISABLED
+  ENABLED
+  ERROR
+}
+
+enum CanonicalResourceType {
+  PATIENT
+  PRACTITIONER
+  APPOINTMENT
+  ENCOUNTER
+  DOCUMENT_REFERENCE
+  MEDIA
+  CONSENT
+  PROCEDURE
+  OBSERVATION
+}
+
+enum SyncDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum SyncTrigger {
+  SCHEDULED
+  MANUAL
+  WEBHOOK
+  RETRY
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+  RETRY_SCHEDULED
+}
+
+enum MappingConflictState {
+  NONE
+  CONFLICT_DETECTED
+  RESOLVED
+}
+
+enum DeadLetterStatus {
+  OPEN
+  REPLAYED
+  RESOLVED
+  DISCARDED
+}
+
+enum ActorType {
+  USER
+  SERVICE
+  SYSTEM
+}
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  FAILURE
+}
+
+enum IdempotencyState {
+  IN_PROGRESS
+  COMPLETED
+}
+
+/// Bible 22.1 minimum events first, then spec additions marked [P] in the
+/// specification (pending approval).
+enum AuditAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  PATIENT_CREATED
+  PATIENT_VIEWED
+  PATIENT_UPDATED
+  PATIENT_ARCHIVED
+  PHOTO_CAPTURED
+  PHOTO_VIEWED
+  PHOTO_EXPORTED
+  PHOTO_PERMISSION_CHANGED
+  CONSULTATION_CREATED
+  CONSULTATION_COMPLETED
+  SIMULATION_GENERATED
+  SIMULATION_VIEWED
+  SIMULATION_APPROVED
+  SIMULATION_REJECTED
+  SIMULATION_REGENERATED
+  SIMULATION_RELEASED
+  CONSENT_ASSIGNED
+  CONSENT_VIEWED
+  CONSENT_SIGNED
+  CONSENT_COMPLETED
+  CONSENT_VOIDED
+  MESSAGE_SENT
+  ATTACHMENT_DOWNLOADED
+  USER_CREATED
+  USER_UPDATED
+  USER_DISABLED
+  ROLE_ASSIGNED
+  INTEGRATION_SYNC_STARTED
+  INTEGRATION_SYNC_SUCCEEDED
+  INTEGRATION_SYNC_FAILED
+  DATA_EXPORT_REQUESTED
+  DATA_EXPORT_COMPLETED
+  SECURITY_SESSION_REVOKED
+  // ---- [P] proposed additions (spec section 7.3) ----
+  ACCESS_DENIED
+  ROLE_REVOKED
+  PATIENT_ACCOUNT_LINKED
+  CONSULTATION_STATUS_CHANGED
+  PHOTO_ANNOTATED
+  PHOTO_INTAKE_REVIEWED
+  BEFORE_AFTER_CREATED
+  MEDIA_RELEASED
+  MEDIA_RELEASE_REVOKED
+  SIMILAR_CASES_SHOWN
+  AI_MODEL_ROLLOUT_CHANGED
+  TREATMENT_PLAN_STATUS_CHANGED
+  CONSENT_TEMPLATE_PUBLISHED
+  DOCUMENT_RELEASED
+  CONTENT_ASSIGNED
+  INSTRUCTION_ASSIGNED
+  INSTRUCTION_ACKNOWLEDGED
+  APPOINTMENT_STATUS_CHANGED
+  TELEHEALTH_STATUS_CHANGED
+  INTEGRATION_CONFIG_CHANGED
+  DATA_EXPORT_DOWNLOADED
+  CONFIGURATION_CHANGED
+}
+
+model Integration {
+  id             String                  @id @default(uuid(7)) @db.Uuid
+  organizationId String                  @db.Uuid
+  practiceId     String?                 @db.Uuid
+  kind           IntegrationKind
+  /// Adapter implementation key, e.g. fhir-r4, vendor-a.
+  adapterKey     String
+  name           String
+  status         IntegrationStatus       @default(DISABLED)
+  /// Non-secret adapter settings only.
+  config         Json
+  /// Secrets Manager reference; secret material is never stored here.
+  secretRef      String?
+  /// Resources for which the external system is the system of record.
+  systemOfRecord CanonicalResourceType[]
+  createdById    String?                 @db.Uuid
+  createdAt      DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                @updatedAt @db.Timestamptz(3)
+  version        Int                     @default(1)
+
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  practice     Practice?            @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
+  mappings     IntegrationMapping[]
+  syncEvents   EMRSyncEvent[]
+  appointments Appointment[]
+
+  @@unique([organizationId, id])
+}
+
+model IntegrationMapping {
+  id              String                @id @default(uuid(7)) @db.Uuid
+  organizationId  String                @db.Uuid
+  integrationId   String                @db.Uuid
+  resourceType    CanonicalResourceType
+  localId         String                @db.Uuid
+  externalId      String
+  externalVersion String?
+  /// Field-level provenance for mapped data (Bible 18.4).
+  fieldProvenance Json?
+  conflictState   MappingConflictState  @default(NONE)
+  lastSyncedAt    DateTime?             @db.Timestamptz(3)
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @db.Timestamptz(3)
+
+  integration Integration @relation(fields: [organizationId, integrationId], references: [organizationId, id])
+
+  @@unique([integrationId, resourceType, externalId])
+  @@unique([integrationId, resourceType, localId])
+}
+
+model EMRSyncEvent {
+  id               String                 @id @default(uuid(7)) @db.Uuid
+  organizationId   String                 @db.Uuid
+  integrationId    String                 @db.Uuid
+  direction        SyncDirection
+  resourceType     CanonicalResourceType?
+  trigger          SyncTrigger
+  status           SyncStatus             @default(PENDING)
+  attempt          Int                    @default(1)
+  retryOfId        String?                @db.Uuid
+  idempotencyKey   String?
+  requestedById    String?                @db.Uuid
+  startedAt        DateTime?              @db.Timestamptz(3)
+  finishedAt       DateTime?              @db.Timestamptz(3)
+  nextRetryAt      DateTime?              @db.Timestamptz(3)
+  recordsProcessed Int                    @default(0)
+  recordsFailed    Int                    @default(0)
+  /// Safe summary only; no PHI.
+  errorSummary     String?
+  createdAt        DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime               @updatedAt @db.Timestamptz(3)
+
+  integration Integration             @relation(fields: [organizationId, integrationId], references: [organizationId, id])
+  retryOf     EMRSyncEvent?           @relation("SyncRetryChain", fields: [organizationId, retryOfId], references: [organizationId, id], onDelete: Restrict)
+  retries     EMRSyncEvent[]          @relation("SyncRetryChain")
+  requestedBy User?                   @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  deadLetters IntegrationDeadLetter[]
+
+  @@unique([organizationId, id])
+  @@unique([integrationId, idempotencyKey])
+  @@index([integrationId, createdAt])
+  @@index([status, nextRetryAt])
+}
+
+/// Per-record failures preserved for replay (Bible 18.4 "no silent data loss").
+/// Raw payloads may contain PHI, so they live encrypted in object storage.
+model IntegrationDeadLetter {
+  id              String                @id @default(uuid(7)) @db.Uuid
+  organizationId  String                @db.Uuid
+  syncEventId     String                @db.Uuid
+  resourceType    CanonicalResourceType
+  externalId      String?
+  payloadObjectId String?               @db.Uuid
+  errorCode       String
+  status          DeadLetterStatus      @default(OPEN)
+  resolvedById    String?               @db.Uuid
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+  resolvedAt      DateTime?             @db.Timestamptz(3)
+
+  syncEvent     EMRSyncEvent   @relation(fields: [organizationId, syncEventId], references: [organizationId, id])
+  payloadObject StorageObject? @relation(fields: [organizationId, payloadObjectId], references: [organizationId, id], onDelete: Restrict)
+  resolvedBy    User?          @relation(fields: [resolvedById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, payloadObjectId])
+  @@index([organizationId, status])
+}
+
+/// Append-only audit trail (Bible 22). Deliberately has NO foreign keys so it
+/// can be partitioned, exported to WORM storage and outlive referenced rows.
+/// UPDATE/DELETE are blocked by trigger and by database grants.
+/// metadata must never embed clinical content (Bible 22.2).
+model AuditEvent {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String?      @db.Uuid
+  actorType      ActorType
+  actorUserId    String?      @db.Uuid
+  actorServiceId String?
+  action         AuditAction
+  outcome        AuditOutcome @default(SUCCESS)
+  resourceType   String
+  resourceId     String?      @db.Uuid
+  /// Enables per-patient access reports; an identifier, not clinical content.
+  patientId      String?      @db.Uuid
+  requestId      String
+  sessionId      String?      @db.Uuid
+  deviceId       String?      @db.Uuid
+  ipAddress      String?      @db.Inet
+  userAgent      String?
+  metadata       Json?
+  occurredAt     DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, patientId, occurredAt])
+  @@index([organizationId, resourceType, resourceId])
+  @@index([actorUserId, occurredAt])
+  @@index([requestId])
+}
+
+/// Transactional outbox: domain events are written in the same transaction as
+/// the state change, then relayed to SQS/EventBridge. Payload = identifiers only.
+model OutboxEvent {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String?   @db.Uuid
+  eventType      String
+  aggregateType  String
+  aggregateId    String    @db.Uuid
+  payload        Json
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  availableAt    DateTime  @default(now()) @db.Timestamptz(3)
+  publishedAt    DateTime? @db.Timestamptz(3)
+  attempts       Int       @default(0)
+  lastErrorCode  String?
+
+  @@index([publishedAt, availableAt])
+}
+
+/// Replay protection for retry-sensitive mutations (Bible 20.3). Stores the
+/// outcome reference, not the response body, to avoid duplicating PHI.
+model IdempotencyKey {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  /// "user:<uuid>" or "service:<name>"
+  actorKey       String
+  key            String
+  organizationId String?          @db.Uuid
+  method         String
+  routeTemplate  String
+  /// SHA-256 of the canonical request; a reused key with a different hash is rejected.
+  requestHash    String
+  state          IdempotencyState @default(IN_PROGRESS)
+  responseStatus Int?
+  resourceType   String?
+  resourceId     String?          @db.Uuid
+  errorCode      String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  expiresAt      DateTime         @db.Timestamptz(3)
+
+  @@unique([actorKey, key])
+  @@index([expiresAt])
+}
+
+// =============================================================================
+// 9. COMMERCIAL & CONFIGURATION
+//    Bible entities: Estimate, Quote, InvoiceReference, FeatureFlag,
+//    PracticeSetting
+//    Additions: OrganizationSetting, RetentionPolicy (22.3), DataExportJob (22.4)
+// =============================================================================
+
+enum EstimateStatus {
+  DRAFT
+  ISSUED
+  SUPERSEDED
+  VOID
+}
+
+enum QuoteStatus {
+  DRAFT
+  ISSUED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  VOID
+}
+
+enum RetentionRecordCategory {
+  CLINICAL_PHOTO
+  CLINICAL_RECORD
+  CONSENT_DOCUMENT
+  MESSAGE
+  AUDIT_EVENT
+  LOGIN_EVENT
+  AI_ARTIFACT
+  DATA_EXPORT
+  TELEHEALTH_METADATA
+  INTEGRATION_PAYLOAD
+}
+
+enum RetentionAction {
+  ARCHIVE
+  DELETE
+  REVIEW
+}
+
+enum ExportJobStatus {
+  REQUESTED
+  RUNNING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+/// Priced snapshot of a treatment plan option. Not a ledger (Bible 11.3).
+model Estimate {
+  id                String         @id @default(uuid(7)) @db.Uuid
+  organizationId    String         @db.Uuid
+  patientId         String         @db.Uuid
+  treatmentPlanId   String         @db.Uuid
+  versionNumber     Int
+  status            EstimateStatus @default(DRAFT)
+  currency          String         @db.Char(3)
+  subtotal          Decimal        @db.Decimal(12, 2)
+  discountTotal     Decimal        @db.Decimal(12, 2)
+  total             Decimal        @db.Decimal(12, 2)
+  /// Immutable copy of the plan items at issue time.
+  lineItemsSnapshot Json
+  validUntil        DateTime?      @db.Date
+  documentId        String?        @db.Uuid
+  issuedAt          DateTime?      @db.Timestamptz(3)
+  issuedById        String?        @db.Uuid
+  createdById       String         @db.Uuid
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  patient       Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  treatmentPlan TreatmentPlan @relation(fields: [organizationId, patientId, treatmentPlanId], references: [organizationId, patientId, id])
+  document      Document?     @relation(fields: [organizationId, patientId, documentId], references: [organizationId, patientId, id], onDelete: Restrict)
+  issuedBy      User?         @relation("EstimateIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+  createdBy     User          @relation("EstimateCreatedBy", fields: [createdById], references: [id])
+  quotes        Quote[]
+
+  @@unique([treatmentPlanId, versionNumber])
+  @@unique([organizationId, patientId, id])
+}
+
+/// UD-11: the Bible lists Quote separately from Estimate without defining the
+/// difference. This minimal shape is a proposal pending that decision.
+model Quote {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  organizationId  String      @db.Uuid
+  patientId       String      @db.Uuid
+  estimateId      String      @db.Uuid
+  status          QuoteStatus @default(DRAFT)
+  externalSystem  String?
+  externalQuoteId String?
+  validUntil      DateTime?   @db.Date
+  issuedAt        DateTime?   @db.Timestamptz(3)
+  respondedAt     DateTime?   @db.Timestamptz(3)
+  createdById     String      @db.Uuid
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
+
+  patient   Patient  @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  estimate  Estimate @relation(fields: [organizationId, patientId, estimateId], references: [organizationId, patientId, id])
+  createdBy User     @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId, patientId])
+}
+
+/// Reference to an invoice held in an external billing system (Bible 11.3).
+model InvoiceReference {
+  id                String    @id @default(uuid(7)) @db.Uuid
+  organizationId    String    @db.Uuid
+  patientId         String    @db.Uuid
+  treatmentPlanId   String?   @db.Uuid
+  procedureId       String?   @db.Uuid
+  externalSystem    String
+  externalInvoiceId String
+  externalStatus    String?
+  amount            Decimal?  @db.Decimal(12, 2)
+  currency          String?   @db.Char(3)
+  lastSyncedAt      DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  patient       Patient        @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  treatmentPlan TreatmentPlan? @relation(fields: [organizationId, patientId, treatmentPlanId], references: [organizationId, patientId, id], onDelete: Restrict)
+  procedure     Procedure?     @relation(fields: [organizationId, patientId, procedureId], references: [organizationId, patientId, id], onDelete: Restrict)
+
+  @@unique([organizationId, externalSystem, externalInvoiceId])
+}
+
+/// Controlled rollout only; flags never bypass authorization (Bible 26).
+/// organizationId/practiceId NULL = platform default. Uniqueness of
+/// (key, organizationId, practiceId) incl. NULLs is enforced in SQL.
+model FeatureFlag {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  key            String
+  organizationId String?  @db.Uuid
+  practiceId     String?  @db.Uuid
+  enabled        Boolean
+  description    String?
+  updatedById    String?  @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  practice     Practice?     @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
+  updatedBy    User?         @relation(fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([key])
+}
+
+/// Typed key/value settings. Keys and value schemas are registered in code
+/// (packages/shared-types); unknown keys are rejected.
+model PracticeSetting {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  practiceId     String   @db.Uuid
+  key            String
+  value          Json
+  updatedById    String?  @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  practice  Practice @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  updatedBy User?    @relation(fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([practiceId, key])
+}
+
+model OrganizationSetting {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  key            String
+  value          Json
+  updatedById    String?  @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  updatedBy    User?        @relation(fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, key])
+}
+
+/// Policy-driven retention (Bible 22.3). No universal period is hard-coded:
+/// with no policy row for a category, nothing is automatically deleted.
+model RetentionPolicy {
+  id             String                  @id @default(uuid(7)) @db.Uuid
+  organizationId String                  @db.Uuid
+  recordCategory RetentionRecordCategory
+  /// NULL = retain indefinitely.
+  retentionDays  Int?
+  action         RetentionAction
+  /// Policy / legal basis reference supplied by the customer.
+  basis          String
+  effectiveFrom  DateTime                @db.Timestamptz(3)
+  createdById    String                  @db.Uuid
+  createdAt      DateTime                @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  createdBy    User         @relation(fields: [createdById], references: [id])
+
+  @@unique([organizationId, recordCategory, effectiveFrom])
+}
+
+/// Asynchronous, audited patient/data export with visible status (Bible 22.4).
+model DataExportJob {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  organizationId String          @db.Uuid
+  patientId      String?         @db.Uuid
+  requestedById  String          @db.Uuid
+  purpose        String
+  /// Which record types to include (flexible selection).
+  scope          Json
+  status         ExportJobStatus @default(REQUESTED)
+  resultObjectId String?         @db.Uuid
+  idempotencyKey String
+  requestedAt    DateTime        @default(now()) @db.Timestamptz(3)
+  startedAt      DateTime?       @db.Timestamptz(3)
+  completedAt    DateTime?       @db.Timestamptz(3)
+  expiresAt      DateTime?       @db.Timestamptz(3)
+  downloadCount  Int             @default(0)
+  errorCode      String?
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id])
+  patient      Patient?       @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Restrict)
+  requestedBy  User           @relation(fields: [requestedById], references: [id])
+  resultObject StorageObject? @relation(fields: [organizationId, resultObjectId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, idempotencyKey])
+  @@unique([organizationId, resultObjectId])
+}

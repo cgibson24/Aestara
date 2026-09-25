@@ -1,0 +1,408 @@
+-- =============================================================================
+-- Aesthetic Platform - DRAFT database constraints beyond Prisma
+-- Companion to docs/TECHNICAL_SPECIFICATION.md (section 5.6) and schema.prisma
+--
+-- Prisma cannot express partial/NULLS NOT DISTINCT unique indexes, CHECK
+-- constraints, trigram indexes or triggers. Layer 0 appends this file to the
+-- initial migration (prisma migrate dev --create-only, then edit), so it runs in
+-- the same migration history and never drifts from the Prisma schema.
+--
+-- Requires PostgreSQL 15+ (NULLS NOT DISTINCT). Target: PostgreSQL 18 (spec 2).
+-- Error code AE001 = IMMUTABLE_RECORD; the API maps it to 409 IMMUTABLE_RECORD.
+-- Items marked [P] implement a proposed rule pending approval (spec section 10).
+-- =============================================================================
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS btree_gin;
+
+-- -----------------------------------------------------------------------------
+-- Generic guard functions
+-- -----------------------------------------------------------------------------
+
+-- Rejects the operation outright (append-only ledgers, immutable rows).
+CREATE OR REPLACE FUNCTION app_reject_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'IMMUTABLE_RECORD: % on "%" is not permitted', TG_OP, TG_TABLE_NAME
+    USING ERRCODE = 'AE001';
+END;
+$$;
+
+-- Allows an UPDATE only if every column except those listed in TG_ARGV[0]
+-- (comma-separated) is unchanged.
+CREATE OR REPLACE FUNCTION app_enforce_frozen_columns() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  allowed text[] := CASE WHEN TG_NARGS > 0 AND TG_ARGV[0] <> ''
+                         THEN string_to_array(TG_ARGV[0], ',')
+                         ELSE ARRAY[]::text[] END;
+BEGIN
+  IF (to_jsonb(OLD) - allowed) IS DISTINCT FROM (to_jsonb(NEW) - allowed) THEN
+    RAISE EXCEPTION 'IMMUTABLE_RECORD: only [%] may change on "%" in its current state',
+      array_to_string(allowed, ', '), TG_TABLE_NAME
+      USING ERRCODE = 'AE001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- =============================================================================
+-- 1. IDENTITY & TENANCY
+-- =============================================================================
+
+-- System roles (organizationId NULL) have globally unique keys.
+CREATE UNIQUE INDEX "Role_system_key_unique"
+  ON "Role" ("key") WHERE "organizationId" IS NULL;
+
+-- Assignment scope must match the populated tenant columns. This also closes
+-- the MATCH SIMPLE gap: a composite FK is not checked when organizationId is NULL.
+ALTER TABLE "UserRole" ADD CONSTRAINT "UserRole_scope_shape_chk" CHECK (
+  ("scope" = 'PLATFORM'     AND "organizationId" IS NULL     AND "practiceId" IS NULL     AND "locationId" IS NULL) OR
+  ("scope" = 'ORGANIZATION' AND "organizationId" IS NOT NULL AND "practiceId" IS NULL     AND "locationId" IS NULL) OR
+  ("scope" = 'PRACTICE'     AND "organizationId" IS NOT NULL AND "practiceId" IS NOT NULL AND "locationId" IS NULL) OR
+  ("scope" = 'LOCATION'     AND "organizationId" IS NOT NULL AND "practiceId" IS NOT NULL AND "locationId" IS NOT NULL)
+);
+
+-- At most one active assignment of the same role at the same scope.
+CREATE UNIQUE INDEX "UserRole_active_unique"
+  ON "UserRole" ("userId", "roleId", "organizationId", "practiceId", "locationId") NULLS NOT DISTINCT
+  WHERE "revokedAt" IS NULL;
+
+ALTER TABLE "UserCredential" ADD CONSTRAINT "UserCredential_shape_chk" CHECK (
+  ("type" = 'PASSWORD' AND "passwordHash" IS NOT NULL AND "totpSecretCiphertext" IS NULL AND "webauthnCredentialId" IS NULL) OR
+  ("type" = 'TOTP'     AND "totpSecretCiphertext" IS NOT NULL AND "passwordHash" IS NULL AND "webauthnCredentialId" IS NULL) OR
+  ("type" = 'WEBAUTHN' AND "webauthnCredentialId" IS NOT NULL AND "webauthnPublicKey" IS NOT NULL
+                       AND "passwordHash" IS NULL AND "totpSecretCiphertext" IS NULL)
+);
+
+CREATE UNIQUE INDEX "UserCredential_one_active_password"
+  ON "UserCredential" ("userId") WHERE "type" = 'PASSWORD' AND "revokedAt" IS NULL;
+
+ALTER TABLE "Session" ADD CONSTRAINT "Session_expiry_chk"
+  CHECK ("idleExpiresAt" <= "absoluteExpiresAt");
+
+ALTER TABLE "Session" ADD CONSTRAINT "Session_revocation_chk"
+  CHECK (("revokedAt" IS NULL) = ("revokedReason" IS NULL));
+
+ALTER TABLE "LoginEvent" ADD CONSTRAINT "LoginEvent_failure_reason_chk"
+  CHECK (("eventType" = 'LOGIN_FAILURE') = ("failureReason" IS NOT NULL));
+
+-- Security ledger: append-only.
+CREATE TRIGGER "LoginEvent_append_only"
+  BEFORE UPDATE OR DELETE ON "LoginEvent"
+  FOR EACH ROW EXECUTE FUNCTION app_reject_mutation();
+CREATE TRIGGER "LoginEvent_no_truncate"
+  BEFORE TRUNCATE ON "LoginEvent"
+  FOR EACH STATEMENT EXECUTE FUNCTION app_reject_mutation();
+
+-- =============================================================================
+-- 2. PROVIDER & PATIENT
+-- =============================================================================
+
+-- Tenant-scoped fuzzy name search (Layer 1 patient search).
+CREATE INDEX "Patient_search_last_name_trgm"
+  ON "Patient" USING gin ("organizationId", lower("lastName") gin_trgm_ops);
+CREATE INDEX "Patient_search_first_name_trgm"
+  ON "Patient" USING gin ("organizationId", lower("firstName") gin_trgm_ops);
+
+ALTER TABLE "Patient" ADD CONSTRAINT "Patient_archived_chk"
+  CHECK (("status" = 'ARCHIVED') = ("archivedAt" IS NOT NULL));
+
+-- =============================================================================
+-- 3. SCHEDULING & CONSULTATION
+-- =============================================================================
+
+ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_time_range_chk"
+  CHECK ("endsAt" > "startsAt");
+
+ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_cancelled_chk"
+  CHECK ("status" <> 'CANCELLED' OR "cancelledAt" IS NOT NULL);
+
+ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_integration_source_chk"
+  CHECK ("sourceSystem" <> 'INTEGRATION' OR ("integrationId" IS NOT NULL AND "externalId" IS NOT NULL));
+
+ALTER TABLE "Consultation" ADD CONSTRAINT "Consultation_completed_chk"
+  CHECK ("status" <> 'COMPLETED' OR ("completedAt" IS NOT NULL AND "completedById" IS NOT NULL));
+
+ALTER TABLE "Consultation" ADD CONSTRAINT "Consultation_archived_chk"
+  CHECK ("status" <> 'ARCHIVED' OR "archivedAt" IS NOT NULL);
+
+ALTER TABLE "Consultation" ADD CONSTRAINT "Consultation_cancelled_chk"
+  CHECK ("status" <> 'CANCELLED' OR "cancelledAt" IS NOT NULL);
+
+ALTER TABLE "ConsultationNote" ADD CONSTRAINT "ConsultationNote_final_chk"
+  CHECK (("status" = 'FINAL') = ("finalizedAt" IS NOT NULL));
+
+-- [P] A FINAL note is immutable; corrections are new notes (UD-15).
+CREATE TRIGGER "ConsultationNote_final_immutable"
+  BEFORE UPDATE ON "ConsultationNote"
+  FOR EACH ROW WHEN (OLD."status" = 'FINAL')
+  EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "TreatmentPlan" ADD CONSTRAINT "TreatmentPlan_amounts_chk"
+  CHECK ("subtotal" >= 0 AND "discountTotal" >= 0 AND "estimatedTotal" >= 0);
+
+ALTER TABLE "TreatmentPlanItem" ADD CONSTRAINT "TreatmentPlanItem_amounts_chk"
+  CHECK ("unitPrice" >= 0 AND "discountAmount" >= 0 AND "lineTotal" >= 0
+         AND ("quantity" IS NULL OR "quantity" > 0));
+
+-- =============================================================================
+-- 4. PHOTOGRAPHY & MEDIA
+-- =============================================================================
+
+-- ORIGINAL protection (Bible 6.6): identity of a clinical photo and its
+-- original object can never change.
+CREATE TRIGGER "PatientPhoto_original_immutable"
+  BEFORE UPDATE ON "PatientPhoto"
+  FOR EACH ROW WHEN (
+       OLD."originalObjectId" IS DISTINCT FROM NEW."originalObjectId"
+    OR OLD."organizationId"   IS DISTINCT FROM NEW."organizationId"
+    OR OLD."patientId"        IS DISTINCT FROM NEW."patientId"
+    OR OLD."source"           IS DISTINCT FROM NEW."source"
+    OR OLD."capturedAt"       IS DISTINCT FROM NEW."capturedAt")
+  EXECUTE FUNCTION app_reject_mutation();
+
+-- Storage objects are write-once: after verification only lifecycle columns move.
+CREATE TRIGGER "StorageObject_write_once"
+  BEFORE UPDATE ON "StorageObject"
+  FOR EACH ROW WHEN (OLD."verifiedAt" IS NOT NULL)
+  EXECUTE FUNCTION app_enforce_frozen_columns('status,scanStatus,purgedAt');
+
+CREATE TRIGGER "StorageObject_identity_immutable"
+  BEFORE UPDATE ON "StorageObject"
+  FOR EACH ROW WHEN (
+       OLD."organizationId" IS DISTINCT FROM NEW."organizationId"
+    OR OLD."objectClass"    IS DISTINCT FROM NEW."objectClass"
+    OR OLD."bucket"         IS DISTINCT FROM NEW."bucket"
+    OR OLD."objectKey"      IS DISTINCT FROM NEW."objectKey")
+  EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "StorageObject" ADD CONSTRAINT "StorageObject_sha256_chk"
+  CHECK ("sha256" IS NULL OR "sha256" ~ '^[0-9a-f]{64}$');
+
+-- Derivatives are immutable; regeneration creates a new row.
+CREATE TRIGGER "PhotoDerivative_immutable"
+  BEFORE UPDATE ON "PhotoDerivative"
+  FOR EACH ROW EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "PhotoPermission" ADD CONSTRAINT "PhotoPermission_scope_shape_chk" CHECK (
+  ("scope" = 'PATIENT_WIDE'  AND "photoSessionId" IS NULL     AND "photoId" IS NULL) OR
+  ("scope" = 'PHOTO_SESSION' AND "photoSessionId" IS NOT NULL AND "photoId" IS NULL) OR
+  ("scope" = 'PHOTO'         AND "photoSessionId" IS NULL     AND "photoId" IS NOT NULL)
+);
+
+ALTER TABLE "PhotoPermission" ADD CONSTRAINT "PhotoPermission_evidence_chk"
+  CHECK ("evidence" IS DISTINCT FROM 'SIGNED_CONSENT' OR "evidenceConsentAssignmentId" IS NOT NULL);
+
+ALTER TABLE "PhotoPermission" ADD CONSTRAINT "PhotoPermission_version_chk"
+  CHECK ("versionNumber" >= 1 AND (("versionNumber" = 1) = ("previousVersionId" IS NULL)));
+
+-- Exactly one CURRENT permission per (patient, category, scope target).
+CREATE UNIQUE INDEX "PhotoPermission_current_unique"
+  ON "PhotoPermission" ("organizationId", "patientId", "category", "scope", "photoSessionId", "photoId")
+  NULLS NOT DISTINCT
+  WHERE "supersededAt" IS NULL;
+
+-- Versioned + audited (Bible 7.2): rows are append-only; the only permitted
+-- update is stamping supersededAt once.
+CREATE TRIGGER "PhotoPermission_superseded_frozen"
+  BEFORE UPDATE ON "PhotoPermission"
+  FOR EACH ROW WHEN (OLD."supersededAt" IS NOT NULL)
+  EXECUTE FUNCTION app_reject_mutation();
+CREATE TRIGGER "PhotoPermission_append_only"
+  BEFORE UPDATE ON "PhotoPermission"
+  FOR EACH ROW WHEN (OLD."supersededAt" IS NULL)
+  EXECUTE FUNCTION app_enforce_frozen_columns('supersededAt');
+CREATE TRIGGER "PhotoPermission_no_delete"
+  BEFORE DELETE ON "PhotoPermission"
+  FOR EACH ROW EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "MediaRelease" ADD CONSTRAINT "MediaRelease_single_subject_chk"
+  CHECK (num_nonnulls("photoId", "derivativeId", "beforeAfterSetId", "simulationId") = 1);
+
+CREATE TRIGGER "MediaRelease_revoked_frozen"
+  BEFORE UPDATE ON "MediaRelease"
+  FOR EACH ROW WHEN (OLD."revokedAt" IS NOT NULL)
+  EXECUTE FUNCTION app_reject_mutation();
+CREATE TRIGGER "MediaRelease_only_revocation"
+  BEFORE UPDATE ON "MediaRelease"
+  FOR EACH ROW WHEN (OLD."revokedAt" IS NULL)
+  EXECUTE FUNCTION app_enforce_frozen_columns('revokedAt,revokedById,revocationReason');
+
+ALTER TABLE "BeforeAfterSet" ADD CONSTRAINT "BeforeAfterSet_distinct_photos_chk"
+  CHECK ("beforePhotoId" <> "afterPhotoId");
+
+ALTER TABLE "BeforeAfterSet" ADD CONSTRAINT "BeforeAfterSet_registration_chk"
+  CHECK ("registrationMode" <> 'NONE' OR "registrationTransform" IS NULL);
+
+-- =============================================================================
+-- 5. AI
+-- =============================================================================
+
+-- A production model is never silently replaced (Bible 9.7).
+CREATE TRIGGER "AIModelVersion_immutable"
+  BEFORE UPDATE ON "AIModelVersion"
+  FOR EACH ROW EXECUTE FUNCTION app_enforce_frozen_columns('status,validationSummary,validatedAt,retiredAt');
+
+CREATE UNIQUE INDEX "AIModelRollout_one_active"
+  ON "AIModelRollout" ("modelId", "organizationId") NULLS NOT DISTINCT
+  WHERE "state" = 'ACTIVE';
+
+ALTER TABLE "AIModelRollout" ADD CONSTRAINT "AIModelRollout_state_chk"
+  CHECK (("state" = 'INACTIVE') = ("deactivatedAt" IS NOT NULL));
+
+-- Provenance core of a generation never changes; after completion nothing does.
+CREATE TRIGGER "SimulationVersion_provenance_immutable"
+  BEFORE UPDATE ON "SimulationVersion"
+  FOR EACH ROW WHEN (OLD."completedAt" IS NULL)
+  EXECUTE FUNCTION app_enforce_frozen_columns('aiJobId,outputDerivativeId,maskObjectId,completedAt');
+CREATE TRIGGER "SimulationVersion_completed_immutable"
+  BEFORE UPDATE ON "SimulationVersion"
+  FOR EACH ROW WHEN (OLD."completedAt" IS NOT NULL)
+  EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "SimulationParameter" ADD CONSTRAINT "SimulationParameter_single_value_chk"
+  CHECK (num_nonnulls("numericValue", "optionValue") = 1);
+
+ALTER TABLE "Simulation" ADD CONSTRAINT "Simulation_released_chk"
+  CHECK ("status" <> 'RELEASED_TO_PATIENT'
+         OR ("releasedVersionId" IS NOT NULL AND "releasedAt" IS NOT NULL AND "releasedById" IS NOT NULL));
+
+-- Review decisions are an append-only ledger.
+CREATE TRIGGER "SimulationApproval_append_only"
+  BEFORE UPDATE OR DELETE ON "SimulationApproval"
+  FOR EACH ROW EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "AIValidationRecord" ADD CONSTRAINT "AIValidationRecord_subject_chk"
+  CHECK (num_nonnulls("aiJobId", "simulationVersionId", "modelVersionId") >= 1);
+
+-- Job/output validations are tenant data; closes the MATCH SIMPLE gap.
+ALTER TABLE "AIValidationRecord" ADD CONSTRAINT "AIValidationRecord_tenant_chk"
+  CHECK (("aiJobId" IS NULL AND "simulationVersionId" IS NULL) OR "organizationId" IS NOT NULL);
+
+-- =============================================================================
+-- 6. DOCUMENTS, CONSENTS, INSTRUCTIONS & EDUCATION
+-- =============================================================================
+
+ALTER TABLE "ConsentTemplateVersion" ADD CONSTRAINT "ConsentTemplateVersion_published_chk"
+  CHECK ("status" = 'DRAFT'
+         OR ("publishedAt" IS NOT NULL AND "publishedById" IS NOT NULL AND "contentHash" IS NOT NULL));
+
+-- Only one editable draft per template at a time.
+CREATE UNIQUE INDEX "ConsentTemplateVersion_one_draft"
+  ON "ConsentTemplateVersion" ("templateId") WHERE "status" = 'DRAFT';
+
+-- Publishing freezes content (Bible 12.2); only PUBLISHED -> RETIRED remains.
+CREATE TRIGGER "ConsentTemplateVersion_published_frozen"
+  BEFORE UPDATE ON "ConsentTemplateVersion"
+  FOR EACH ROW WHEN (OLD."status" <> 'DRAFT')
+  EXECUTE FUNCTION app_enforce_frozen_columns('status,updatedAt');
+CREATE TRIGGER "ConsentTemplateVersion_status_forward_only"
+  BEFORE UPDATE ON "ConsentTemplateVersion"
+  FOR EACH ROW WHEN (OLD."status" <> 'DRAFT'
+                     AND NOT (OLD."status" = 'PUBLISHED' AND NEW."status" IN ('PUBLISHED', 'RETIRED'))
+                     AND NOT (OLD."status" = 'RETIRED'   AND NEW."status" = 'RETIRED'))
+  EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "ConsentAssignment" ADD CONSTRAINT "ConsentAssignment_complete_chk"
+  CHECK ("status" <> 'COMPLETE'
+         OR ("completedAt" IS NOT NULL AND "signedDocumentVersionId" IS NOT NULL AND "signedSnapshotHash" IS NOT NULL));
+
+ALTER TABLE "ConsentAssignment" ADD CONSTRAINT "ConsentAssignment_voided_chk"
+  CHECK ("status" <> 'VOIDED' OR ("voidedAt" IS NOT NULL AND "voidedById" IS NOT NULL));
+
+ALTER TABLE "ConsentAssignment" ADD CONSTRAINT "ConsentAssignment_superseded_chk"
+  CHECK ("status" <> 'SUPERSEDED' OR "supersededAt" IS NOT NULL);
+
+-- Executed consents never change (Bible 12.2 / 12.3); only void/supersede
+-- bookkeeping may be added afterwards.
+CREATE TRIGGER "ConsentAssignment_executed_frozen"
+  BEFORE UPDATE ON "ConsentAssignment"
+  FOR EACH ROW WHEN (OLD."status" IN ('COMPLETE', 'VOIDED', 'SUPERSEDED'))
+  EXECUTE FUNCTION app_enforce_frozen_columns(
+    'status,voidedAt,voidedById,voidReason,supersededAt,supersededByAssignmentId,updatedAt,version');
+
+CREATE TRIGGER "ConsentSignature_append_only"
+  BEFORE UPDATE OR DELETE ON "ConsentSignature"
+  FOR EACH ROW EXECUTE FUNCTION app_reject_mutation();
+
+CREATE TRIGGER "DocumentVersion_immutable"
+  BEFORE UPDATE ON "DocumentVersion"
+  FOR EACH ROW EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "DocumentVersion" ADD CONSTRAINT "DocumentVersion_sha256_chk"
+  CHECK ("sha256" ~ '^[0-9a-f]{64}$');
+
+CREATE UNIQUE INDEX "EducationContentVersion_one_draft"
+  ON "EducationContentVersion" ("contentId") WHERE "status" = 'DRAFT';
+
+CREATE TRIGGER "EducationContentVersion_published_frozen"
+  BEFORE UPDATE ON "EducationContentVersion"
+  FOR EACH ROW WHEN (OLD."status" <> 'DRAFT')
+  EXECUTE FUNCTION app_enforce_frozen_columns('status,updatedAt');
+
+-- "Assigned by procedure or consultation" (Bible 12.6).
+ALTER TABLE "PatientInstruction" ADD CONSTRAINT "PatientInstruction_context_chk"
+  CHECK (num_nonnulls("procedureId", "consultationId") >= 1);
+
+-- =============================================================================
+-- 7. COMMUNICATION
+-- =============================================================================
+
+-- FAILED follows SENT (Bible 14.2), so every non-draft message has sentAt.
+ALTER TABLE "Message" ADD CONSTRAINT "Message_sent_chk"
+  CHECK ("status" = 'DRAFT' OR "sentAt" IS NOT NULL);
+
+ALTER TABLE "Message" ADD CONSTRAINT "Message_failed_chk"
+  CHECK ("status" <> 'FAILED' OR "failedAt" IS NOT NULL);
+
+-- =============================================================================
+-- 8. INTEGRATION & AUDIT
+-- =============================================================================
+
+ALTER TABLE "AuditEvent" ADD CONSTRAINT "AuditEvent_actor_chk" CHECK (
+  ("actorType" = 'USER'    AND "actorUserId" IS NOT NULL) OR
+  ("actorType" = 'SERVICE' AND "actorServiceId" IS NOT NULL) OR
+  ("actorType" = 'SYSTEM')
+);
+
+-- Append-only audit (Bible 21.2 / 22). Retention is applied by detaching and
+-- archiving whole time partitions (spec 5.7), never by row UPDATE/DELETE.
+CREATE TRIGGER "AuditEvent_append_only"
+  BEFORE UPDATE OR DELETE ON "AuditEvent"
+  FOR EACH ROW EXECUTE FUNCTION app_reject_mutation();
+CREATE TRIGGER "AuditEvent_no_truncate"
+  BEFORE TRUNCATE ON "AuditEvent"
+  FOR EACH STATEMENT EXECUTE FUNCTION app_reject_mutation();
+
+ALTER TABLE "IdempotencyKey" ADD CONSTRAINT "IdempotencyKey_completed_chk"
+  CHECK ("state" <> 'COMPLETED' OR "responseStatus" IS NOT NULL);
+
+-- =============================================================================
+-- 9. COMMERCIAL & CONFIGURATION
+-- =============================================================================
+
+CREATE UNIQUE INDEX "FeatureFlag_scope_unique"
+  ON "FeatureFlag" ("key", "organizationId", "practiceId") NULLS NOT DISTINCT;
+
+-- A practice-level flag must name its organization (closes MATCH SIMPLE gap).
+ALTER TABLE "FeatureFlag" ADD CONSTRAINT "FeatureFlag_practice_needs_org_chk"
+  CHECK ("practiceId" IS NULL OR "organizationId" IS NOT NULL);
+
+ALTER TABLE "Estimate" ADD CONSTRAINT "Estimate_amounts_chk"
+  CHECK ("subtotal" >= 0 AND "discountTotal" >= 0 AND "total" >= 0);
+
+ALTER TABLE "Estimate" ADD CONSTRAINT "Estimate_issued_chk"
+  CHECK ("status" = 'DRAFT' OR "issuedAt" IS NOT NULL);
+
+CREATE TRIGGER "Estimate_issued_frozen"
+  BEFORE UPDATE ON "Estimate"
+  FOR EACH ROW WHEN (OLD."status" <> 'DRAFT')
+  EXECUTE FUNCTION app_enforce_frozen_columns('status,updatedAt');
+
+ALTER TABLE "RetentionPolicy" ADD CONSTRAINT "RetentionPolicy_period_chk"
+  CHECK (("retentionDays" IS NULL OR "retentionDays" > 0)
+         AND ("action" <> 'DELETE' OR "retentionDays" IS NOT NULL));
+
+ALTER TABLE "DataExportJob" ADD CONSTRAINT "DataExportJob_completed_chk"
+  CHECK ("status" <> 'COMPLETED' OR ("resultObjectId" IS NOT NULL AND "completedAt" IS NOT NULL));
