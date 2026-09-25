@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds & caches
+dist/
+dist-artifact/
+build/
+.turbo/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# environment & secrets (never commit real values)
+.env
+.env.*
+!.env.example
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Xcode / Tuist (from Layer 0 completion)
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+Derived/
+.build/
+
+# Python
+__pycache__/
+.venv/
+
+# local tool output
+playwright-report/
+test-results/

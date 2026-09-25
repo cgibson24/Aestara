@@ -20,6 +20,9 @@ Status values:
 | [0006](#adr-0006) | United States only | Accepted | 2026-09-25 |
 | [0007](#adr-0007) | Default database naming | Accepted | 2026-09-25 |
 | [0008](#adr-0008) | Technical Specification v1.0 proposals adopted | Adopted (delegated) | 2026-09-25 |
+| [0009](#adr-0009) | Static design prototype before feature work | Accepted | 2026-09-25 |
+| [0010](#adr-0010) | Development environment and tooling | Adopted (delegated) | 2026-09-25 |
+| [0011](#adr-0011) | One design-token source for iOS and web | Adopted (delegated) | 2026-09-25 |
 
 ---
 
@@ -83,7 +86,7 @@ Status values:
 - **Decision:**
   - Deployment target iOS/iPadOS 26 for both apps.
   - iPad landscape is the primary provider layout, iPhone fully supported (Bible §24.1).
-  - The owner's requirement that controls be intuitive is binding: see `DESIGN_SYSTEM.md` §Interaction rules (native controls, 44-pt minimum targets, one obvious primary action per screen, no hidden gestures for critical actions, confirmation for irreversible actions).
+  - The owner's requirement that controls be intuitive is binding: see `DESIGN_SYSTEM.md` §2 "Intuitive controls: the rules" (native controls, 44-pt minimum targets, one obvious primary action per screen, no hidden gestures for critical actions, confirmation for irreversible actions).
 - **Consequences:** the latest SwiftUI, Vision and camera APIs are available. The design prototype validates layouts before feature work.
 
 ## ADR-0006
@@ -115,3 +118,44 @@ Status values:
   - Per-layer table rollout (§5.8)
   - Audit tamper resistance (§7.3)
   - Offline rules (§8)
+
+## ADR-0009
+
+**Static design prototype before feature work**
+
+- **Status:** Accepted (owner request), 2026-09-25.
+- **Context:**
+  - The owner asked for a front-end mock-up with hard-coded data, to check the interface before feature-by-feature work.
+  - The Bible forbids a *mock application* that bypasses authorization, persistence, audit or validation (§0.1). §31 warns against *beginning* with disconnected mock screens.
+- **Decision:**
+  - `apps/design-prototype` is a clearly labelled **design prototype**: React + Vite, static layouts and styling for the core scenes on iPad, iPhone, the patient app and admin web, using fixtures only.
+  - It has no backend, no authentication and no persistence, is never deployed as the product, and is excluded from production builds.
+  - It comes *after* the locked architecture, not instead of it.
+  - Product UIs are built layer by layer in `apps/ios-*` and `apps/admin-web` with real authorization, using the same tokens and component patterns.
+- **Consequences:** layout and interaction problems surface before feature work. The prototype stays a reference; it isn't a code base to extend.
+
+## ADR-0010
+
+**Development environment and tooling**
+
+- **Status:** Adopted (delegated), 2026-09-25.
+- **Decision:**
+  - **Runtime and packages:** Node.js 24 LTS (pinned in `.nvmrc`); pnpm 12 via corepack (`packageManager` field); Turborepo; TypeScript 6.0; Vitest.
+  - **Lint and format:** Biome, one fast tool instead of ESLint + Prettier.
+  - **Local services:** `docker compose`, starting with PostgreSQL 18. Services are added by the layer that first needs them, so no service is configured before it can be exercised.
+  - **Cloud IDE:** GitHub Codespaces / Dev Containers (`.devcontainer/`).
+  - **Claude Code on the web:** a SessionStart hook installs the pinned Node (checksum-verified), pnpm and dependencies.
+  - **CI:** GitHub Actions runs lint, typecheck, tests, build, token drift, Bible → spec traceability, and schema + DB behaviour on PostgreSQL 18.
+  - **Agent guardrails:** `CLAUDE.md` carries the Bible §30 constitution.
+- **Consequences:** a fresh clone is ready with one command locally, in Codespaces and in Claude Code on the web.
+
+## ADR-0011
+
+**One design-token source for iOS and web**
+
+- **Status:** Adopted (delegated), 2026-09-25.
+- **Decision:**
+  - `packages/design-tokens/tokens.json` compiles to CSS variables, TypeScript and Swift (`DSColor`, `DSFont`, …).
+  - Type styles mirror iOS Dynamic Type text styles.
+  - Every colour pair used for text must pass WCAG 4.5:1, and every UI pair 3:1, in light and dark mode; this is enforced by tests in CI.
+- **Consequences:** iPhone, iPad and web stay visually identical by construction, and accessibility regressions fail the build.

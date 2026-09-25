@@ -1,0 +1,24 @@
+{
+  "name": "Aestara",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" },
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.13" },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "forwardPorts": [5173, 5432],
+  "portsAttributes": {
+    "5173": { "label": "Design prototype", "onAutoForward": "openPreview" },
+    "5432": { "label": "PostgreSQL" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["biomejs.biome", "Prisma.prisma", "ms-python.python", "sswg.swift-lang"],
+      "settings": {
+        "editor.defaultFormatter": "biomejs.biome",
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}

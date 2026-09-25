@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**", "feature/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace:
+    name: Lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pnpm (corepack, version from package.json)
+        run: corepack enable
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+      - name: Lint & format (Biome)
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Design tokens are up to date
+        run: |
+          pnpm tokens
+          git diff --exit-code -- packages/design-tokens/generated
+
+  spec:
+    name: Spec traceability · schema · DB behaviour
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: verify
+          POSTGRES_PASSWORD: verify
+          POSTGRES_DB: aestara_verify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U verify -d aestara_verify"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Bible → spec traceability
+        run: |
+          python -m pip install --quiet pypdf
+          python docs/technical-spec/verification/check_traceability.py
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Schema validity + database behaviour suite (PostgreSQL 18)
+        env:
+          DATABASE_URL: postgresql://verify:verify@localhost:5432/aestara_verify
+        run: bash docs/technical-spec/verification/run_schema_checks.sh

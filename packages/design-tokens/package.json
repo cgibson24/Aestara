@@ -1,0 +1,21 @@
+{
+  "name": "@aestara/design-tokens",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Design tokens shared by the iOS apps and the web (CSS, TypeScript and Swift outputs).",
+  "exports": {
+    "./tokens.css": "./generated/tokens.css",
+    ".": "./generated/tokens.ts"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "typescript": "6.0.3",
+    "vitest": "5.0.2"
+  }
+}

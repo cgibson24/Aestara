@@ -1,0 +1,188 @@
+// Generated from packages/design-tokens/tokens.json by scripts/build.mjs. Do not edit.
+export const tokens = {
+  "color": {
+    "light": {
+      "canvas": "#F5F4F1",
+      "surface": "#FFFFFF",
+      "surfaceRaised": "#FFFFFF",
+      "surfaceSunken": "#ECEAE5",
+      "border": "#DEDAD2",
+      "controlBorder": "#8E877A",
+      "textPrimary": "#16181C",
+      "textSecondary": "#505762",
+      "textTertiary": "#666C77",
+      "textOnAccent": "#FFFFFF",
+      "accent": "#1D5957",
+      "accentPressed": "#154442",
+      "accentSoft": "#E2EEED",
+      "accentText": "#1D5957",
+      "highlight": "#8C6A36",
+      "success": "#1E6F44",
+      "successSoft": "#E3F2EA",
+      "warning": "#7D5200",
+      "warningSoft": "#FBF0DA",
+      "danger": "#B42318",
+      "dangerSoft": "#FCE9E7",
+      "info": "#255BA8",
+      "infoSoft": "#E5EDF8",
+      "simulation": "#5E4394",
+      "simulationSoft": "#EEE9F7",
+      "focusRing": "#2E6FB7",
+      "photoStage": "#0C0D0F",
+      "photoStageText": "#F2F1EE",
+      "scrim": "#0C0D0F8C"
+    },
+    "dark": {
+      "canvas": "#0E1012",
+      "surface": "#16191C",
+      "surfaceRaised": "#1D2125",
+      "surfaceSunken": "#0A0B0D",
+      "border": "#2A2F35",
+      "controlBorder": "#6E757E",
+      "textPrimary": "#F1F0EC",
+      "textSecondary": "#AEB4BD",
+      "textTertiary": "#959BA5",
+      "textOnAccent": "#0B1A19",
+      "accent": "#6BBDB6",
+      "accentPressed": "#57A39D",
+      "accentSoft": "#16312F",
+      "accentText": "#7CC9C2",
+      "highlight": "#D2B37E",
+      "success": "#5CC08A",
+      "successSoft": "#13291D",
+      "warning": "#E0B04F",
+      "warningSoft": "#2B2210",
+      "danger": "#F2877C",
+      "dangerSoft": "#33171A",
+      "info": "#7DA7E6",
+      "infoSoft": "#152238",
+      "simulation": "#B49BE6",
+      "simulationSoft": "#241C35",
+      "focusRing": "#7DB6F0",
+      "photoStage": "#050607",
+      "photoStageText": "#F2F1EE",
+      "scrim": "#00000099"
+    }
+  },
+  "typography": {
+    "fontFamily": {
+      "sans": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"SF Pro\", Inter, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+      "display": "-apple-system, BlinkMacSystemFont, \"SF Pro Display\", \"SF Pro\", Inter, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+      "mono": "ui-monospace, \"SF Mono\", Menlo, Consolas, monospace"
+    },
+    "note": "Styles mirror the iOS Dynamic Type text styles at the default (Large) size, so SwiftUI uses .font(.body) etc. and scales with the user's setting; web uses the same sizes.",
+    "styles": {
+      "largeTitle": {
+        "size": 34,
+        "lineHeight": 41,
+        "weight": 700,
+        "ios": "largeTitle"
+      },
+      "title1": {
+        "size": 28,
+        "lineHeight": 34,
+        "weight": 700,
+        "ios": "title"
+      },
+      "title2": {
+        "size": 22,
+        "lineHeight": 28,
+        "weight": 600,
+        "ios": "title2"
+      },
+      "title3": {
+        "size": 20,
+        "lineHeight": 25,
+        "weight": 600,
+        "ios": "title3"
+      },
+      "headline": {
+        "size": 17,
+        "lineHeight": 22,
+        "weight": 600,
+        "ios": "headline"
+      },
+      "body": {
+        "size": 17,
+        "lineHeight": 22,
+        "weight": 400,
+        "ios": "body"
+      },
+      "callout": {
+        "size": 16,
+        "lineHeight": 21,
+        "weight": 400,
+        "ios": "callout"
+      },
+      "subheadline": {
+        "size": 15,
+        "lineHeight": 20,
+        "weight": 400,
+        "ios": "subheadline"
+      },
+      "footnote": {
+        "size": 13,
+        "lineHeight": 18,
+        "weight": 400,
+        "ios": "footnote"
+      },
+      "caption1": {
+        "size": 12,
+        "lineHeight": 16,
+        "weight": 400,
+        "ios": "caption"
+      },
+      "caption2": {
+        "size": 11,
+        "lineHeight": 13,
+        "weight": 500,
+        "ios": "caption2"
+      }
+    }
+  },
+  "space": {
+    "xxs": 2,
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 20,
+    "xxl": 24,
+    "xxxl": 32,
+    "section": 40,
+    "page": 48
+  },
+  "radius": {
+    "sm": 6,
+    "md": 10,
+    "lg": 14,
+    "xl": 20,
+    "pill": 999
+  },
+  "size": {
+    "touchTarget": 44,
+    "controlHeight": 44,
+    "controlHeightLarge": 52,
+    "iconSm": 16,
+    "iconMd": 20,
+    "iconLg": 24,
+    "sidebarWidth": 264,
+    "listPaneWidth": 340,
+    "tabBarHeight": 49
+  },
+  "elevation": {
+    "card": "0 1px 2px rgba(16, 18, 22, 0.06), 0 1px 1px rgba(16, 18, 22, 0.04)",
+    "raised": "0 4px 12px rgba(16, 18, 22, 0.08), 0 1px 3px rgba(16, 18, 22, 0.06)",
+    "overlay": "0 16px 40px rgba(16, 18, 22, 0.18), 0 4px 12px rgba(16, 18, 22, 0.08)"
+  },
+  "motion": {
+    "fast": 120,
+    "standard": 200,
+    "slow": 320,
+    "easing": "cubic-bezier(0.2, 0, 0, 1)"
+  }
+} as const;
+
+export type ColorRole = keyof typeof tokens.color.light;
+export type TextStyle = keyof typeof tokens.typography.styles;
+export type Space = keyof typeof tokens.space;

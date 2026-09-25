@@ -1,0 +1,28 @@
+{
+  "name": "@aestara/design-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "STATIC DESIGN PROTOTYPE (ADR-0009). Hard-coded data, no backend, no auth. Never deployed as the product.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/build-artifact.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aestara/design-tokens": "workspace:*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  }
+}

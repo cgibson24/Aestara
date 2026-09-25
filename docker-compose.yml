@@ -1,0 +1,25 @@
+# Local development services. Start: pnpm services:up · Stop: pnpm services:down
+# Services are added by the layer that first needs them (docs/DEVELOPMENT_ROADMAP.md):
+# PostgreSQL now (Layer 1); S3/SQS emulation and a local mail catcher arrive with Layers 2 and 5.
+name: aestara
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: aestara
+      POSTGRES_PASSWORD: aestara_local_only
+      POSTGRES_DB: aestara
+    ports:
+      - "5432:5432"
+    volumes:
+      # postgres:18 keeps data under /var/lib/postgresql/18/docker; mount the parent.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aestara -d aestara"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

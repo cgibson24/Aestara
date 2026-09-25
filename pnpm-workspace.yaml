@@ -1,0 +1,15 @@
+packages:
+  - "apps/*"
+  - "services/*"
+  - "packages/*"
+minimumReleaseAgeExclude:
+  - '@turbo/darwin-64@2.11.4'
+  - '@turbo/darwin-arm64@2.11.4'
+  - '@turbo/linux-64@2.11.4'
+  - '@turbo/linux-arm64@2.11.4'
+  - '@turbo/windows-64@2.11.4'
+  - '@turbo/windows-arm64@2.11.4'
+  - '@vitest/mocker@5.0.2'
+  - '@vitest/spy@5.0.2'
+  - turbo@2.11.4
+  - vitest@5.0.2

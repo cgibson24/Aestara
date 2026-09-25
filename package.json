@@ -1,0 +1,28 @@
+{
+  "name": "aestara",
+  "private": true,
+  "description": "Aesthetic Platform monorepo: provider & patient iOS apps, admin web, backend services (see docs/TECHNICAL_SPECIFICATION.md)",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "tokens": "pnpm --filter @aestara/design-tokens run build",
+    "dev:prototype": "pnpm --filter @aestara/design-prototype run dev",
+    "services:up": "docker compose up -d",
+    "services:down": "docker compose down",
+    "verify:spec": "python3 docs/technical-spec/verification/check_traceability.py",
+    "verify:schema": "bash docs/technical-spec/verification/run_schema_checks.sh",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "turbo": "2.11.4",
+    "typescript": "6.0.3"
+  }
+}
