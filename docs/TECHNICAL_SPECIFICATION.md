@@ -35,7 +35,7 @@ Every design statement is tagged with where it comes from. That keeps us honest 
 | Tag | Meaning |
 |---|---|
 | **[B §n]** | Specified by the Production Bible, section *n*. Not open to reinterpretation here. |
-| **[P]** | **Proposed** by this specification: an engineering choice or a gap-filler the Bible does not dictate. Every [P] is listed for approval in §10.3. Nothing tagged [P] is locked until you approve it. |
+| **[P]** | **Proposed** by this specification: an engineering choice or a gap-filler the Bible does not dictate. Accepting this spec approves **every** [P] in §§2–8 unless you strike it; §10.3 lists the most consequential ones. Nothing tagged [P] is locked until you approve it. |
 | **[UD-nn]** | **Unresolved decision.** The Bible is silent or ambiguous, and choosing wrong would create a permanent dependency. §10.2 gives options and a recommendation for each. |
 
 What this document is **not**: it isn't Layer 0. No repository skeleton, application code, migrations or UI are created here. Layer 0 (Bible §31) turns this baseline into the formal documentation pack and the repo skeleton, after you accept it.
@@ -86,17 +86,17 @@ These come from Bible §0.1, §1.2 and the Development Constitution (§30). Each
 
 | # | Guardrail | Enforced by |
 |---|---|---|
-| G1 | Tenancy is enforced server-side; client-supplied org IDs are never proof of entitlement [B §3.1] | Tenant bound into the access token (§4.2); tenant-scoped data access layer (§3.5); **composite foreign keys** that make cross-tenant links impossible in the database (§5.1, verified A1–A5); automated cross-tenant tests (§7.5) |
+| G1 | Tenancy is enforced server-side; client-supplied org IDs are never proof of entitlement [B §3.1] | Tenant bound into the access token (§4.2); tenant-scoped data access layer (§3.5); **composite foreign keys** that make cross-tenant links impossible in the database (§5.1, verified A1–A5, R1–R2); automated cross-tenant tests (§7.5) |
 | G2 | Original clinical photos are never destructively edited [B §6.6] | Write-once `StorageObject` and immutable `PatientPhoto.originalObjectId` triggers (verified C1–C4); derivatives are separate immutable rows (C8–C9); S3 private bucket with versioning (§7.4) |
-| G3 | No permission implies another; clinical consent never implies marketing/research/AI-training [B §7.1] | Independent permission rows per category (D3); append-only versioned history (D4–D7); export/release checks the *current* grant at use time and pins the exact version used (`MediaRelease.permissionId`) |
-| G4 | Provider drafts and rejected/failed simulations are never exposed to patients [B §13.2, §34.2 #26] | Separate patient-portal API namespace with its own DTOs that can only select released states (§6.5); release requires `RELEASED_TO_PATIENT` with version/time/actor (E12–E13) |
+| G3 | No permission implies another; clinical consent never implies marketing/research/AI-training [B §7.1] | Independent permission rows per category (D3); append-only versioned history (D4–D7); export/release checks the *current* grant at use time and pins **every** version relied on (`MediaReleasePermission`, required at commit, R15–R17); AI-training gate (§7.7) |
+| G4 | Provider drafts and rejected/failed simulations are never exposed to patients [B §13.2, §34.2 #26] | Separate patient-portal API namespace with its own DTOs that can only select released states, **deny-by-default** for any entity without a visibility rule (§4.7, §6.5); release requires `RELEASED_TO_PATIENT` with version/time/actor (E12–E13) |
 | G5 | Simulations are never described as guaranteed or exact outcomes [B §9] | The mandatory disclaimer [B §9.1] is embedded server-side in every patient-facing simulation DTO (§6.6.4); product vocabulary is "simulation/visualization" |
 | G6 | No automatic dosing, diagnosis, drug/product or technique recommendation [B §1.2, §9.6, §21.4] | Model versions carry an allow-listed `parameterSchema` with no dosage/product/technique fields; the registered version is immutable (E1); the API rejects unknown parameters |
 | G7 | No PHI in logs, analytics, crash reports or push payloads [B §14.3, §21.2] | Push text is a fixed template key only (`Notification.templateKey`); allow-list log redaction; no PHI in URLs (search uses POST bodies); AI workers receive image references, never demographics (§7.2) |
 | G8 | Explicit state machines instead of boolean clusters [B §19.1] | Every Appendix A state machine is a Postgres enum plus a server-side transition table (§5.4); status-to-timestamp CHECK constraints |
-| G9 | Consents are versioned; executed documents never change [B §12.2] | Published template versions are frozen (F1–F6); executed assignments are frozen apart from void/supersede bookkeeping (F9–F12); signed snapshot + SHA-256 hash required for `COMPLETE` (F8) |
+| G9 | Consents are versioned; executed documents never change [B §12.2] | Published template versions are frozen (F1–F6); executed assignments are frozen apart from void/supersede bookkeeping, and **cannot be reopened** (F9–F12, R5–R6); signed snapshot + SHA-256 hash required for `COMPLETE` (F8) |
 | G10 | Audit is immutable/tamper-resistant [B §21.2, §22] | `AuditEvent` append-only by trigger (G1–G3) plus DB grants plus export to WORM storage (§7.3) |
-| G11 | A production AI model is never silently replaced [B §9.7] | Immutable `AIModelVersion` (E1); activation only via an explicit, audited `AIModelRollout`; one active version per scope (E3–E5) |
+| G11 | A production AI model is never silently replaced [B §9.7] | Immutable `AIModel` identity and `AIModelVersion` content (E1, R10); activation only via an explicit, audited `AIModelRollout` whose rows can only be deactivated, never edited (R11–R13); one active version per scope (E3–E5) |
 | G12 | Implement only the authorized layer, then stop [B §0.1, §30] | Process: this spec gives a per-layer table rollout (§9.1) so no layer ships tables or endpoints early |
 
 ### 1.5 Explicit non-goals for the first production build [B §1.2]
@@ -141,9 +141,9 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | Object storage | **Amazon S3**, private, SSE-KMS, versioning, Block Public Access | — | [B §25.3] | No public buckets and no public CDN for patient media [B §21.2, §25.3]. |
 | Queues & events | **SQS** (work queues) + **EventBridge** (domain events), fed by a **transactional outbox** | — | [B §25.3] · [P] outbox | The outbox (`OutboxEvent`) guarantees events are published only when the DB change commits: no lost or phantom events. |
 | Workers | NestJS worker processes (same codebase, separate deployables) | — | [B §25.2] "worker" | Exports, sync, derivatives, retention jobs; the UI always exposes job status [B §22.4]. |
-| Image processing | **Python 3.13** service using OpenCV + libvips (pyvips) | — | [P] · [UD-06] | Registration and alignment need OpenCV. Keeping all pixel work in one language avoids two imaging stacks. |
+| Image processing | **Python 3.13** service using OpenCV + libvips (pyvips) | — | [P] · [UD-06] | Registration and alignment need OpenCV. Keeping all pixel work in one language avoids two imaging stacks. Bible §25.1 prefers TypeScript "or another approved strongly typed framework", so Python (typed with mypy strict) needs explicit approval. |
 | AI gateway | NestJS (TypeScript) | — | [P] | Authenticated internal job API, model routing, provenance [B §25.2]. |
-| AI inference | Python + PyTorch / ONNX Runtime in a **private** GPU environment (no public egress) | — | [B §2.1] "Private AI Jobs" · [UD-04] hosting | Patient images never go to third-party AI APIs unless a separately approved BAA-covered service is chosen. |
+| AI inference | Python + PyTorch / ONNX Runtime in a **private** GPU environment (no public egress) | — | [B §2.1] "Private AI Jobs" (privacy) · [P] Python · [UD-04] hosting | Patient images never go to third-party AI APIs unless a separately approved BAA-covered service is chosen. Python is the de facto ML runtime but is not the Bible's preferred backend language (§25.1), so it needs approval as part of UD-04. |
 | Notifications | APNs (token auth), Amazon SES (email), AWS End User Messaging (SMS) | — | [P] | HIPAA-eligible AWS services; payloads are generic text only [B §14.3]. |
 | Authentication | First-party OIDC-compatible auth module: `jose` (JWT), `@node-rs/argon2` (Argon2id), `otplib` (TOTP), `@simplewebauthn/server` (passkeys) | jose 6.2, argon2 2.2, otplib 13.5, simplewebauthn 14.0 | [B §21.1] OIDC-compatible · [UD-02] build vs buy | See §4.2. The schema supports either outcome. |
 | Telehealth video | Vendor adapter (BAA-capable vendor) | — | [UD-05] | Layer 6 decision; the schema is vendor-agnostic (`TelehealthSession.vendor`). |
@@ -271,10 +271,10 @@ sequenceDiagram
 
 **B. AI visualization [B §9.2–9.3, §34.2]**
 
-1. `POST /patients/{id}/simulations` (`simulation.create`) creates the Simulation `DRAFT` with source photos. The server checks that each source is the **same patient**, `ACCEPTED`, and has `CLINICAL_USE`/`INTERNAL_AI_EVALUATION` permission as the model requires.
-2. `POST …/{simId}/generate` (`simulation.generate`, `Idempotency-Key` **required**) validates provider parameters against the active model version's allow-list. It then creates a `SimulationVersion` plus an `AIJob` (`QUEUED`), sets the Simulation to `QUEUED`, and writes audit `SIMULATION_GENERATED`.
-3. ai-gateway runs input quality → landmarks → segmentation → identity representation → constrained transformation → outside-region identity similarity → artifact detection → output validation, with every check persisted as an `AIValidationRecord`. The status moves `PROCESSING` → `VALIDATING` → `READY_FOR_PROVIDER_REVIEW`, or `FAILED` with a **safe, actionable** error code (e.g. `INPUT_QUALITY_INSUFFICIENT`) [B §34.2 #24].
-4. The provider approves (`simulation.approve`), rejects, or regenerates (new version). Approval does **not** release anything.
+1. `POST /patients/{id}/simulations` (`simulation.create`) creates the Simulation `DRAFT` with source photos (audit `SIMULATION_CREATED`). The server checks that each source is the **same patient** (DB-enforced) and `ACCEPTED`, and holds whichever current media-permission grant simulation use requires. **Which category that is, is [UD-32]**; the Bible does not say, and "no permission implies another" [B §7.1] forbids guessing. Provider parameters are edited on the DRAFT (`draftParameters`).
+2. `POST …/{simId}/generate` (`simulation.generate`, `Idempotency-Key` **required**) validates the draft parameters against the active model version's allow-list and freezes them into append-only `SimulationParameter` rows. It then creates a `SimulationVersion` plus an `AIJob` (`QUEUED`), sets the Simulation to `QUEUED`, and writes audit `SIMULATION_GENERATED`.
+3. ai-gateway runs input quality → landmarks → segmentation → identity representation → constrained transformation → outside-region identity similarity → artifact detection → output validation, with every check persisted as an `AIValidationRecord`. The status moves `PROCESSING` → `VALIDATING` → `READY_FOR_PROVIDER_REVIEW`, or `FAILED` with a **safe, actionable** error code (e.g. `INPUT_QUALITY_INSUFFICIENT`) [B §34.2 #24]. Every system transition is audited as `SIMULATION_STATUS_CHANGED` with actor type `SERVICE` [B §34.2 #30].
+4. The provider approves or rejects (both `simulation.approve`: a review decision belongs to the "reviewing provider" [B §9.2, §9.4], and the DB requires the reviewer to be a `ProviderProfile` of the same organization, R18), or regenerates (`simulation.generate`, new version). Approval does **not** release anything.
 5. `POST …/{simId}/release` (`simulation.release`) is a **separate explicit action** [B §34.2 #28]. It requires `APPROVED` plus the release rules (§5.4.2) and writes audit `SIMULATION_RELEASED`. The patient-portal DTO always carries the Bible §9.1 disclaimer.
 
 **C. Patient photo upload intake [B §13.4]:** provider creates a `PhotoRequest` → patient uploads through the portal (the object lands `QUARANTINED`) → malware and file-type validation → `PENDING_REVIEW` → staff `ACCEPTED` (enters the clinical record) or `RETAKE_REQUESTED`/`REJECTED`, with every step audited.
@@ -288,7 +288,7 @@ sequenceDiagram
 | 1. Identity | Tenant bound to the session and access token at org selection; switching org issues new tokens | [P] |
 | 2. Guard | Membership must be `ACTIVE`; permission evaluated for that org only | [B §3.3] |
 | 3. Data access | Tenant-scoped repository layer: a Prisma client extension **requires** a tenant context and injects `organizationId` into every query on tenant-owned models. Unscoped access is only possible through an explicitly named platform repository (used by SUPER_ADMIN tooling and migrations). | [P] |
-| 4. Database | **Composite foreign keys** `(organizationId, …)` on every parent/child link. The database rejects cross-tenant links even if application code has a bug (verified A1–A5, C5, D9, E6, F7). | [P] |
+| 4. Database | **Composite foreign keys** `(organizationId, …)` on every parent/child link, plus CHECKs wherever a nullable composite FK could otherwise be skipped by Postgres `MATCH SIMPLE`. An automated query confirms every such FK is covered (§11). The database rejects cross-tenant links even if application code has a bug (verified A1–A5, C5, D9, E6, F7, R1–R2, R18). A few links are application-enforced only (§5.1). | [P] |
 | 5. Database (optional) | PostgreSQL Row-Level Security keyed on `SET LOCAL app.organization_id`, as a second net | [UD-03] |
 | 6. Tests | Every tenant-scoped endpoint is run by an automated cross-tenant test generator (tenant B credentials against tenant A IDs must return 404, with no timing or message difference) | [B §27.1, §36] |
 
@@ -320,7 +320,7 @@ sequenceDiagram
 
 ### 4.3 Roles [B §3.2]
 
-System roles are defined once at platform level (`Role.organizationId = NULL`), one key per Bible row:
+System roles are defined once at platform level (`Role.organizationId = NULL`), one key per Bible row [P] (splitting e.g. SURGEON_PHYSICIAN into two keys later is a data change, not a schema change):
 
 `SUPER_ADMIN` · `ORGANIZATION_ADMIN` · `PRACTICE_ADMIN` · `SURGEON_PHYSICIAN` · `NURSE_INJECTOR_AESTHETICIAN` · `PHOTOGRAPHER` · `CONSULTANT` · `FRONT_DESK` · `MARKETING` · `PATIENT`
 
@@ -352,7 +352,7 @@ Assignments (`UserRole`) carry an explicit **scope**: `PLATFORM` (SUPER_ADMIN on
 | Create/manage organizations (§17.1; SUPER_ADMIN / ORGANIZATION_ADMIN) | New `organization.read`, `organization.manage` |
 | Read consultations, plans, messages, appointments (only write keys exist) | **Map, don't add:** reads require the domain's lowest write key *or* `patient.read` plus a clinical key. Proposal: `consultation.create` implies read of consultations; `message.send` implies read of threads the user participates in; `appointment.manage` covers reads. Keeps the catalog as the Bible wrote it. |
 | Photography protocols, treatment catalog, appointment types (§17.1) | Use existing `practice.manage` |
-| Documents (upload/release non-consent documents) (§12, §13.2) | New `document.manage` (read covered by `patient.read`) |
+| Documents (read, upload, release) (§12, §13.2) | New `document.read` and `document.manage`. `patient.read` is **demographics/profile only** and never unlocks clinical content, so FRONT_DESK and PHOTOGRAPHER cannot read consultation summaries, signed consents or medical history [B §3.2]. |
 | Education/instruction assignment (§12.5–12.6) | Use `content.read` to assign, `consultation.edit` to clinically complete instructions |
 | Patient photo intake review (§13.4) | Use `photo.capture` |
 | Procedures (§4.3, §13.1) | New `procedure.manage` |
@@ -362,6 +362,26 @@ Assignments (`UserRole`) carry an explicit **scope**: `PLATFORM` (SUPER_ADMIN on
 | Feature flags & settings (§17.1) | New `configuration.manage` |
 | Similar-case search (§10) | New `similarcase.search` (Layer 9) |
 | Marketing library access (§3.2 MARKETING) | New `marketing.library.read`: only assets with a current `MediaRelease` for WEBSITE / SOCIAL_MEDIA / PAID_ADVERTISING |
+
+**Endpoint → permission mappings needing approval [UD-16]:** where a Bible key exists but the Bible doesn't say which one guards an action, this spec maps it as follows. Each mapping is a proposal.
+
+| Action | Mapped permission |
+|---|---|
+| Read consultations, notes, medical history, concerns | `consultation.create` |
+| Read treatment plans; read the treatment catalog | `treatmentplan.create` |
+| Read message threads (staff), download attachments, mark read | `message.send` **and** thread participation |
+| Read appointments; schedule an accepted plan (`/schedule`) | `appointment.manage` |
+| Read photography protocols | `photo.capture` or `photo.view` |
+| Create before/after sets; queue automatic registration | `photo.view` (non-destructive; originals untouched) |
+| Adjust manual registration; tag photos | `photo.annotate` |
+| Access the ORIGINAL variant | `photo.export` (a permission, never a role check [B §3.3]) |
+| Review patient-uploaded photos | `photo.capture` |
+| Record a witness signature; staff-assisted patient signing | `consent.assign` |
+| Reject a simulation; archive a simulation | `simulation.approve` |
+| View simulations | `simulation.review` (view only; no decisions) |
+| Release materials to the patient app | `consultation.complete` (consultation materials) / `simulation.release` (simulations) / `document.manage` (documents) |
+| Assign education and instructions; mark instruction clinically complete | `content.read` / `consultation.edit` |
+| Manage protocols, treatment catalog, appointment types | `practice.manage` |
 
 ### 4.5 Proposed default role → permission matrix [P] · [UD-17]
 
@@ -414,17 +434,30 @@ Legend: ● granted · ○ granted within the assignment's practice/location sco
 | audit.read | ● ⁴ | ● | ○ | — | — | — | — | — | — |
 
 ¹ MARKETING exports only assets that already have a current purpose-specific release and grant [B §3.2, §7.3]. It has **no** `patient.read`.
-² CONSULTANT sees simulations for discussion but cannot approve or release ("without implicit clinical authority" [B §3.2]).
+² CONSULTANT sees simulations for discussion but cannot approve, reject or release. Review decisions need `simulation.approve` ("without implicit clinical authority" [B §3.2]).
 ³ PRACTICE_ADMIN may assign only roles at or below its own scope, never ORGANIZATION_ADMIN or SUPER_ADMIN.
 ⁴ SUPER_ADMIN reads **platform-level** audit only. It holds no `patient.*` permission, so platform operators cannot browse patient records [B §17.2]. Support access to a tenant is a separate, time-bound, audited grant that is **not in scope** until specified [B §17.1].
 
 `PATIENT` holds no staff permission; patient access is governed by §4.7.
+
+**Defaults for the proposed keys [P] · [UD-16/17]:** `organization.read` SA OA · `organization.manage` SA (create), OA (own org) · `document.read` SP NI CO · `document.manage` SP NI · `procedure.manage` SP NI · `data.export` OA · `security.manage` SA OA PA(○) · `ai.model.read` SA OA · `ai.model.manage` SA · `configuration.manage` OA PA(○) · `similarcase.search` SP · `marketing.library.read` MK.
+
+**Separation-of-duties rules [P]** (enforced by the authorization service, tested in §7.5; the first is also a DB CHECK, R4):
+1. Nobody can assign a role to themselves, or create a membership for themselves.
+2. Platform-scope `user.create` / `role.assign` exist only to **bootstrap** an organization's first ORGANIZATION_ADMIN. The platform actor cannot target its own account and can never grant a role carrying any `patient.*`, `photo.*`, `consultation.*`, `simulation.*`, `consent.*` or `document.*` permission. This closes the path by which a platform operator could reach patient records [B §17.2].
+3. A PRACTICE_ADMIN can grant only roles and scopes within its own practice scope.
+4. Every grant and revocation is audited (`ROLE_ASSIGNED` / `ROLE_REVOKED`) and appears in a periodic access review export.
 
 ### 4.6 Authorization evaluation [B §3.3] [P]
 
 ```
 authorize(request, requiredPermission, resource):
   session   = verifyAccessToken(request)                 // 401 on failure
+  if route is platform-scoped:                           // e.g. POST /organizations, platform audit
+      grants = UserRole where user=session.userId, scope=PLATFORM, revokedAt IS NULL
+      require requiredPermission ∈ permissions(grants)   // 403 otherwise
+      only platform resources are reachable here; no tenant data   // §4.5 rule 2
+      return
   org       = session.organizationId                     // never from client input
   member    = Membership(org, session.userId) ACTIVE     // 401 SESSION_INVALID if not
   grants    = UserRole where user=session.userId, org=org, revokedAt IS NULL
@@ -440,7 +473,7 @@ authorize(request, requiredPermission, resource):
   load resource WITH organizationId = org (and scope filter)  // 404 if absent
 ```
 
-Patient records are organization-level with an optional primary practice. **Which practice-scoped staff can see which patients is [UD-09]** and must be decided before Layer 1 builds patient search.
+Patient records carry `organizationId` plus an optional primary practice. **Whether patient data may be seen across the practices of one organization is [UD-09]**: Bible §1.2 prohibits "cross-practice patient data sharing" without an approved feature. It must be decided before Layer 1 builds patient search.
 
 ### 4.7 Patient-app authorization [B §13.2]
 
@@ -455,12 +488,16 @@ A `PATIENT`-kind user reaches data only through an `ACTIVE` `PatientUserLink` fo
 | Consent | `status ≠ DRAFT` (assigned to the patient) |
 | Instruction / education | Assigned (`PatientInstruction.releasedToPatientAt` / `ContentAssignment`) |
 | Messages | Participant in the thread |
+| Procedures | `status ∈ {SCHEDULED, COMPLETED}`; the portal DTO never includes `notes` [P] · [UD-30] |
+| Appointments | The patient's own appointments in any status; internal `reason` text is excluded unless marked patient-visible [P] · [UD-30] |
+| Telehealth | Sessions linked to the patient's own appointment; a join token only while `SCHEDULED`/`WAITING` inside the join window [P] |
+| **Anything else** | **Not visible.** Deny by default: an entity is exposed in the portal only after a visibility rule for it is approved and added to this table. |
 
 ---
 
 ## 5. Database schema
 
-The complete, validated draft lives in **[`technical-spec/schema.prisma`](technical-spec/schema.prisma)** (86 models, 82 enums). The rules Prisma cannot express are in **[`technical-spec/constraints.sql`](technical-spec/constraints.sql)**. This section explains the design. The files are the precise definition.
+The complete, validated draft lives in **[`technical-spec/schema.prisma`](technical-spec/schema.prisma)** (87 models, 82 enums). The rules Prisma cannot express are in **[`technical-spec/constraints.sql`](technical-spec/constraints.sql)**. This section explains the design. The files are the precise definition.
 
 ### 5.1 Conventions [B §19.1]
 
@@ -468,8 +505,8 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 |---|---|
 | UUID identifiers [B] | Every primary key is a **UUIDv7** (time-ordered, index-friendly) in a native `uuid` column. Generated by the Prisma client (`@default(uuid(7))`). Offline-capable records may be created with a **client-generated** UUIDv7 (§8). |
 | Tenant ownership [B] | Every tenant-owned table has `organizationId`. |
-| **Composite foreign keys** [P] | Every child references its parent by `(organizationId, parentId)`, or `(organizationId, patientId, parentId)` where the Bible demands same-patient guarantees (before/after, simulation sources, consents, permissions). Parents expose a matching `@@unique([organizationId, id])`. **Result: the database physically cannot store a cross-tenant or cross-patient link.** Provider fields reference `ProviderProfile(organizationId, userId)`, so a provider from another tenant can't be attached to a record. |
-| Foreign keys & indexes [B] | 275 foreign keys. Every FK is covered by a unique or composite index. Tenant-leading indexes support list queries (`organizationId, patientId, createdAt`). Deliberate exception: `AuditEvent` has **no** FKs (append-only, partition-ready, must outlive the rows it references). |
+| **Composite foreign keys** [P] | Every child references its parent by `(organizationId, parentId)`, or `(organizationId, patientId, parentId)` where the Bible demands same-patient guarantees (before/after, simulation sources, consents, permissions). Parents expose a matching `@@unique([organizationId, id])`. Where a composite FK has two nullable columns (which Postgres skips under `MATCH SIMPLE`), a CHECK forces evaluation. **Result: the database cannot store a cross-tenant or cross-patient link** on any enforced relation. Provider fields (appointment/consultation/plan provider, performer, telehealth host, simulation reviewer) reference `ProviderProfile(organizationId, userId)`, so a provider from another tenant can't be attached. **Application-enforced only** (by design): `ConsentSignature.signerUserId` and `ThreadParticipant.userId` point to platform `User` because the signer/participant may be the patient; `IntegrationMapping.localId` is polymorphic. These are covered by the authorization and cross-tenant test suites instead. |
+| Foreign keys & indexes [B] | 278 foreign keys. Every tenant/parent FK is covered by a unique or composite index, and tenant-leading indexes support list queries (`organizationId, patientId, createdAt`). Actor/authorship FKs (`createdById`, `capturedByUserId`, …) are indexed only where a query needs them, because users are disabled, never deleted, so no cascading check needs them. Deliberate exception: `AuditEvent` has **no** FKs (append-only, partition-ready, must outlive the rows it references). |
 | Timestamps & authorship [B] | `createdAt`/`updatedAt` as `timestamptz(3)`, stored in UTC. Authorship columns (`createdById`, `capturedByUserId`, `reviewerUserId`, …) where clinically or operationally meaningful. |
 | State machines, not booleans [B] | Each Appendix A object has a Postgres enum and a transition table (§5.4). CHECK constraints tie states to their required timestamps and actors (e.g. `COMPLETED` needs `completedAt` and `completedById`). |
 | JSON only for flexible metadata [B] | `Json` is used only for: consent builder blocks, annotation vector layers, capture/quality metadata, AI configs/scores, adapter configs, settings values, frozen snapshots. **Never** for relationships, statuses or anything queried relationally. |
@@ -481,7 +518,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 
 ### 5.2 Entity catalog
 
-**86 tables:** all **70 entities named in Bible §19**, plus **16 supporting tables** that other Bible sections require (marked ✚; each cites its source). Bible §19: *"at minimum the following entities."*
+**87 tables:** all **70 entities named in Bible §19**, plus **17 supporting tables** that other Bible sections require (marked ✚; each cites its source). Bible §19: *"at minimum the following entities."*
 
 #### Identity & tenancy (11 + 1)
 
@@ -527,7 +564,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | ✚ AppointmentType | Practice-configurable appointment types (§15.1 "appointment type") | `isTelehealth` flag | 6 |
 | ✚ ConsultationConcern | Concerns selected for a consultation (§5.1) | Same-patient composite FKs | 3 |
 
-³ Appointment tables may be created in Layer 3 if consultations need scheduling links earlier. See §9.1.
+³ Appointment tables may be created in Layer 3 if consultations need scheduling links earlier. See §5.8.
 
 #### Photography & media (10 + 2)
 
@@ -535,16 +572,17 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 |---|---|---|---|
 | PhotographyProtocol | Standard or custom protocol | Standard protocols (§6.2) seeded per org; frozen when `ACTIVE`, changes supersede | 2 |
 | PhotographyProtocolView | Required/optional view + capture instructions + pose target | Unique `(protocolId, viewKey)` | 2 |
-| PhotoSession | Capture session (patient, protocol, capturer, time, optional consultation/procedure/location) | Offline client IDs | 2 |
+| PhotoSession | Capture session (patient, protocol, capturer, time, optional consultation/procedure/practice/location) | Capturer required unless IMPORT; location implies practice; offline client IDs | 2 |
 | PatientPhoto | Clinical photo record → immutable ORIGINAL | Original, patient and capture time immutable (trigger) | 2 |
 | PhotoDerivative | THUMBNAIL … EXPORT_DERIVATIVE (§6.6) | Immutable; references source photo + generation metadata | 2 |
 | PhotoAnnotation | Vector annotation layer (never burned into the original) | Offline client IDs | 3 |
 | PhotoTag | Free-form photo tags | Unique `(photoId, tag)` | 2 |
 | PhotoPermission | Versioned permission per category (§7) | Append-only; one *current* row per scope (partial unique) | 2 |
-| MediaRelease | Asset released/exported for a purpose, pinned to the permission version | Exactly one subject; only revocation may change | 2 |
+| MediaRelease | Asset released/exported for a purpose | Exactly one subject; ≥ 1 pinned permission (checked at commit); only revocation may change | 2 |
 | BeforeAfterSet | Before + after of the **same patient** (§8) | Composite FKs incl. `patientId`; photos must differ | 3 |
 | ✚ StorageObject | Ledger of every S3 object (Media Service §2: checksum, retention, isolation) | Write-once after verification; key never exposed via API | 2 |
-| ✚ PhotoRequest | Provider request for patient photos (§13.4) | `OPEN → SUBMITTED → COMPLETED` [P] | 5 |
+| ✚ PhotoRequest | Provider request for patient photos (§13.4) | Protocol required; `OPEN → SUBMITTED → COMPLETED` [P] | 5 |
+| ✚ MediaReleasePermission | Every permission version a release relied on (§7.3; a before/after or simulation can depend on several) | Same-patient composite FKs; append-only | 2 |
 
 #### AI (10 + 3)
 
@@ -552,17 +590,17 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 |---|---|---|---|
 | AIModel | Registry entry (platform-level) | Unique `key` | 7 |
 | AIModelVersion | Immutable version: artifact digest, parameter allow-list, thresholds, intended use | Immutable except lifecycle status | 7 |
-| AIJob | Any AI/imaging job with idempotency key | Unique `(organizationId, idempotencyKey)` | 7 |
+| AIJob | Any AI/imaging job with idempotency key | Unique `(organizationId, idempotencyKey)`; created in Layer 3 for automatic registration; model FK added in Layer 7 | 3 |
 | AIValidationRecord | Per-check evidence (quality, identity similarity, artifacts, benchmarks) | Tenant required for job/output records | 7 |
-| Simulation | Canonical §9.3 state machine | Release requires version, time and actor | 8 |
+| Simulation | Canonical §9.3 state machine; draft parameters until `/generate` | Release requires version, time and actor | 8 |
 | SimulationVersion | One generation attempt with full provenance (§9.4) | Provenance immutable; fully immutable after completion | 8 |
-| SimulationParameter | Provider-set parameter (allow-listed) | Exactly one value | 8 |
-| SimulationApproval | Append-only review decisions | Version must belong to the same simulation | 8 |
+| SimulationParameter | Provider-set parameter (allow-listed), frozen at `/generate` | Exactly one value; append-only | 8 |
+| SimulationApproval | Append-only review decisions | Version must belong to the same simulation; reviewer is a same-org ProviderProfile | 8 |
 | SimilarCaseMatch | Which historical cases were shown, when, to whom (§10) | — | 9 |
 | OutcomeMeasurement | Measured comparison values (Layer 9) | Method + model provenance | 9 |
 | ✚ AIModelRollout | Which version is active, platform-wide or per org (§9.7 rollback, §17.1 rollout) | One `ACTIVE` per (model, org), NULLs included | 7 |
 | ✚ SimulationVersionSource | Source asset IDs per generation (§9.4, §34.2 #23) | Same-patient composite FK | 8 |
-| ✚ CaseLibraryEntry | Consented historical case in the library (§10) | Pinned to authorizing permission | 9 |
+| ✚ CaseLibraryEntry | Consented historical case in **the practice's** library (§10) | Practice-scoped; authorized by a MediaRelease (revoking it withdraws the entry) | 9 |
 
 #### Documents, consents, instructions & education (9 + 1)
 
@@ -600,7 +638,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | AuditEvent | Append-only audit (§22) | Trigger-enforced append-only; no FKs by design | 1 |
 | LoginEvent | Authentication security ledger | Append-only | 1 |
 | ✚ IntegrationDeadLetter | Per-record failures kept for replay (§18.4 "no silent data loss") | Payload encrypted in S3 | 10 |
-| ✚ OutboxEvent | Transactional outbox to SQS/EventBridge (§2.1 event bus) | IDs only in payload | 1 |
+| ✚ OutboxEvent | Transactional outbox to SQS/EventBridge (§2.1 event bus) | IDs only in payload | 2 |
 | ✚ IdempotencyKey | Replay protection (§20.3) | Unique `(actorKey, key)`; stores outcome reference, not body | 1 |
 
 #### Commercial & configuration (5 + 3)
@@ -610,10 +648,10 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | Estimate | Frozen priced snapshot of a plan (not a ledger, §11.3) | Frozen once issued | 4 |
 | Quote | **[UD-11]** proposed shape only | — | 4 |
 | InvoiceReference | Pointer to an external invoice | Unique per external system/ID | 4 |
-| FeatureFlag | Platform/org/practice flag; never bypasses authz (§26) | Unique `(key, org, practice)` incl. NULLs | 1 |
-| PracticeSetting | Typed practice settings | Keys registered in code | 1 |
+| FeatureFlag | Platform/org/practice flag; never bypasses authz (§26) | Unique `(key, org, practice)` incl. NULLs | 2 |
+| PracticeSetting | Typed practice settings | Keys registered in code | 2 |
 | ✚ OrganizationSetting | Org-level policy (MFA, session, MRN, primary-practice rule) | Keys registered in code | 1 |
-| ✚ RetentionPolicy | Policy-driven retention per record category (§22.3) | No hard-coded default; DELETE needs a period | 1 |
+| ✚ RetentionPolicy | Policy-driven retention per record category (§22.3) | No hard-coded default; DELETE needs a period | 2 |
 | ✚ DataExportJob | Async, audited, status-visible export (§22.4) | Result object + download count | 4 |
 
 ### 5.3 Core relationship overview
@@ -653,7 +691,7 @@ erDiagram
 
 ### 5.4 State machines
 
-The server enforces each machine through **one transition table per aggregate**: a single function `transition(aggregate, action, actor)` that checks the current state, permission and preconditions, writes the new state, audit and outbox rows in one transaction, and otherwise returns `409 INVALID_STATE_TRANSITION` [B §5.2]. Source column: **B** = drawn in the Bible; **P** = proposed (listed for approval in §10).
+The server enforces each machine through **one transition table per aggregate**: a single function `transition(aggregate, action, actor)` that checks the current state, permission and preconditions, writes the new state, audit and outbox rows in one transaction, and otherwise returns `409 INVALID_STATE_TRANSITION` [B §5.2]. **Every transition writes an audit event** [B §5.1 "Audit lifecycle events", §34.2 #30]: the specific Bible event where one exists, otherwise the object's `…_STATUS_CHANGED` event, with actor type `SERVICE` for system transitions. Source column: **B** = drawn in the Bible; **P** = proposed (listed for approval in §10).
 
 #### 5.4.1 Consultation [B §5.2, Appendix A]
 
@@ -673,25 +711,38 @@ The server enforces each machine through **one transition table per aggregate**:
 
 ⁱ The Bible lists the states in order. Whether a consultation with no missing information may skip AWAITING_INFORMATION is [UD-28]. ⁱⁱ Non-final = DRAFT, IN_PROGRESS, AWAITING_INFORMATION, READY_FOR_REVIEW.
 
+**Bible §5.1 "mandatory sequence" → transition preconditions [P] · [UD-33].** The 20 steps are the consultation workflow. Steps the Bible marks optional ("Annotate if needed", "Optional AI visualization") or conditional are UI guidance. This spec proposes that these gate `READY_FOR_REVIEW → COMPLETED`:
+
+| Precondition for `/complete` | Bible step |
+|---|---|
+| A reason or at least one concern is recorded | Select reason / concerns |
+| No simulation is `QUEUED`, `PROCESSING` or `VALIDATING` | Optional AI visualization → provider reviews |
+| A consultation summary document has been generated | Generate consultation summary |
+| A release decision is recorded (materials released, or "nothing to release" confirmed) | Release approved patient-facing materials |
+| No consultation note is still `DRAFT` | Discuss / document |
+
+The other steps (protocol selection, capture, quality review, education, plans, estimates, consents, instructions, scheduling) are available throughout `IN_PROGRESS` and tracked on the timeline, but do not block completion, because not every consultation needs every step.
+
 #### 5.4.2 Simulation [B §9.3, §34.2, Appendix A]
 
 | From | To | Trigger | Permission | Audit | Src |
 |---|---|---|---|---|---|
-| — | DRAFT | create with source photos | simulation.create | — | B |
+| — | DRAFT | create with source photos | simulation.create | SIMULATION_CREATED | B |
 | DRAFT | QUEUED | `/generate` (Idempotency-Key required) | simulation.generate | SIMULATION_GENERATED ⁱ | B |
-| QUEUED | PROCESSING | worker picks up the job | system | — | B |
-| PROCESSING | VALIDATING | inference complete | system | — | B |
-| VALIDATING | READY_FOR_PROVIDER_REVIEW | all checks PASS/FLAG within thresholds | system | — | B |
-| QUEUED / PROCESSING / VALIDATING | FAILED | input quality, inference error or threshold breach (safe error code) | system | — | B ⁱⁱ |
+| QUEUED | PROCESSING | worker picks up the job | system | SIMULATION_STATUS_CHANGED | B |
+| PROCESSING | VALIDATING | inference complete | system | SIMULATION_STATUS_CHANGED | B |
+| VALIDATING | READY_FOR_PROVIDER_REVIEW | all checks PASS/FLAG within thresholds | system | SIMULATION_STATUS_CHANGED | B |
+| READY_FOR_PROVIDER_REVIEW | FAILED | provider or late check marks the output unusable | simulation.approve / system | SIMULATION_STATUS_CHANGED | B |
+| QUEUED / PROCESSING / VALIDATING | FAILED | input quality, inference error or threshold breach (safe error code) | system | SIMULATION_STATUS_CHANGED | P ⁱⁱ |
 | READY_FOR_PROVIDER_REVIEW | APPROVED | `/approve` | simulation.approve | SIMULATION_APPROVED | B |
-| READY_FOR_PROVIDER_REVIEW | REJECTED | `/reject` | simulation.review | SIMULATION_REJECTED | B |
+| READY_FOR_PROVIDER_REVIEW | REJECTED | `/reject` | simulation.approve | SIMULATION_REJECTED | B |
 | READY_FOR_PROVIDER_REVIEW | REGENERATING | `/regenerate` | simulation.generate | SIMULATION_REGENERATED | B |
 | REJECTED / FAILED | REGENERATING | `/regenerate` | simulation.generate | SIMULATION_REGENERATED | P |
-| REGENERATING | QUEUED | new SimulationVersion + AIJob | system | — | P |
-| APPROVED | RELEASED_TO_PATIENT | `/release`: separate explicit action; needs current `PATIENT_APP` grant for the source photos [UD-20]; disclaimer attached | simulation.release | SIMULATION_RELEASED | B |
-| APPROVED / REJECTED / FAILED / RELEASED_TO_PATIENT | ARCHIVED | `/archive` (when allowed) | simulation.approve | — | B |
+| REGENERATING | QUEUED | new SimulationVersion + AIJob | system | SIMULATION_STATUS_CHANGED | P |
+| APPROVED | RELEASED_TO_PATIENT | `/release`: separate explicit action; needs the current grant for patient-app display [UD-20]; disclaimer attached | simulation.release | SIMULATION_RELEASED | B |
+| APPROVED / REJECTED / FAILED / RELEASED_TO_PATIENT | ARCHIVED | `/archive` (when allowed) | simulation.approve | SIMULATION_STATUS_CHANGED | B |
 
-ⁱ SIMULATION_GENERATED is recorded when an authorized user requests the generation (the audited human act). Completion and failure are recorded on `AIJob`. [UD-29] ⁱⁱ The Bible lists FAILED as an outcome; the exact source states are [P]. SIMULATION_VIEWED is written on every staff or patient content access.
+ⁱ SIMULATION_GENERATED is recorded when an authorized user requests the generation (the audited human act). Each later system step writes SIMULATION_STATUS_CHANGED (actor `SERVICE`), so the full lifecycle is in the audit trail [B §34.2 #30]. [UD-29] ⁱⁱ The Bible draws FAILED only as an outcome after READY_FOR_PROVIDER_REVIEW; failing earlier in the pipeline is [P]. SIMULATION_VIEWED is written on every staff or patient content access.
 
 #### 5.4.3 Treatment plan [B §11.2, Appendix A]
 
@@ -714,16 +765,17 @@ Acceptance is **not** medical authorization or consent [B §11.1]. The API respo
 
 | From | To | Trigger | Permission | Audit | Src |
 |---|---|---|---|---|---|
-| — | DRAFT | prepare assignment from a PUBLISHED template version | consent.assign | — | B |
+| — | DRAFT | prepare assignment from a PUBLISHED template version | consent.assign | CONSENT_STATUS_CHANGED | B |
 | DRAFT | ASSIGNED | `/assign` (issue to patient) | consent.assign | CONSENT_ASSIGNED | B |
 | ASSIGNED | VIEWED | patient opens it | patient (link) | CONSENT_VIEWED | B |
-| VIEWED | IN_PROGRESS | first acknowledgment/field saved | patient (link) | — | B |
+| VIEWED | IN_PROGRESS | first acknowledgment/field saved | patient (link) | CONSENT_STATUS_CHANGED | B |
 | IN_PROGRESS | SIGNED_BY_PATIENT | patient signature (all required acknowledgments present) | patient (link) | CONSENT_SIGNED | B |
-| SIGNED_BY_PATIENT | SIGNED_BY_PROVIDER | provider signature (+ witness if required) | consent.sign.provider | CONSENT_SIGNED | B |
-| SIGNED_BY_PROVIDER | COMPLETE | immutable PDF snapshot + SHA-256 generated | system | CONSENT_COMPLETED | B |
-| SIGNED_BY_PATIENT | COMPLETE | when the version requires no provider/witness signature | system | CONSENT_COMPLETED | P |
+| SIGNED_BY_PATIENT | SIGNED_BY_PROVIDER | provider signature (when the version requires one) | consent.sign.provider | CONSENT_SIGNED | B |
+| SIGNED_BY_PATIENT / SIGNED_BY_PROVIDER | (same state) | witness signature, when required; recorded at any point before COMPLETE | consent.assign | CONSENT_SIGNED | P |
+| SIGNED_BY_PROVIDER | COMPLETE | all required signatures present; immutable PDF snapshot + SHA-256 generated | system | CONSENT_COMPLETED | B |
+| SIGNED_BY_PATIENT | COMPLETE | the version requires no provider signature, and any required witness signature is present (covers witness-only consents) | system | CONSENT_COMPLETED | P |
 | COMPLETE | VOIDED | `/void` with reason, per policy | consent.void | CONSENT_VOIDED | B |
-| COMPLETE | SUPERSEDED | new assignment replaces it | consent.assign | — | B |
+| COMPLETE | SUPERSEDED | new assignment replaces it | consent.assign | CONSENT_STATUS_CHANGED | B |
 | ASSIGNED … SIGNED_BY_PROVIDER | VOIDED | withdrawn before completion | consent.void | CONSENT_VOIDED | **UD-23** |
 
 #### 5.4.5 Photo permission [B §7.2, Appendix A]
@@ -755,7 +807,7 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 
 #### 5.4.9 Integration sync [B §18.3]
 
-`PENDING → RUNNING → SUCCEEDED | PARTIAL | FAILED`; `FAILED | PARTIAL → RETRY_SCHEDULED` (**B**). A retry is a new `EMRSyncEvent` linked by `retryOfId` with incremented `attempt`, and exhausted retries dead-letter.
+`PENDING → RUNNING → SUCCEEDED | PARTIAL | FAILED` (**B**); `FAILED → RETRY_SCHEDULED` (**B**, reading of the Bible's diagram); `PARTIAL → RETRY_SCHEDULED` for the failed records (**P**). A retry is a new `EMRSyncEvent` linked by `retryOfId` with incremented `attempt`, and exhausted retries dead-letter.
 
 #### 5.4.10 Proposed machines for objects the Bible does not diagram [P]
 
@@ -765,8 +817,8 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 | AIJob | `QUEUED → RUNNING → SUCCEEDED \| FAILED \| TIMED_OUT`; `QUEUED \| RUNNING → CANCELLED` |
 | PhotoRequest | `OPEN → SUBMITTED → COMPLETED`; `OPEN → CANCELLED \| EXPIRED` |
 | Procedure | `PLANNED → SCHEDULED → COMPLETED`; `PLANNED \| SCHEDULED → CANCELLED` |
-| Template / content version | `DRAFT → PUBLISHED → RETIRED` (DB-enforced forward-only) |
-| Estimate | `DRAFT → ISSUED → SUPERSEDED \| VOID` |
+| Template / content version | `DRAFT → PUBLISHED → RETIRED` (DB-enforced forward-only, F4, R7) |
+| Estimate | `DRAFT → ISSUED → SUPERSEDED \| VOID` (DB-enforced forward-only, R8–R9) |
 | DataExportJob | `REQUESTED → RUNNING → COMPLETED \| FAILED`; `COMPLETED → EXPIRED`; `REQUESTED → CANCELLED` |
 | ContentAssignment | `ASSIGNED → OPENED → VIEWED → COMPLETED → ACKNOWLEDGED` (states from [B §12.5]; ordering P) |
 
@@ -774,19 +826,21 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 
 | Rule | Mechanism | Verified |
 |---|---|---|
-| No cross-tenant links anywhere | Composite FKs (`schema.prisma`) | A1–A5 |
-| Role assignment scope shape; no duplicate active assignment | CHECK + partial unique (NULLS NOT DISTINCT) | B2–B5 |
+| No cross-tenant links on enforced relations | Composite FKs (`schema.prisma`) + CHECKs closing `MATCH SIMPLE` gaps | A1–A5, R1–R2, R18 |
+| Role assignment scope shape; no duplicate active assignment; no self-assignment | CHECKs + partial unique (NULLS NOT DISTINCT) | B2–B5, R4 |
 | System role keys unique | Partial unique index | B1 |
 | Original photo identity immutable | Trigger | C1–C2 |
 | Storage objects write-once after verification; keys never change | Triggers | C3–C4, C10 |
 | Before/after = two different photos of the same patient | Composite FK + CHECK | C5–C7 |
 | Derivatives immutable | Trigger | C8–C9 |
 | One current permission per scope; history append-only; scope shape | Partial unique + triggers + CHECK | D1–D9 |
-| Media release covers exactly one asset; only revocation may change | CHECK + triggers | D10 |
-| Model versions immutable; one active rollout; same-model versions | Trigger + partial unique + composite FK | E1–E5 |
-| Simulation sources same patient; provenance immutable; approvals append-only; release completeness | Composite FKs + triggers + CHECK | E6–E15 |
+| Media release covers exactly one asset, pins ≥ 1 permission version (deferred constraint trigger); only revocation may change; pins append-only | CHECK + triggers | D10, R15–R17 |
+| Model identity and versions immutable; one active rollout; rollouts deactivate-only; same-model versions | Triggers + partial unique + composite FK | E1–E5, R10–R13 |
+| Simulation sources same patient; provenance and parameters immutable; approvals append-only by a same-org provider; release completeness | Composite FKs + triggers + CHECK | E6–E15, R14, R18 |
 | Published templates frozen; forward-only status; one draft | Triggers + partial unique | F1–F6 |
-| Executed consents frozen; snapshot + hash required; same-patient snapshot | Triggers + CHECK + composite FK | F7–F12 |
+| Executed consents frozen and never reopened; snapshot + hash required; same-patient snapshot | Triggers + CHECK + composite FK | F7–F12, R5–R6 |
+| Issued estimates and published content forward-only | Triggers | R7–R9 |
+| Photo session: capturer required (non-import), location implies practice | CHECKs | R1–R3 |
 | Audit and login ledgers append-only (no UPDATE, DELETE or TRUNCATE) | Triggers (+ DB grants in deployment) | G1–G4, B7–B8 |
 | Status ⇔ timestamp/actor consistency | CHECKs | H1, H3, E12, F8 |
 | Retention DELETE needs an explicit period | CHECK | H6 |
@@ -810,18 +864,20 @@ The **whole** schema is designed now so later layers can't force a redesign. **T
 
 | Layer | Migration creates |
 |---|---|
-| 1 | Organization, Practice, Location, User, UserCredential, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, OutboxEvent, IdempotencyKey, FeatureFlag, PracticeSetting, OrganizationSetting, RetentionPolicy |
-| 2 | StorageObject, PhotographyProtocol, PhotographyProtocolView, PhotoSession, PatientPhoto, PhotoDerivative, PhotoTag, PhotoPermission, MediaRelease |
-| 3 | Consultation, ConsultationNote, ConsultationConcern, PatientConcern, PatientMedicalHistory, PhotoAnnotation, BeforeAfterSet, Document, DocumentVersion |
+| 1 | Organization, Practice, Location, User, UserCredential, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, IdempotencyKey ⁱ, OrganizationSetting ⁱ |
+| 2 | StorageObject, PhotographyProtocol, PhotographyProtocolView, PhotoSession, PatientPhoto, PhotoDerivative, PhotoTag, PhotoPermission, MediaRelease, MediaReleasePermission, OutboxEvent, FeatureFlag, PracticeSetting, RetentionPolicy |
+| 3 | Consultation, ConsultationNote, ConsultationConcern, PatientConcern, PatientMedicalHistory, PhotoAnnotation, BeforeAfterSet, Document, DocumentVersion, AIJob ⁱⁱ |
 | 4 | TreatmentCategory, Treatment, TreatmentPlan, TreatmentPlanItem, Procedure, Estimate, Quote, InvoiceReference, ConsentTemplate, ConsentTemplateVersion, ConsentAssignment, ConsentSignature, EducationContent, EducationContentVersion, ContentAssignment, PatientInstruction, DataExportJob |
 | 5 | PatientUserLink, PhotoRequest, MessageThread, ThreadParticipant, Message, MessageAttachment, Notification |
 | 6 | AppointmentType, Appointment, TelehealthSession |
-| 7 | AIModel, AIModelVersion, AIModelRollout, AIJob, AIValidationRecord |
+| 7 | AIModel, AIModelVersion, AIModelRollout, AIValidationRecord (+ `AIJob.modelVersionId` FK) |
 | 8 | Simulation, SimulationVersion, SimulationVersionSource, SimulationParameter, SimulationApproval |
 | 9 | CaseLibraryEntry, SimilarCaseMatch, OutcomeMeasurement |
 | 10 | Integration, IntegrationMapping, EMRSyncEvent, IntegrationDeadLetter |
 
-Some forward references are nullable (e.g. `Appointment.consultationId`, `PhotoSession.procedureId`, `PhotoDerivative.generatedByJobId`). They are added by the later layer's migration together with their FK, so no layer contains a dangling reference.
+ⁱ Beyond the literal Bible §32 scope, justified [P]: `IdempotencyKey` because patient creation must be retry-safe [B §20.3, §23.3]; `OrganizationSetting` because the MFA/session policy and the "primary practice optional/required by deployment policy" rule [B §4.2, §21.1] are Layer 1 behavior. ⁱⁱ `AIJob` is the generic job record; Layer 3 needs it for automatic before/after registration [B §34.1 #17] (image processing, no model), and Layer 7 adds the model FK.
+
+Some forward references are nullable (e.g. `Appointment.consultationId`, `PhotoSession.procedureId`, `PhotoDerivative.generatedByJobId`). They are added by the later layer's migration together with their FK, so no layer contains a dangling reference. The matching `constraints.sql` fragments are ordered by layer in the same way.
 
 ---
 
@@ -907,7 +963,7 @@ Keys are scoped per actor and retained **7 days** [P], long enough to cover the 
 - **No enumeration** [B §20.3]: a resource that is nonexistent, in another tenant, or outside the caller's scope always gets the same `404 <RESOURCE>_NOT_FOUND` body. `403 PERMISSION_DENIED` is returned only when the caller can already see the resource but lacks the action permission.
 - **Rate limits** [B §20.3, §21.2]: WAF per-IP rate rules on public/auth endpoints; progressive lockout after repeated login failures (from `LoginEvent`); per-user limits on sensitive endpoints (exports, AI generation, search) with `429 RATE_LIMITED` + `Retry-After`. A shared counter store (ElastiCache for Valkey) arrives when horizontal scaling needs it [UD-27].
 - **Security headers:** HSTS, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` on all PHI responses, strict CORS (admin web origin only).
-- **Health:** `GET /health/live` and `GET /health/ready`, unauthenticated, with no data and no dependency details [B §26 "synthetic health checks"].
+- **Health:** `GET /health/live` and `GET /health/ready`, unauthenticated, with no data and no dependency details. These are liveness/readiness probes. The Bible's *synthetic* health checks [B §26] are separate scripted journeys against a synthetic tenant with no real patient data (§7.6).
 
 ### 6.2 Error code catalog [P]
 
@@ -962,21 +1018,21 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 
 | Method & path | Purpose | Perm | Audit | L |
 |---|---|---|---|---|
-| `GET /organizations` · `POST /organizations` | List (platform) / create organization + seed standard protocols & roles | organization.read* / organization.manage* (platform scope) | CONFIGURATION_CHANGED | 1 |
-| `GET /organizations/{id}` · `PATCH /organizations/{id}` | View/update own organization | organization.read* / organization.manage* | CONFIGURATION_CHANGED | 1 |
-| `GET /practices` · `POST /practices` | List/create practices | practice.read / practice.manage | CONFIGURATION_CHANGED | 1 |
-| `GET /practices/{id}` · `PATCH /practices/{id}` | View/update | practice.read / practice.manage | CONFIGURATION_CHANGED | 1 |
-| `GET /locations` · `POST /locations` · `GET/PATCH /locations/{id}` | Locations within practices | practice.read / practice.manage | CONFIGURATION_CHANGED | 1 |
+| `GET /organizations` · `POST /organizations` | List (platform) / create organization and bootstrap its first ORGANIZATION_ADMIN (§4.5 rule 2). System roles are platform-level (not copied); standard photo protocols are seeded from Layer 2 | organization.read* / organization.manage* (platform scope) | CONFIGURATION_CHANGED* | 1 |
+| `GET /organizations/{id}` · `PATCH /organizations/{id}` | View/update own organization | organization.read* / organization.manage* | CONFIGURATION_CHANGED* | 1 |
+| `GET /practices` · `POST /practices` | List/create practices | practice.read / practice.manage | CONFIGURATION_CHANGED* | 1 |
+| `GET /practices/{id}` · `PATCH /practices/{id}` | View/update | practice.read / practice.manage | CONFIGURATION_CHANGED* | 1 |
+| `GET /locations` · `POST /locations` · `GET/PATCH /locations/{id}` | Locations within practices | practice.read / practice.manage | CONFIGURATION_CHANGED* | 1 |
 
 #### Users, roles, permissions (`/users`, `/roles`, `/permissions`) [B §20.2, §32]
 
 | Method & path | Purpose | Perm | Idem | Audit | L |
 |---|---|---|---|---|---|
 | `GET /users` · `GET /users/{id}` | List/view org users (filter by practice, role, status) | user.read | – | – | 1 |
-| `POST /users` | Invite/create user + membership | user.create | R | USER_CREATED | 1 |
+| `POST /users` | Invite/create user + membership (never for oneself; §4.5 rules) | user.create | R | USER_CREATED | 1 |
 | `PATCH /users/{id}` | Update profile/contact | user.update | – | USER_UPDATED | 1 |
 | `POST /users/{id}/disable` | Disable membership; revokes sessions | user.disable | – | USER_DISABLED, SECURITY_SESSION_REVOKED | 1 |
-| `POST /users/{id}/role-assignments` | Assign role at scope (cannot exceed own scope) | role.assign | – | ROLE_ASSIGNED | 1 |
+| `POST /users/{id}/role-assignments` | Assign role at scope (never to oneself; cannot exceed own scope; platform actors cannot grant clinical roles) | role.assign | – | ROLE_ASSIGNED | 1 |
 | `DELETE /users/{id}/role-assignments/{assignmentId}` | Revoke assignment | role.assign | – | ROLE_REVOKED* | 1 |
 | `GET/PUT /users/{id}/provider-profile` · `GET/PUT /users/{id}/staff-profile` | Provider/staff profile | user.read / user.update | – | USER_UPDATED | 1 |
 | `POST /users/{id}/sessions/revoke` | Admin revocation of a user's sessions/devices | security.manage* | – | SECURITY_SESSION_REVOKED | 1 |
@@ -991,13 +1047,13 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `GET /patients` | Recent/filtered list (status, practice); no PHI in query | patient.read | – | – | 1 |
 | `POST /patients/duplicate-check` | Probable-duplicate candidates before create [B §4.1] | patient.create | – | – | 1 |
 | `POST /patients` | Create; server assigns tenant; `confirmNoDuplicate` required if candidates exist | patient.create | R | PATIENT_CREATED | 1 |
-| `GET /patients/{pid}` | Profile (demographics + counts per tab) | patient.read | – | PATIENT_VIEWED | 1 |
+| `GET /patients/{pid}` | Profile (demographics; per-tab counts only for tabs the caller may read) | patient.read | – | PATIENT_VIEWED | 1 |
 | `PATCH /patients/{pid}` | Update demographics (If-Match) | patient.update | – | PATIENT_UPDATED | 1 |
 | `POST /patients/{pid}/archive` | Archive (If-Match) | patient.archive | – | PATIENT_ARCHIVED | 1 |
-| `GET /patients/{pid}/timeline` | Chronological events (metadata only; each item links to its resource) | patient.read | – | – | 3 |
+| `GET /patients/{pid}/timeline` | Chronological events (metadata only). **Each item is filtered by the caller's permission for its domain**, so demographics-only roles see only demographic/scheduling items | patient.read (+ per-item) | – | – | 3 |
 | `GET/POST /patients/{pid}/contacts` · `PATCH/DELETE …/{id}` | Contacts | patient.read / patient.update | – | PATIENT_UPDATED | 1 |
-| `GET/POST /patients/{pid}/medical-history` · `PATCH …/{id}` | History entries | patient.read / consultation.edit | – | PATIENT_UPDATED | 3 |
-| `GET/POST /patients/{pid}/concerns` · `PATCH …/{id}` | Concerns | patient.read / consultation.edit | – | – | 3 |
+| `GET/POST /patients/{pid}/medical-history` · `PATCH …/{id}` | History entries (clinical: **not** readable with `patient.read`) | consultation.create (read) / consultation.edit | – | PATIENT_UPDATED | 3 |
+| `GET/POST /patients/{pid}/concerns` · `PATCH …/{id}` | Concerns | consultation.create (read) / consultation.edit | – | PATIENT_UPDATED | 3 |
 
 #### Consultations (`/patients/{pid}/consultations`) [B §5, §20.2]
 
@@ -1017,14 +1073,14 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 
 | Method & path | Purpose | Perm | Idem | Audit | L |
 |---|---|---|---|---|---|
-| `GET/POST /photography-protocols` · `GET/PATCH …/{id}` · `POST …/{id}/activate` · `/retire` | Protocols & views (frozen when active; edits supersede) | photo.capture (read) / practice.manage | – | CONFIGURATION_CHANGED* | 2 |
+| `GET/POST /photography-protocols` · `GET/PATCH …/{id}` · `POST …/{id}/activate` · `/retire` | Protocols & views (frozen when active; edits supersede) | photo.capture or photo.view (read) / practice.manage | – | CONFIGURATION_CHANGED* | 2 |
 | `GET …/photo-sessions` · `POST …/photo-sessions` | List / start session (client ID allowed) | photo.view / photo.capture | R | – | 2 |
 | `GET …/photo-sessions/{sid}` · `POST …/{sid}/complete` | View / complete | photo.view / photo.capture | – | – | 2 |
 | `GET …/photos` | List (filter by session, view, date, status) | photo.view | – | – | 2 |
 | `POST …/photos/uploads` | Upload intent → photo ID + presigned PUT | photo.capture | R | – | 2 |
 | `POST …/photos/{phid}/complete-upload` | Verify checksum/size, finalize ORIGINAL, queue derivatives | photo.capture | R | PHOTO_CAPTURED | 2 |
 | `GET …/photos/{phid}` | Metadata + derivative availability | photo.view | – | – | 2 |
-| `POST …/photos/{phid}/access-urls` | Signed GET for a variant (THUMBNAIL, DISPLAY_PREVIEW, ORIGINAL*) | photo.view | – | PHOTO_VIEWED | 2 |
+| `POST …/photos/{phid}/access-urls` | Signed GET for a variant (THUMBNAIL, DISPLAY_PREVIEW; ORIGINAL needs `photo.export`) | photo.view | – | PHOTO_VIEWED | 2 |
 | `PUT …/photos/{phid}/tags` | Replace tags | photo.annotate | – | – | 2 |
 | `POST …/photos/{phid}/review` | Intake decision: ACCEPT / REQUEST_RETAKE / REJECT | photo.capture | – | PHOTO_INTAKE_REVIEWED* | 5 |
 | `POST …/photos/{phid}/archive` | Archive photo (original retained) | photo.capture | – | – | 2 |
@@ -1032,10 +1088,10 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `POST …/photos/{phid}/exports` | Purpose-specific export derivative (checks current grant) | photo.export | R | PHOTO_EXPORTED | 3 |
 | `GET /patients/{pid}/photo-permissions` · `GET …/history` | Current state per category/scope; full version history | photo.permission.read | – | – | 2 |
 | `POST /patients/{pid}/photo-permissions` | Record a transition (category, scope, target, state, evidence, expiry) | photo.permission.manage | R | PHOTO_PERMISSION_CHANGED | 2 |
-| `GET/POST /patients/{pid}/media-releases` · `POST …/{id}/revoke` | Release assets for a purpose (PATIENT_APP, WEBSITE, …) | photo.export (non-patient purposes) / simulation.release or consultation.complete (PATIENT_APP) | R | MEDIA_RELEASED* / MEDIA_RELEASE_REVOKED* | 2 |
+| `GET/POST /patients/{pid}/media-releases` · `POST …/{id}/revoke` | Release assets for a purpose (PATIENT_APP, WEBSITE, …); pins every permission version relied on | photo.export (non-patient purposes) / consultation.complete (PATIENT_APP) | R | MEDIA_RELEASED* / MEDIA_RELEASE_REVOKED* | 2 |
 | `GET/POST /patients/{pid}/photo-requests` · `POST …/{id}/cancel` | Request patient uploads | photo.capture | R | – | 5 |
 
-*`ORIGINAL` variant access requires `photo.export` or a clinical role, and is always audited [P].
+`ORIGINAL` variant access requires the `photo.export` permission (never a role check [B §3.3]) and is always audited [P].
 
 #### Before / after (`/patients/{pid}/before-after`) [B §8, §34.1]
 
@@ -1044,7 +1100,7 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `GET …/before-after` · `GET …/{setId}` | List/view sets | photo.view | – | – | 3 |
 | `POST …/before-after` | Create from **exactly two** photos of this patient; compatible view check | photo.view | R | BEFORE_AFTER_CREATED* | 3 |
 | `PATCH …/{setId}` | Manual alignment/registration transform, reset (If-Match) | photo.annotate | – | – | 3 |
-| `POST …/{setId}/auto-registration` | Queue automatic registration job | photo.view | R | – | 3 |
+| `POST …/{setId}/auto-registration` | Queue automatic registration job (`AIJob` of type IMAGE_REGISTRATION, Layer 3) | photo.view | R | – | 3 |
 | `POST …/{setId}/exports` | Composite export (checks purpose grant for **both** photos) | photo.export | R | PHOTO_EXPORTED | 3 |
 
 Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized zoom/pan) are **client rendering** of display previews plus the registration transform. The original is never modified [B §8.2, §34.1 #14].
@@ -1054,14 +1110,14 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | Method & path | Purpose | Perm | Idem | Audit | L |
 |---|---|---|---|---|---|
 | `GET …/simulations` · `GET …/{simId}` | List/view (staff DTO incl. versions, validation summary) | simulation.review | – | SIMULATION_VIEWED (on view) | 8 |
-| `POST …/simulations` | Create DRAFT: category, procedureKey, region, sourcePhotoIds | simulation.create | R | – | 8 |
-| `PUT …/{simId}/parameters` | Set provider parameters (validated against the active model's allow-list) | simulation.create | – | – | 8 |
+| `POST …/simulations` | Create DRAFT: category, procedureKey, region, sourcePhotoIds | simulation.create | R | SIMULATION_CREATED* | 8 |
+| `PUT …/{simId}/parameters` | Set draft provider parameters while DRAFT (validated against the active model's allow-list; frozen at `/generate`) | simulation.create | – | – | 8 |
 | `POST …/{simId}/generate` | DRAFT → QUEUED | simulation.generate | **R** | SIMULATION_GENERATED | 8 |
 | `POST …/{simId}/approve` | Approve the current version (If-Match) | simulation.approve | – | SIMULATION_APPROVED | 8 |
-| `POST …/{simId}/reject` | Reject with reason | simulation.review | – | SIMULATION_REJECTED | 8 |
+| `POST …/{simId}/reject` | Reject with reason (a provider review decision) | simulation.approve | – | SIMULATION_REJECTED | 8 |
 | `POST …/{simId}/regenerate` | New version with (optionally) new parameters | simulation.generate | **R** | SIMULATION_REGENERATED | 8 |
 | `POST …/{simId}/release` | APPROVED → RELEASED_TO_PATIENT (separate explicit action) | simulation.release | R | SIMULATION_RELEASED | 8 |
-| `POST …/{simId}/archive` | Archive a terminal result | simulation.approve | – | – | 8 |
+| `POST …/{simId}/archive` | Archive a terminal result | simulation.approve | – | SIMULATION_STATUS_CHANGED* | 8 |
 | `POST …/{simId}/versions/{vid}/access-urls` | Signed URL for output/source previews | simulation.review | – | SIMULATION_VIEWED | 8 |
 | `POST /patients/{pid}/similar-cases/search` · `POST …/similar-cases/{matchId}/shown` | Similar Historical Cases (never "your result") | similarcase.search* | R | SIMILAR_CASES_SHOWN* | 9 |
 
@@ -1076,19 +1132,21 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | `POST …/{planId}/schedule` · `/complete` · `/cancel` | Post-acceptance transitions | appointment.manage / treatmentplan.edit | – | TREATMENT_PLAN_STATUS_CHANGED* | 4 |
 | `POST …/{planId}/estimates` · `GET …/estimates` | Issue frozen estimate (+ PDF) | treatmentplan.edit | R | – | 4 |
 | `GET/POST /patients/{pid}/procedures` · `PATCH …/{id}` · `POST …/{id}/complete` · `/cancel` | Procedures | procedure.manage* | R (create) | – | 4 |
+| `GET/POST /treatment-categories` · `PATCH …/{id}` · `GET/POST /treatments` · `PATCH …/{id}` | Treatment/procedure catalog [B §17.1] | treatmentplan.create (read) / practice.manage | – | CONFIGURATION_CHANGED* | 4 |
 
 #### Documents, consents, instructions, education (`/patients/{pid}/documents`, ✚ `…/consents`, ✚ `…/instructions`, ✚ `…/content-assignments`) [B §12]
 
 | Method & path | Purpose | Perm | Idem | Audit | L |
 |---|---|---|---|---|---|
-| `GET …/documents` · `GET …/{docId}` | List/view documents | patient.read | – | – | 3 |
+| `GET …/documents` · `GET …/{docId}` | List/view documents | document.read* | – | – | 3 |
 | `POST …/documents/uploads` · `POST …/{docId}/complete-upload` | Upload a clinical document (new version on existing doc) | document.manage* | R | – | 3 |
-| `POST …/{docId}/access-urls` | Signed download | patient.read | – | – (DOCUMENT_VIEWED optional [UD-19]) | 3 |
+| `POST …/{docId}/access-urls` | Signed download | document.read* | – | DOCUMENT_VIEWED* | 3 |
 | `POST …/{docId}/release` | Release to patient app | document.manage* | – | DOCUMENT_RELEASED* | 5 |
 | `GET …/consents` · `GET …/{consentId}` | List/view assignments | consent.assign (read) | – | – | 4 |
 | `POST …/consents` | Prepare (DRAFT) from a published template version | consent.assign | R | – | 4 |
 | `POST …/{consentId}/assign` | Issue to patient | consent.assign | – | CONSENT_ASSIGNED | 4 |
 | `POST …/{consentId}/signatures` | Provider or witness signature (signature image upload + attestation) | consent.sign.provider (provider) / consent.assign (witness) | **R** | CONSENT_SIGNED (+ CONSENT_COMPLETED) | 4 |
+| `POST …/{consentId}/patient-signing` | **Staff-assisted in-clinic signing:** opens a short-lived, consent-scoped hand-off session on the provider device for the patient to review, respond and sign; exiting requires staff re-authentication [UD-31] | consent.assign | R | CONSENT_VIEWED / CONSENT_SIGNED | 4 |
 | `POST …/{consentId}/void` | Void with reason | consent.void | – | CONSENT_VOIDED | 4 |
 | `POST …/{consentId}/supersede` | Replace with a new assignment | consent.assign | R | – | 4 |
 | `POST …/{consentId}/access-urls` | Signed snapshot download | consent.assign | – | – | 4 |
@@ -1125,8 +1183,8 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | `GET/POST /patients/{pid}/message-threads` · `GET …/{tid}` | Threads for a patient | message.send | R (create) | – | 5 |
 | `GET …/{tid}/messages` · `POST …/{tid}/messages` | Read / send (client ID; attachments by reference) | message.send + participant | **R** | MESSAGE_SENT | 5 |
 | `POST …/{tid}/attachments/uploads` | Attachment upload intent (scanned before use) | message.send + participant | R | – | 5 |
-| `POST …/{tid}/attachments/{attId}/access-urls` | Signed download | participant | – | ATTACHMENT_DOWNLOADED | 5 |
-| `POST …/{tid}/read` | Mark read up to a message | participant | – | – | 5 |
+| `POST …/{tid}/attachments/{attId}/access-urls` | Signed download | message.send + participant | – | ATTACHMENT_DOWNLOADED | 5 |
+| `POST …/{tid}/read` | Mark read up to a message | message.send + participant | – | – | 5 |
 | `POST /devices` · `DELETE /devices/{id}` | Register/unregister APNs token | authenticated | – | – | 5 |
 | `GET /notifications` · `POST /notifications/{id}/read` | In-app notification feed (generic text) | authenticated | – | – | 5 |
 
@@ -1140,18 +1198,20 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | `GET /integrations/{id}/sync-events` · `GET …/mappings?conflictState=` · `GET …/dead-letters` | Monitoring, conflicts, dead letters | integration.read | – | – | 10 |
 | `POST /integrations/{id}/dead-letters/{dlId}/replay` · `/discard` | Operate on dead letters | integration.manage | R | – | 10 |
 | `GET /audit/events` · `GET /audit/events/{id}` | Filter by actor, patientId, action, resource, time; tenant-scoped | audit.read | – | – | 1 |
+| `POST /audit/offline-events` | Replay view events recorded while offline (batch; original timestamps; `metadata.offline = true`) [P] | authenticated (events limited to the caller's own actions on resources it may read) | **R** | PATIENT_VIEWED / PHOTO_VIEWED | 2 |
 | `POST /exports` · `GET /exports/{id}` | Request patient/data export; visible job status | data.export* | **R** | DATA_EXPORT_REQUESTED | 4 |
 | `POST /exports/{id}/access-urls` | Download export | data.export* | – | DATA_EXPORT_DOWNLOADED* | 4 |
 | `GET /ai-models` · `GET /ai-models/{id}/versions` | Registry visibility | ai.model.read* | – | – | 7 |
 | `POST /ai-models/{id}/rollouts` | Activate/deactivate/rollback version (platform or org) | ai.model.manage* | R | AI_MODEL_ROLLOUT_CHANGED* | 7 |
-| `GET/PUT /feature-flags/{key}` · `GET/PUT /settings/organization/{key}` · `GET/PUT /settings/practices/{practiceId}/{key}` | Flags & typed settings (If-Match) | configuration.manage* | – | CONFIGURATION_CHANGED* | 1 |
-| `GET/POST /retention-policies` | Retention policy per record category | configuration.manage* | – | CONFIGURATION_CHANGED* | 1 |
+| `GET/PUT /settings/organization/{key}` | Organization policy settings (MFA, sessions, primary-practice rule) (If-Match) | configuration.manage* | – | CONFIGURATION_CHANGED* | 1 |
+| `GET/PUT /feature-flags/{key}` · `GET/PUT /settings/practices/{practiceId}/{key}` | Flags & practice settings (If-Match) | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
+| `GET/POST /retention-policies` | Retention policy per record category | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
 
 Integration **worker** activity writes INTEGRATION_SYNC_SUCCEEDED / INTEGRATION_SYNC_FAILED, and **export completion** writes DATA_EXPORT_COMPLETED (actor type `SERVICE`).
 
 ### 6.4 Layer 1 contract subset
 
-Layer 1 (Bible §32) needs only: `/auth/*`, `/organizations`, `/practices`, `/locations`, `/users` (+ role assignments, provider/staff profiles), `/roles`, `/permissions`, `/patients` (search, list, duplicate-check, create, view, update, archive, contacts), `/audit/events`, `/feature-flags` and `/settings`, plus health. The permissions are the 13 listed in Bible §32 (plus `organization.*` / `security.manage` / `configuration.manage` if approved, UD-16). The audit events are the 11 in Bible §32.
+Bible §32 authorizes: `/auth/*`, `/organizations`, `/practices`, `/locations`, `/users` (+ role assignments, provider/staff profiles), `/roles`, `/permissions`, `/patients` (search, list, duplicate-check, create, view, update, archive, contacts) and `/audit/events`, plus health. **[P] addition:** `/settings/organization`, because the MFA/session policy and the primary-practice rule are Layer 1 behavior (§5.8 ⁱ). The permissions are the 13 listed in Bible §32, plus `organization.*`, `security.manage` and `configuration.manage` if approved (UD-16). The audit events are the 11 in Bible §32, plus `ROLE_REVOKED`, `ACCESS_DENIED` and `CONFIGURATION_CHANGED` if approved (UD-19).
 
 ### 6.5 Patient portal API (`/api/v1/portal`) [B §13]
 
@@ -1165,14 +1225,14 @@ A **separate controller namespace with separate DTOs** [P]. Portal handlers can 
 | `GET /portal/simulations` · `POST …/{id}/access-urls` | **RELEASED_TO_PATIENT only**, with disclaimer | – | SIMULATION_VIEWED | 8 |
 | `GET /portal/photos` · `POST …/{id}/access-urls` | Photos/before-after with PATIENT_APP grant + release | – | PHOTO_VIEWED | 5 |
 | `GET /portal/treatment-plans` · `POST …/{id}/viewed` · `/accept` · `/decline` | Plans sent to the patient | R (accept/decline) | TREATMENT_PLAN_STATUS_CHANGED* | 5 |
-| `GET /portal/procedures` | My procedures | – | – | 5 |
+| `GET /portal/procedures` | My procedures (visibility rule §4.7: scheduled/completed only, no notes) | – | – | 5 |
 | `GET /portal/documents` · `POST …/{id}/access-urls` | Released documents | – | – | 5 |
 | `GET /portal/consents` · `POST …/{id}/viewed` · `PUT …/{id}/responses` · `POST …/{id}/signatures` | Review/sign assigned consents | R (signature) | CONSENT_VIEWED / CONSENT_SIGNED | 5 |
 | `GET /portal/instructions` · `POST …/{id}/acknowledge` | Acknowledge instructions | R | INSTRUCTION_ACKNOWLEDGED* | 5 |
 | `GET /portal/content` · `POST …/{id}/events` | Education engagement (opened/viewed/completed/acknowledged) | – | – | 5 |
 | `GET /portal/photo-requests` · `POST …/{id}/uploads` · `POST …/{id}/submit` | Requested photo capture/upload into quarantine | R | – | 5 |
 | `GET /portal/appointments` · `POST /portal/appointments` | View / propose (where enabled) | R | – | 6 |
-| `GET/POST /portal/message-threads` · `…/{tid}/messages` · attachments | Secure messaging | R (send) | MESSAGE_SENT / ATTACHMENT_DOWNLOADED | 5 |
+| `GET/POST /portal/message-threads` · `…/{tid}/messages` · attachments | Secure messaging (active patient link **and** thread participation) | R (send) | MESSAGE_SENT / ATTACHMENT_DOWNLOADED | 5 |
 | `POST /portal/telehealth/{id}/join` | Patient join token (waiting room) | – | TELEHEALTH_STATUS_CHANGED* | 6 |
 | `GET/PATCH /portal/profile` · `GET/DELETE /portal/sessions` | Account/session/security preferences | – | SECURITY_SESSION_REVOKED | 5 |
 
@@ -1323,6 +1383,7 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 | Least privilege IAM, service-to-service auth | One IAM role per service; S3 access scoped per object class; queue policies per producer/consumer |
 | Tamper-resistant audit | §7.3 |
 | Dependency & container scanning in CI | OSV-Scanner/Dependabot + Trivy; deploy blocked on high/critical findings without an approved exception |
+| Cloud activity trail [B §25.3] | AWS CloudTrail (all regions, log-file validation, delivered to an Object-Lock bucket in a separate security account) |
 
 ### 7.2 PHI handling rules [P, from B §14.3, §21.2, §26]
 
@@ -1353,12 +1414,15 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 | Export | DATA_EXPORT_REQUESTED · DATA_EXPORT_COMPLETED |
 | Security | SECURITY_SESSION_REVOKED |
 
-*Naming interpretation [UD-19]:* the Bible writes grouped lists such as "USER_CREATED / UPDATED / DISABLED / ROLE_ASSIGNED". Bible §32 spells `ROLE_ASSIGNED` and `LOGOUT` as standalone names, so this spec applies one rule: a token that already contains an underscore is a complete name (`ROLE_ASSIGNED`, `ATTACHMENT_DOWNLOADED`, `LOGIN_FAILURE`); a bare word takes its line's prefix (`PATIENT_` + `VIEWED`). **One deliberate exception:** the photo line's `PERMISSION_CHANGED` is named `PHOTO_PERMISSION_CHANGED`, because roles also have permissions and a bare `PERMISSION_CHANGED` would be ambiguous in the audit viewer. Confirm or override in UD-19.
+*Naming interpretation [UD-19]:* the Bible writes grouped lists such as "USER_CREATED / UPDATED / DISABLED / ROLE_ASSIGNED". Bible §32 spells `ROLE_ASSIGNED` and `LOGOUT` as standalone names, so this spec applies one rule: a token that already contains an underscore is a complete name (`ROLE_ASSIGNED`, `ATTACHMENT_DOWNLOADED`, `LOGIN_FAILURE`); a bare word takes its line's prefix (`PATIENT_` + `VIEWED`), except `LOGOUT`, which §32 spells standalone. **One deliberate exception:** the photo line's `PERMISSION_CHANGED` is named `PHOTO_PERMISSION_CHANGED`, because roles also have permissions and a bare `PERMISSION_CHANGED` would be ambiguous in the audit viewer. Confirm or override in UD-19.
 
 **Proposed additional events [P]** (each justified by a Bible requirement to audit something the minimum list doesn't name):
 
 | Event | Justification |
 |---|---|
+| SIMULATION_CREATED · SIMULATION_STATUS_CHANGED | "All lifecycle events are audited" [B §34.2 #30]; system transitions use actor type `SERVICE` |
+| CONSENT_STATUS_CHANGED | Consent lifecycle steps not covered by a named event (draft, in-progress, superseded) [B §12.4] |
+| DOCUMENT_VIEWED | Parity with PHOTO_VIEWED for signed consents and summaries [B §14.4 "audit download/view events"] |
 | ACCESS_DENIED | Security event alerts [B §26]; authorization failures on sensitive endpoints |
 | ROLE_REVOKED | Counterpart of ROLE_ASSIGNED; access reviews |
 | PATIENT_ACCOUNT_LINKED | Patient app account creation [B §13] |
@@ -1386,8 +1450,33 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 
 - **Cross-tenant suite:** for every tenant-scoped route (enumerated from the route table), tenant B's user requests tenant A's resource IDs and must get `404` with a byte-identical body to a random-UUID request. Runs in CI against a real Postgres (Testcontainers).
 - **Authorization suite:** role × endpoint matrix generated from §4.5; each cell asserts allow or deny.
-- **Database behavior suite:** `technical-spec/verification/schema_behavior_tests.sql` (71 checks today) becomes part of the migration test stage.
-- **PHI log canary test**, **media permission tests** (export/release with a revoked or expired grant must fail), and **session revocation tests** (a revoked session's refresh and access token are both rejected within one access-token lifetime).
+- **Database behavior suite:** `technical-spec/verification/schema_behavior_tests.sql` (89 checks today) becomes part of the migration test stage.
+- **PHI log canary test** and **media permission tests** (export/release with a revoked or expired grant must fail).
+- **Session revocation tests:** a revoked session's refresh and access tokens are both rejected **immediately**, because the session is checked on every request (§3.3 step 3).
+- **Separation-of-duties tests** (§4.5): self-assignment, platform actor granting clinical roles, and a practice admin exceeding its scope are all rejected.
+- **Portal visibility tests** (§4.7): for every portal endpoint, drafts, rejected/failed simulations, unreleased documents, planned procedures and internal notes never appear.
+
+### 7.6 Operations, observability & resilience [B §25.4, §26, §27.1, §28, §36]
+
+Detailed in the Layer 0 `INFRASTRUCTURE.md`, `DEPLOYMENT.md` and `TESTING_STRATEGY.md`. The commitments are fixed here:
+
+| Bible requirement | Commitment | Layer 0 document |
+|---|---|---|
+| Metrics [B §26] | API latency/error rate per route, queue depth and age, upload success rate, AI job duration and failure rate, integration sync health, outbox lag, audit-to-WORM lag | INFRASTRUCTURE.md |
+| Dashboards per environment [B §26] | One CloudWatch dashboard per environment (dev, staging, production) with the metrics above plus SLO burn | INFRASTRUCTURE.md |
+| Security event alerts [B §26] | Alerts on `ACCESS_DENIED` bursts, login-failure spikes, refresh-token reuse, audit/WORM divergence, WAF blocks, IAM anomalies (CloudTrail) | SECURITY_REQUIREMENTS.md |
+| Synthetic checks [B §26] | Scripted journeys every 5 min against a **synthetic tenant** (login → search → open synthetic patient → capture upload intent); never real patient data | INFRASTRUCTURE.md |
+| Runbooks [B §26] | Six runbooks: authentication outage, storage outage, AI outage, integration outage, suspected data exposure, failed deployment | DEPLOYMENT.md |
+| Backups & tested restore [B §27.1, §36] | RDS automated backups + PITR, cross-region snapshot copy, S3 versioning + replication; **quarterly restore drill** into an isolated account, verified by row counts and checksums; DR exercise before enterprise rollout [B §25.4] | INFRASTRUCTURE.md |
+| Performance/load tests [B §27.1] | k6 load tests on login, patient search, upload intent/complete, simulation generate; run before each production release that touches them | TESTING_STRATEGY.md |
+| Migrations [B §28.3] | Forward-planned expand → migrate → contract migrations, each with a documented rollback; destructive steps only after a release has proven the new path | DEPLOYMENT.md |
+| AI deployments [B §28.3] | Independent of app deployments: registry + rollout (§5.4, G11); rollback = activate the previous version | AI_ARCHITECTURE.md |
+
+### 7.7 AI data governance [B §7.3, §21.4]
+
+- **Simulation inputs:** a source photo must hold the current grant that simulation use requires; which category that is, is **[UD-32]**.
+- **AI training:** no production pipeline trains on patient media in the initial build. Any future training or evaluation dataset may include only assets with a current explicit `AI_TRAINING` (training) or `INTERNAL_AI_EVALUATION` (evaluation) grant **and** a recorded governance approval [B §7.3]. Revocation removes the asset from future dataset builds. The dataset/approval entities are **deferred to Layer 7** (a governance approval record plus dataset manifest pinning permission versions, the same pattern as `MediaReleasePermission`), and no dataset export endpoint exists before then.
+- **Intended use:** clinician-controlled visualization only; claims do not expand without regulatory review [B §21.4].
 
 ---
 
@@ -1410,6 +1499,7 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 5. On reconnect, cached authorization is re-validated (`GET /auth/session`) before replay. Deep links always re-authorize [B §24.5].
 6. Offline photo originals are stored encrypted with their SHA-256. After `complete-upload` succeeds and the server confirms the checksum, the local original is purged per cache policy [B §23.3].
 7. The cache policy (max patients, max age, auto-purge on sign-out or device revocation) is a `PracticeSetting` [UD-25].
+8. **Offline views are still audited** [B §4.3, §22.1]: opening a cached patient or photo offline writes a local audit record (encrypted, with a UUIDv7 used as the idempotency key, the original timestamp and `offline = true`). On reconnect these replay through `POST /audit/offline-events` before other mutations. A device revoked while offline has its unsent records reported by the security runbook. [P]
 
 ---
 
@@ -1422,10 +1512,10 @@ From Layer 2 onward, each layer is kicked off with the Bible §33 feature-prompt
 | Layer | Tables (§5.8) | API groups (§6) | Must-pass tests |
 |---|---|---|---|
 | 0 | None created. Schema, contracts and ADRs are documented; repo skeleton | — | Docs complete; toolchain initializes reproducibly |
-| 1 | Identity, tenancy, patient core, audit, outbox, idempotency, settings | auth, organizations, practices, locations, users, roles, permissions, patients, audit, settings | Bible §32 acceptance 1–15; cross-tenant suite; DB behavior suite (Layer 1 subset) |
-| 2 | Storage, protocols, sessions, photos, derivatives, tags, permissions, releases | photography, protocols, photo-permissions, media-releases | Original immutability, checksum verification, permission independence |
-| 3 | Consultations, notes, concerns, history, annotations, before/after, documents | consultations, annotations, before-after, documents, timeline | Bible §34.1 #12–21 |
-| 4 | Catalog, plans, procedures, estimates, consents, content, instructions, exports | treatment-plans, procedures, consents, consent-templates, content, instructions, exports | Consent snapshot/hash, template versioning, plan state machine |
+| 1 | Identity, tenancy, patient core, audit, idempotency, organization settings | auth, organizations, practices, locations, users, roles, permissions, patients, audit, organization settings | Bible §32 acceptance 1–15; cross-tenant suite; separation-of-duties tests; DB behavior suite (Layer 1 fragment) |
+| 2 | Storage, protocols, sessions, photos, derivatives, tags, permissions, releases (+ pins), outbox, flags, practice settings, retention | photography, protocols, photo-permissions, media-releases, feature-flags, practice settings, retention-policies, offline audit replay | Original immutability, checksum verification, permission independence, release pinning |
+| 3 | Consultations, notes, concerns, history, annotations, before/after, documents, jobs (registration) | consultations, annotations, before-after (incl. auto-registration), documents, timeline | Bible §34.1 #12–21; §5.1 completion preconditions |
+| 4 | Catalog, plans, procedures, estimates, consents, content, instructions, exports | treatment-plans, procedures, treatments, consents (incl. staff-assisted patient signing, UD-31), consent-templates, content, instructions, exports | Consent snapshot/hash, template versioning, plan state machine; the patient-facing flow is testable in-clinic (staff-assisted signing, staff-recorded plan response UD-14), and via the portal in Layer 5 [B §29] |
 | 5 | Patient links, photo requests, messaging, notifications | portal/*, message-threads, devices, notifications | Portal visibility rules (§4.7), no PHI in push |
 | 6 | Appointment types, appointments, telehealth | appointments, telehealth | Appointment + telehealth state machines |
 | 7 | AI registry, rollouts, jobs, validation | ai-models, internal AI contracts | Versioned jobs with provenance; rollback |
@@ -1457,6 +1547,19 @@ From Layer 2 onward, each layer is kicked off with the Bible §33 feature-prompt
 | 18 | ACCEPTANCE_CRITERIA.md | §9.1 + Bible §32, §34 |
 | 19 | CHANGELOG.md | Starts with this spec's acceptance |
 | 20 | Monorepo skeleton | Bible §31/§35 tree + §2 toolchain |
+
+Bible §35's documentation pack adds these files. They are seeded here as well:
+
+| §35 document | Seeded by |
+|---|---|
+| SOFTWARE_PRODUCTION_BIBLE.md | Text export of the Bible PDF (verbatim; the PDF stays authoritative) |
+| PRODUCT_REQUIREMENTS.md | §1 |
+| USER_ROLES_AND_PERMISSIONS.md | §4.3–4.5 |
+| WORKFLOWS.md | §3.4, §5.4 (incl. the §5.1 precondition table) |
+| AI_SIMULATION_RULES.md | §1.4 G5–G6, §5.4.2, §6.6.3–6.6.4, §7.7 |
+| PHOTO_PROTOCOLS.md | Bible §6.2 standard protocols, §6.6.6 guidance codes |
+| CONSENT_ARCHITECTURE.md | §5.4.4, §6.6.6 block types, G9 |
+| EMR_INTEGRATIONS.md | §3.4 D, §5.4.9, §6.7 |
 
 ---
 
@@ -1490,12 +1593,12 @@ Ordered by when they block work. "Rec." is this spec's recommendation.
 
 | ID | Decision | Options → Rec. |
 |---|---|---|
-| UD-09 | Which practice-scoped staff can see which patients within one organization | **Rec.** Patients are organization-level. Practice/location-scoped staff see patients whose `primaryPracticeId` is in their scope **or** who have any consultation/appointment/procedure in their scope. Org-scoped staff see all. |
-| UD-16 | Missing permission keys (§4.4 table) | **Rec.** Approve the listed additions/mappings, or adjust. |
+| UD-09 | **What "cross-practice patient data sharing is prohibited" [B §1.2] means**, and so which staff can see which patients. Reading (a): *practice* means tenant (organization), so patients are organization-level and visible across that org's practices. Reading (b): the practices of one organization may not share patient data either. The same question governs the similar-case library [B §10 "the practice's … library"] | **Rec.** Build for (b), the stricter default, because it's easy to relax later and hard to tighten: patients are visible to staff scoped to their `primaryPracticeId` or to a practice where they have a consultation/appointment/procedure, and ORGANIZATION-scope assignments grant administrative reach but not clinical patient access. The case library is practice-scoped (already in schema). An org can move to (a) only if you confirm that reading, via an organization setting. |
+| UD-16 | Missing permission keys and endpoint → permission mappings (§4.4 tables) | **Rec.** Approve the listed additions/mappings, or adjust. |
 | UD-17 | Default role → permission matrix (§4.5) | **Rec.** Approve as least-privilege defaults. |
 | UD-07 | May organizations create custom roles? | **Rec.** Not in Layer 1 (system roles only); schema already supports it for later. |
 | UD-18 | Session lifetimes & MFA policy defaults (§4.2) | **Rec.** Approve defaults; configurable per org. |
-| UD-19 | Audit naming interpretation + proposed events (§7.3); should document downloads be audited (DOCUMENT_VIEWED)? | **Rec.** Approve interpretation and additions; add DOCUMENT_VIEWED for consistency with PHOTO_VIEWED. |
+| UD-19 | Audit naming interpretation + proposed events (§7.3), incl. DOCUMENT_VIEWED and the simulation/consent status events | **Rec.** Approve interpretation and additions. |
 | UD-24 | Retention defaults and legal hold | **Rec.** No automated deletion until a customer policy exists; add legal hold (per patient/record flag that blocks purge) before any DELETE policy is enabled. |
 | UD-27 | Rate-limit store (ElastiCache Valkey) timing | **Rec.** WAF + DB-backed login lockout in Layer 1; Valkey when running > 1 API task per service. |
 
@@ -1508,12 +1611,16 @@ Ordered by when they block work. "Rec." is this spec's recommendation.
 | UD-22 | Malware scanning (ClamAV worker vs GuardDuty Malware Protection for S3) | L2 | Managed service if in the BAA scope; else ClamAV |
 | UD-25 | Offline cache policy defaults | L2 | 25 most recent patients, 7 days, purge on sign-out |
 | UD-15 | Final consultation notes: immutable with addenda? | L3 | Yes (immutable; corrections as addenda) |
+| UD-33 | Which §5.1 "mandatory sequence" steps gate consultation completion (§5.4.1 table) | L3 | Approve the proposed preconditions |
 | UD-28 | Consultation transitions not drawn in the Bible (§5.4.1 P rows) | L3 | Approve P rows |
 | UD-11 | Estimate vs Quote semantics | L4 | Estimate = frozen priced snapshot; Quote = formal accepted offer referencing an estimate, or drop Quote if not needed |
 | UD-14 | In-clinic plan acceptance; do sibling options (A/B/C) auto-decline on acceptance? | L4 | Allow staff-recorded acceptance with patient attestation; siblings → DECLINED automatically |
 | UD-23 | Void before completion; minors/guardian signers | L4 | Allow pre-completion void with reason; add GUARDIAN signer role if minors are in scope |
+| UD-31 | Staff-assisted in-clinic patient signing (device hand-off) before the patient app exists | L4 | Yes: consent-scoped hand-off session, staff re-auth to exit, identity attestation recorded |
 | UD-08 | One patient login across organizations; proxy/guardian access | L5 | One identity with per-org links; no cross-org data view; proxy access deferred |
 | UD-20 | Does the patient's own simulation/photo in the portal require the PATIENT_APP media grant? | L5/L8 | Yes, apply B §7.3 uniformly (conservative) |
+| UD-30 | Portal visibility of procedures, appointments and telehealth (§4.7 rows) | L5 | Approve the proposed rows; everything else stays deny-by-default |
+| UD-32 | Which media-permission category a photo needs to be a simulation source (CLINICAL_USE? INTERNAL_AI_EVALUATION is for model evaluation, not clinical use) | L8 | Require a current CLINICAL_USE grant; keep INTERNAL_AI_EVALUATION and AI_TRAINING for dataset use only (§7.7) |
 | UD-05 | Telehealth vendor | L6 | BAA-capable vendor; evaluate Amazon Chime SDK first for AWS alignment |
 | UD-04 | AI inference hosting & model sourcing/licensing | L7 | ECS on EC2 GPU in a private subnet; SageMaker async as alternative |
 | UD-29 | Simulation REJECTED/FAILED → REGENERATING; SIMULATION_GENERATED emission point | L8 | Approve §5.4.2 P rows |
@@ -1521,70 +1628,127 @@ Ordered by when they block work. "Rec." is this spec's recommendation.
 
 ### 10.3 Proposals requiring approval [P]
 
-Accepting this specification approves the following as **Layer 0 ADRs**, unless you strike or amend any line:
+Accepting this specification approves **every item tagged [P] in §§2–8** as a Layer 0 ADR, unless you strike or amend it. The most consequential ones:
 
 1. Toolchain details: TypeScript 6.0 (until NestJS supports 7), Fastify adapter, Turborepo, Zod → OpenAPI 3.1, Tuist, swift-openapi-generator, GRDB + SQLCipher, GitHub Actions, Vitest/Testcontainers/Playwright.
 2. PostgreSQL 18 target (≥ 15 required); Prisma 7.x (not 8 RC).
 3. api owns the schema; the media module lives inside api; imaging/AI services never touch the DB or demographics.
 4. Composite tenant/patient foreign keys everywhere; DB-level immutability triggers (`constraints.sql`).
 5. Transactional outbox → SQS/EventBridge.
-6. 16 supporting tables (§5.2 ✚ rows).
+6. 17 supporting tables (§5.2 ✚ rows).
 7. Proposed state-machine rows (P) in §5.4 and proposed machines in §5.4.10.
 8. API conventions §6.1: cursor pagination, POST search, 404-not-403 for invisible resources, 7-day idempotency window, client-generated UUIDv7 for offline creates, signed-URL lifetimes.
 9. Separate patient-portal API namespace and DTOs.
 10. Error code catalog §6.2.
 11. Audit tamper-resistance design §7.3.
-12. Per-layer table rollout §5.8.
+12. Per-layer table rollout §5.8 and per-layer `constraints.sql` fragments.
+13. Authentication design §4.2 (10-minute access tokens, rotating refresh tokens with reuse detection, Keychain + biometric unlock, SPA cookie handling).
+14. Authorization algorithm §4.6 (incl. the platform-scope branch) and separation-of-duties rules §4.5.
+15. Tenant-isolation layers §3.5 and the minimum-necessary rule for imaging/AI services §3.1.
+16. PHI handling rules §7.2; operations commitments §7.6; AI data governance §7.7.
+17. Offline mutation-queue and offline-audit rules §8.
+18. Internal service contracts and service authentication §6.7; contract tooling §6.8.
+
+### 10.4 Risks (Bible §31 "E")
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| In-house authentication (if UD-02 = a) has a security defect | Account takeover, PHI exposure | Vetted libraries only, no custom crypto; threat model + external penetration test before production; MFA for admins; refresh-reuse detection |
+| AI visualization quality or identity drift in real practice photos | Patient trust, regulatory exposure | Registry + validation harness (Layer 7) before any category ships; thresholds enforced before review; provider approval + separate release; disclaimer by construction |
+| Regulatory scope creep (visualization read as clinical decision support) | Needs regulatory clearance | Product language and G5/G6 guardrails; intended-use review before claims expand [B §21.4] |
+| Misreading §1.2 cross-practice sharing (UD-09) | Rework of patient access or a privacy breach | Decide before Layer 1; build the stricter reading by default |
+| Prisma limits (partial indexes, triggers, partitioning live in raw SQL) | Drift between schema and DB | `constraints.sql` fragments ship inside Prisma migrations; CI applies migrations to a fresh DB and runs the behavior suite |
+| Layer boundaries slip because code generation is cheap | Unreviewed scope, weaker tests | Per-layer table/API rollout (§5.8, §9.1); acceptance review and a stop at each layer [B §30] |
+| Vendor dependencies without BAAs (video, SMS, crash reporting, AI) | Compliance gap | Only HIPAA-eligible services under BAA; each vendor decision recorded as a UD/ADR |
+| Offline devices hold PHI | Loss/theft exposure | Encrypted store, cache limits, purge on sign-out/revocation, Face ID gate (§8) |
 
 ---
 
 ## 11. Verification report
 
-*"I need you to check your work."* This section records **how** the work was checked, the results, and what the checks cannot prove. Every automated check can be re-run: see [`technical-spec/verification/README.md`](technical-spec/verification/README.md).
+*"I need you to check your work."* This section records **how** the work was checked, the results, what the checks found, and what they cannot prove. Every automated check can be re-run: see [`technical-spec/verification/README.md`](technical-spec/verification/README.md).
 
 ### 11.1 Method
 
 | # | Check | How | What it proves |
 |---|---|---|---|
 | V1 | Full read of the Bible | All 52 pages extracted and read. Page 6 is intentionally blank (confirmed by rendering it). | Nothing was skipped |
-| V2 | **Traceability** (automated) | `check_traceability.py` parses the Bible PDF directly and compares each canonical list with the spec and schema | Every Bible-defined item is represented; spec tables are internally consistent |
-| V3 | **Checker mutation test** | 8 deliberate defects planted in copies of the spec/schema (dropped state, renamed entity, missing matrix row, missing audit event, unknown permission, recording field, missing portal endpoint, unmarked table) | The checker really fails on defects; its passes are meaningful |
+| V2 | **Traceability** (automated) | `check_traceability.py` parses the Bible PDF directly and compares each canonical list with the spec and schema. It also checks the spec's internal consistency and the per-layer rollout. | Every Bible-defined item is represented; tables, permissions, events and states named in the spec exist; no layer depends on a later one |
+| V3 | **Checker mutation test** | 10 deliberate defects planted in copies of the spec/schema: dropped state, renamed entity, missing matrix row, missing audit event, unknown permission, recording field, missing portal endpoint, unmarked table, required FK to a later layer, table in two layers | The checker really fails on defects; its passes are meaningful |
 | V4 | **Schema validity** | `prisma validate` (Prisma 7.10) | The relational design is well-formed |
-| V5 | **Schema applies to a real database** | Migration SQL generated by Prisma and applied to PostgreSQL, then `constraints.sql` applied | Every table, enum, FK, index, CHECK and trigger is valid DDL |
+| V5 | **Schema applies to a real database** | Migration SQL generated by Prisma and applied to PostgreSQL, then every `constraints.sql` layer fragment applied in order | Every table, enum, FK, index, CHECK and trigger is valid DDL, including the drop/re-create steps between layers |
 | V6 | **Behavior tests** (automated) | `schema_behavior_tests.sql` attempts each forbidden operation and each adjacent legitimate one | The database itself enforces tenancy, immutability, append-only audit, permission versioning and release rules |
-| V7 | **Independent adversarial review** | A separate reviewer with no authoring context compared the spec, schema and constraints against the full Bible text, looking for contradictions, untagged inventions, internal inconsistencies, coverage gaps and security gaps | Catches errors a self-review misses |
+| V7 | **`MATCH SIMPLE` audit** | Catalog query listing every composite FK with ≥ 2 nullable columns (Postgres skips such an FK when any column is NULL) | Every such FK is covered by a CHECK that forces evaluation |
+| V8 | **Diagram rendering** | All Mermaid diagrams rendered with mermaid-cli, and one inspected visually | Diagrams display on GitHub |
+| V9 | **Independent adversarial review** | A separate reviewer with no authoring context read the full Bible text, spec, schema and constraints, looking for contradictions, untagged inventions, inconsistencies, coverage gaps and security gaps. Its two most serious findings were reproduced on a live database. | Catches what self-review misses |
 
-### 11.2 Results
+### 11.2 Results (final, after all fixes)
 
 | Check | Result |
 |---|---|
-| V2 Traceability | **55 / 55 pass**. Includes: 70/70 §19 entities are Prisma models and in the catalog; 41/41 §3.3 permissions in catalog and role matrix; 10/10 §3.2 roles; 36/36 §22.1 audit events in the enum and catalog; **9/9 Appendix A state machines equal the Prisma enums exactly** (no missing or extra states); 22/22 §20.2 resources have endpoints; 9/9 media-permission categories; 7/7 derivative kinds; 9/9 canonical FHIR resources; 7 simulation categories; 13/13 consent builder elements; 13/13 live-guidance codes; 9 education content types; §4.2 patient fields; §15.1 appointment fields; all 10 §9.4 provenance items; §22.2 audit contents; §11.1 plan composition; 12/12 patient-app screens; 12/12 patient-profile tabs; §32 Layer-1 permissions (13) and audit events (11); every Bible section §0–§36 plus Appendix A referenced |
-| V3 Mutation test | **8 / 8 planted defects detected**; unmodified control passes |
+| V2 Traceability | **57 / 57 pass**. Includes: 70/70 §19 entities are Prisma models and in the catalog; all 17 additions marked ✚; 41/41 §3.3 permissions in catalog and role matrix; 10/10 §3.2 roles; 36/36 §22.1 audit events in the enum and catalog; **9/9 Appendix A state machines equal the Prisma enums exactly**; 22/22 §20.2 resources have endpoints; 9/9 media-permission categories; 7/7 derivative kinds; 9/9 canonical FHIR resources; 7 simulation categories; 13/13 consent builder elements; 13/13 live-guidance codes; 9 education content types; §4.2, §15.1, §9.4, §22.2, §11.1 field sets; 12/12 patient-app screens; 12/12 patient-profile tabs; §32 Layer-1 permissions (13) and events (11); every Bible section §0–§36 plus Appendix A referenced; all 87 tables placed in exactly one layer; no required FK points at a later layer |
+| V3 Mutation test | **10 / 10 planted defects detected**; unmodified control passes |
 | V4 Prisma validate | **Valid** |
-| V5 Apply to PostgreSQL | **Clean.** 86 tables, 82 enum types, 275 foreign keys, 25 triggers, 44 CHECK constraints (tested on PostgreSQL 16) |
-| V6 Behavior tests | **71 / 71 pass**: tenant isolation (5), identity/RBAC (8), photography (10), media permissions (10), AI provenance and review (15), consents (12), audit (4), scheduling/notes/configuration (6), fixture (1) |
-| V7 Adversarial review | See §11.3 |
+| V5 Apply to PostgreSQL | **Clean.** 87 tables, 82 enum types, 278 foreign keys, 35 triggers, 47 CHECK constraints (tested on PostgreSQL 16) |
+| V6 Behavior tests | **89 / 89 pass**: tenant isolation (5), identity/RBAC (8), photography (10), media permissions (10), AI provenance and review (15), consents (12), audit (4), scheduling/notes/configuration (6), review regressions R1–R18 (18), fixture (1) |
+| V7 `MATCH SIMPLE` audit | 6 composite FKs have ≥ 2 nullable columns. **All 6 covered** (UserRole ×2 scope CHECK; FeatureFlag; AIValidationRecord ×2; PhotoSession, whose gap the review found, now closed) |
+| V8 Diagrams | **4 / 4 render** |
+| V9 Adversarial review | **30 findings (10 high, 18 medium, 2 low groups). All 30 resolved:** fixed in schema/SQL with a regression test, fixed in the spec, or converted to an explicit decision. See §11.3. |
 
-### 11.3 Defects found during checking, and fixes
+### 11.3 Defects found during checking, and how each was resolved
 
-Found and fixed before this document was finalized:
+**From the independent review (V9):**
+
+| # | Sev. | Finding | Resolution |
+|---|---|---|---|
+| 1 | High | `PhotoSession.practiceId` could name another tenant's practice (nullable composite FK skipped under `MATCH SIMPLE`) | Own `(organizationId, practiceId)` FK + CHECK "location implies practice"; V7 audit of all such FKs; tests R1–R2 |
+| 2 | High | Frozen consents, content versions and estimates could be moved back to DRAFT, edited and re-completed | Forward-only status-edge triggers; VOIDED/SUPERSEDED terminal; tests R5–R9 |
+| 3 | High | `constraints.sql` assumed one initial migration, contradicting the per-layer rollout; some CHECKs referenced later-layer columns | File restructured into ordered per-layer fragments with explicit drop/re-create steps; checker verifies the rollout |
+| 4 | High | Simulation system transitions and creation weren't audited [B §34.2 #30] | Every transition audited; `SIMULATION_CREATED`, `SIMULATION_STATUS_CHANGED` (actor `SERVICE`), `CONSENT_STATUS_CHANGED` added [P] |
+| 5 | High | CONSULTANT could reject simulations | Reject needs `simulation.approve`; `simulation.review` is view-only |
+| 6 | High | Attachment download needed only thread membership [B §14.1] | Requires `message.send` + participation (portal: active link + participation) |
+| 7 | High | Platform operators / org admins could grant themselves patient access [B §17.2] | Separation-of-duties rules (§4.5); DB CHECK against self-assignment (R4); authorization tests |
+| 8 | High | Portal procedures had no visibility rule | §4.7 rows for procedures/appointments/telehealth + **deny-by-default**; UD-30 |
+| 9 | High | Case library was organization-wide; §1.2 cross-practice ambiguity unaddressed | `CaseLibraryEntry.practiceId`; UD-09 restated around §1.2 with stricter default |
+| 10 | High | FRONT_DESK/PHOTOGRAPHER could read clinical data via `patient.read` | `patient.read` = demographics only; clinical reads mapped to clinical keys; `document.read` proposed |
+| 11 | Med | READY_FOR_PROVIDER_REVIEW → FAILED omitted; invented FAILED sources labelled B | Added as B; pipeline failures tagged P |
+| 12 | Med | Authorization algorithm couldn't authorize SUPER_ADMIN | Explicit platform-scope branch (§4.6) |
+| 13 | Med | Draft parameters had nowhere to live; parameters mutable after completion | `Simulation.draftParameters`; `SimulationParameter` append-only (R14) |
+| 14 | Med | A release could pin only one permission version | `MediaReleasePermission` + commit-time "≥ 1 pin" trigger; library entries authorized via a release (R15–R17) |
+| 15 | Med | Layer 3 auto-registration depended on a Layer 7 table | `AIJob` created in Layer 3 (model FK added in Layer 7) |
+| 16 | Med | Org creation "seeded" Layer 2 protocols and per-org roles | Layer 1 bootstraps org + first admin only |
+| 17 | Med | No treatment catalog API | `/treatment-categories`, `/treatments` (Layer 4) |
+| 18 | Med | Layer 4 exit needed Layer 5 patient actions | Staff-assisted in-clinic signing (UD-31) + staff-recorded response (UD-14) |
+| 19 | Med | Layer 1 scope expanded and attributed to the Bible | Flags/practice settings/retention/outbox moved to Layer 2; remaining additions tagged [P] with justification |
+| 20 | Med | Simulation-source permission category invented; AI_TRAINING governance absent | UD-32; §7.7 AI data governance |
+| 21 | Med | A role check in the API; untagged endpoint → permission choices | Permission-only; full mapping table under UD-16 |
+| 22 | Med | Offline viewing not audited | Local encrypted audit records replayed via `/audit/offline-events` |
+| 23 | Med | §5.1 mandatory sequence not mapped | Completion-precondition table (UD-33) |
+| 24 | Med | Ops/observability/testing items missing (runbooks, dashboards, restore, load, CloudTrail, migrations) | §7.6 with owning Layer 0 documents; health vs synthetic checks corrected |
+| 25 | Med | Active rollouts and model identity were editable | Identity frozen; rollouts deactivate-only; rollback = new row (R10–R13) |
+| 26 | Med | Not every [P] was listed for approval | Acceptance now covers every [P] in §§2–8; list extended |
+| 27 | Med | Witness-only consents couldn't reach COMPLETE | Transition added; witness signature recordable in either signed state |
+| 28 | Med | FK guarantees overstated | Reviewer → `ProviderProfile` (R18); application-enforced links documented (§5.1) |
+| 29 | Low | Untagged interpretations; optional capturer/protocol | Tags added; capturer CHECK (R3); `PhotoRequest.protocolId` required |
+| 30 | Low | Accuracy nits (LOGOUT rule, revocation timing, FK-index claim, section refs, §35 docs, missing risks) | All corrected; §35 pack mapped (§9.2); risks added (§10.4) |
+
+**From my own checks, before the review:**
 
 | Found by | Defect | Fix |
 |---|---|---|
-| V6 (DB) | CHECK `Consultation_completed_chk` wrongly let `ARCHIVED` pass on a cancel timestamp and didn't require the completing actor | Split into `COMPLETED ⇒ completedAt + completedById` and `ARCHIVED ⇒ archivedAt` |
-| V6 (DB) | `Message_sent_chk` allowed `FAILED` without `sentAt`, contradicting "SENT may become FAILED" [B §14.2] | Every non-draft message requires `sentAt` |
-| V2 (checker) | §33 (feature prompt template) was never referenced; the per-layer process didn't connect to it | §9.1 now states how this spec pre-fills the §33 template's DATA/STATE/API/SECURITY/AUDIT parts |
-| Self-review | Audit-naming rule was explained inconsistently (§7.3) | One explicit rule consistent with Bible §32, plus one declared exception (`PHOTO_PERMISSION_CHANGED`), raised as UD-19 |
-| V6 (test code) | Test fixture IDs weren't valid UUIDs; one test used invalid SQL; one test was confounded by an unrelated unique index | Tests corrected so each asserts exactly one rule |
-| V2 (checker code) | PDF bullet glyphs, a table header row, markdown bold and multi-word audit prefixes were mis-parsed | Parser corrected, then V3 confirmed the checker still catches real defects |
+| V6 | `Consultation_completed_chk` let `ARCHIVED` pass on a cancel timestamp; completing actor not required | Split into COMPLETED/ARCHIVED checks |
+| V6 | `Message_sent_chk` allowed `FAILED` without `sentAt` [B §14.2] | Every non-draft message requires `sentAt` |
+| V2 | §33 (feature prompt template) never referenced | §9.1 links the per-layer process to it |
+| Self-review | Audit-naming rule stated inconsistently | One rule consistent with §32 + declared exceptions (UD-19) |
+| V6 / V2 (test code) | Invalid fixture UUIDs, one invalid SQL test, one confounded test; PDF bullets, header row, markdown bold and audit prefixes mis-parsed | Corrected; V3 re-confirmed the checker catches real defects |
 
 ### 11.4 What these checks do **not** prove (known limitations)
 
-1. **No application code exists yet.** API contracts are verified for coverage and consistency, not executed. Contract tests arrive with Layer 1 (§6.8).
-2. The DB was exercised on **PostgreSQL 16**; production targets 18. Nothing used is version-specific beyond ≥ 15 (`NULLS NOT DISTINCT`).
-3. The role → permission matrix (§4.5), every **[P]** item and every **UD** are proposals. They are correct *as proposals* but not approved decisions. Layer 1 cannot seed roles until UD-16/UD-17 are accepted.
-4. Tenant isolation is proven at the **database** layer. Application-layer isolation (guards, scoped repository) is proven only when the Layer 1 cross-tenant suite runs.
-5. AI identity-preservation thresholds, model choices and validation datasets are out of scope until Layers 7–8 (UD-04).
+1. **No application code exists yet.** API contracts are verified for coverage and consistency, not executed. Contract, authorization, portal-visibility and cross-tenant suites arrive with Layer 1 onward (§6.8, §7.5).
+2. The DB was exercised on **PostgreSQL 16**; production targets 18. Nothing used is version-specific beyond ≥ 15.
+3. The role → permission matrix, every **[P]** item and every **UD** are proposals. They are internally consistent but not approved. Layer 1 cannot seed roles until UD-09, UD-16 and UD-17 are decided.
+4. Tenant isolation is proven at the **database** layer for enforced relations. The few application-enforced links (§5.1) and all API-level isolation are proven only when the Layer 1 test suites run.
+5. AI thresholds, models and validation datasets are out of scope until Layers 7–8 (UD-04, UD-32).
 6. Legal/compliance readiness (BAAs, retention periods, intended-use review) cannot be verified by software [B §21.3, §36].
 
 ### 11.5 Conclusion
@@ -1592,7 +1756,8 @@ Found and fixed before this document was finalized:
 The foundation is **complete against the Bible and internally consistent**:
 
 - Every entity, permission, role, audit event, state and resource the Bible defines has a place in the schema and the contracts.
-- The database enforces the Bible's hardest rules (tenancy, immutable originals, versioned consents and permissions, append-only audit, explicit AI release) independently of application code.
-- Every gap is surfaced as a tagged decision rather than buried in code.
+- The database enforces the Bible's hardest rules (tenancy, immutable originals, versioned consents and permissions, append-only audit, explicit AI review and release, no silent model replacement) independently of application code, proven by 89 passing behavior tests.
+- An independent review found 30 issues; all are resolved, and the risky ones are locked in by regression tests.
+- Every remaining gap is a tagged decision, not an assumption buried in code.
 
-**Before Layer 0 can lock the architecture**, the owner needs to decide the six "before Layer 0" items in §10.2 (UD-01, 02, 03, 12, 13, 26) and accept or amend the §10.3 proposals.
+**Before Layer 0 can lock the architecture**, the owner needs to decide the six "before Layer 0" items in §10.2 (UD-01, 02, 03, 12, 13, 26) and accept or amend the [P] proposals (§10.3). **Before Layer 1**, UD-09 (the §1.2 cross-practice question), UD-16, UD-17 and the other Layer 1 items need answers.

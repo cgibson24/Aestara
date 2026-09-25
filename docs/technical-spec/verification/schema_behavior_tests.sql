@@ -293,10 +293,9 @@ SELECT pg_temp.expect_error($$
   '23503', 'D9 a permission cannot target another patient''s photo');
 
 SELECT pg_temp.expect_error($$
-  INSERT INTO "MediaRelease" (id, "organizationId", "patientId", purpose, "photoId", "beforeAfterSetId", "permissionId", "releasedById")
-  VALUES (gen_random_uuid(), '0a000000-0000-7000-8000-000000000001', '0a000000-0000-7000-8000-8f01aa50d871', 'WEBSITE',
-          '0a000000-0000-7000-8000-599a1cc8f834', '0a000000-0000-7000-8000-00000000ba01',
-          '0a000000-0000-7000-8000-c4d89ad0e892', '0a000000-0000-7000-8000-bda01469c352')$$,
+  INSERT INTO "MediaRelease" (id, "organizationId", "patientId", purpose, "photoId", "beforeAfterSetId", "releasedById")
+  SELECT gen_random_uuid(), p."organizationId", p."patientId", 'WEBSITE', p.id, b.id, (SELECT id FROM "User" WHERE email = 'dr.a@example.test')
+  FROM "PatientPhoto" p JOIN "BeforeAfterSet" b ON b."beforePhotoId" = p.id LIMIT 1$$,
   '23514', 'D10 a media release covers exactly one asset');
 
 -- =============================================================================
@@ -540,6 +539,139 @@ SELECT pg_temp.expect_error($$
   VALUES (gen_random_uuid(), '0a000000-0000-7000-8000-000000000001', 'MESSAGE', 'DELETE', 'Customer policy 4.2', now(),
           '0a000000-0000-7000-8000-bda01469c352')$$,
   '23514', 'H6 a DELETE retention action requires an explicit period');
+
+
+-- =============================================================================
+-- R. Regression tests for defects found by the independent review (spec 11.3)
+-- =============================================================================
+INSERT INTO "PhotographyProtocol" (id, "organizationId", name, "bodyRegion", status, "updatedAt")
+VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), 'Face standard', 'FACE', 'ACTIVE', now());
+
+SELECT pg_temp.expect_error($$
+  INSERT INTO "PhotoSession" (id, "organizationId", "patientId", "protocolId", source, "capturedByUserId", "practiceId", "startedAt", "updatedAt")
+  VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')), (SELECT id FROM "PhotographyProtocol" WHERE name = 'Face standard'),
+          'PROVIDER_CAPTURE', (SELECT id FROM "User" WHERE email = 'dr.a@example.test'), (SELECT id FROM "Practice" WHERE name = 'Practice B1'), now(), now())$$,
+  '23503', 'R1 a photo session in org A cannot name a practice of org B (no location)');
+
+SELECT pg_temp.expect_error($$
+  INSERT INTO "PhotoSession" (id, "organizationId", "patientId", "protocolId", source, "capturedByUserId", "locationId", "startedAt", "updatedAt")
+  VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')), (SELECT id FROM "PhotographyProtocol" WHERE name = 'Face standard'),
+          'PROVIDER_CAPTURE', (SELECT id FROM "User" WHERE email = 'dr.a@example.test'), (SELECT id FROM "Location" WHERE name = 'Loc A2'), now(), now())$$,
+  '23514', 'R2 a photo session location requires its practice (FK always evaluated)');
+
+SELECT pg_temp.expect_error($$
+  INSERT INTO "PhotoSession" (id, "organizationId", "patientId", "protocolId", source, "startedAt", "updatedAt")
+  VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')), (SELECT id FROM "PhotographyProtocol" WHERE name = 'Face standard'),
+          'PROVIDER_CAPTURE', now(), now())$$,
+  '23514', 'R3 a captured session records its capturing user (Bible 6.1)');
+
+SELECT pg_temp.expect_error($$
+  INSERT INTO "UserRole" (id, "userId", "organizationId", "roleId", scope, "assignedById")
+  VALUES (gen_random_uuid(), (SELECT id FROM "User" WHERE email = 'dr.a@example.test'), (SELECT id FROM "Organization" WHERE slug = 'org-a'), (SELECT id FROM "Role" WHERE key = 'SUPER_ADMIN' AND "organizationId" IS NULL),
+          'ORGANIZATION', (SELECT id FROM "User" WHERE email = 'dr.a@example.test'))$$,
+  '23514', 'R4 nobody can assign a role to themselves');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "ConsentAssignment" SET status = 'COMPLETE' WHERE status = 'VOIDED'$$,
+  'AE001', 'R5 a VOIDED consent is terminal (cannot be re-completed)');
+
+-- second executed consent to prove COMPLETE cannot be reopened
+INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", sha256, status, "verifiedAt")
+VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), 'DOCUMENT', 'clinical', 'org-a/doc2', 'application/pdf', repeat('7', 64), 'AVAILABLE', now());
+INSERT INTO "DocumentVersion" (id, "organizationId", "patientId", "documentId", "versionNumber", "storageObjectId", sha256)
+SELECT gen_random_uuid(), d."organizationId", d."patientId", d.id, 2, (SELECT id FROM "StorageObject" WHERE "objectKey" = 'org-a/doc2'), repeat('7', 64)
+FROM "Document" d WHERE d.title = 'Filler consent (signed)';
+INSERT INTO "ConsentAssignment" (id, "organizationId", "patientId", "templateVersionId", status, responses, "assignedById",
+                                 "completedAt", "signedDocumentVersionId", "signedSnapshotHash", "updatedAt")
+SELECT gen_random_uuid(), dv."organizationId", dv."patientId",
+       (SELECT id FROM "ConsentTemplateVersion" WHERE status = 'PUBLISHED' LIMIT 1), 'COMPLETE', '{"ack1":true}', (SELECT id FROM "User" WHERE email = 'dr.a@example.test'),
+       now(), dv.id, repeat('7', 64), now()
+FROM "DocumentVersion" dv WHERE dv."versionNumber" = 2;
+
+SELECT pg_temp.expect_error($$
+  UPDATE "ConsentAssignment" SET status = 'DRAFT' WHERE status = 'COMPLETE'$$,
+  'AE001', 'R6 an executed consent cannot be reopened to DRAFT for editing');
+
+INSERT INTO "EducationContent" (id, "organizationId", "contentType", title, "updatedAt")
+VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), 'POST_OP_INSTRUCTION', 'After lip filler', now());
+INSERT INTO "EducationContentVersion" (id, "organizationId", "contentId", "versionNumber", status, body, "publishedAt", "updatedAt")
+SELECT gen_random_uuid(), c."organizationId", c.id, 1, 'PUBLISHED', '{"text":"Avoid heat for 48h"}', now(), now()
+FROM "EducationContent" c WHERE c.title = 'After lip filler';
+
+SELECT pg_temp.expect_error($$
+  UPDATE "EducationContentVersion" SET status = 'DRAFT' WHERE status = 'PUBLISHED'$$,
+  'AE001', 'R7 published education content cannot return to DRAFT');
+
+INSERT INTO "TreatmentCategory" (id, "organizationId", name, "updatedAt") VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), 'Injectables', now());
+INSERT INTO "Treatment" (id, "organizationId", "categoryId", name, "updatedAt")
+SELECT gen_random_uuid(), c."organizationId", c.id, 'Lip filler', now() FROM "TreatmentCategory" c WHERE c.name = 'Injectables';
+INSERT INTO "TreatmentPlan" (id, "organizationId", "patientId", "practiceId", title, "createdById", "updatedAt")
+VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')), (SELECT id FROM "Practice" WHERE name = 'Practice A1'), 'Plan A', (SELECT id FROM "User" WHERE email = 'dr.a@example.test'), now());
+INSERT INTO "Estimate" (id, "organizationId", "patientId", "treatmentPlanId", "versionNumber", status, currency,
+                        subtotal, "discountTotal", total, "lineItemsSnapshot", "issuedAt", "createdById", "updatedAt")
+SELECT gen_random_uuid(), t."organizationId", t."patientId", t.id, 1, 'ISSUED', 'USD', 800, 0, 800, '[]', now(), (SELECT id FROM "User" WHERE email = 'dr.a@example.test'), now()
+FROM "TreatmentPlan" t WHERE t.title = 'Plan A';
+
+SELECT pg_temp.expect_error($$
+  UPDATE "Estimate" SET status = 'DRAFT' WHERE status = 'ISSUED'$$,
+  'AE001', 'R8 an issued estimate cannot return to DRAFT');
+SELECT pg_temp.expect_ok($$
+  UPDATE "Estimate" SET status = 'VOID' WHERE status = 'ISSUED'$$,
+  'R9 an issued estimate can still be voided');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "AIModel" SET key = 'lip-visualizer-v2' WHERE key = 'lip-visualizer'$$,
+  'AE001', 'R10 a registered model identity cannot change');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "AIModelRollout" SET reason = 'edited in place' WHERE state = 'ACTIVE' AND "organizationId" IS NULL$$,
+  'AE001', 'R11 an active rollout row cannot be edited in place (only deactivated)');
+SELECT pg_temp.expect_ok($$
+  UPDATE "AIModelRollout" SET state = 'INACTIVE', "deactivatedAt" = now() WHERE state = 'ACTIVE' AND "organizationId" IS NULL$$,
+  'R12 an active rollout can be deactivated');
+SELECT pg_temp.expect_error($$
+  UPDATE "AIModelRollout" SET state = 'ACTIVE', "deactivatedAt" = NULL WHERE state = 'INACTIVE'$$,
+  'AE001', 'R13 a deactivated rollout cannot be re-activated in place (rollback = new row)');
+
+INSERT INTO "SimulationParameter" (id, "organizationId", "simulationVersionId", key, "numericValue")
+SELECT gen_random_uuid(), v."organizationId", v.id, 'upperLipVolume', 0.4 FROM "SimulationVersion" v WHERE v."versionNumber" = 1;
+SELECT pg_temp.expect_error($$
+  UPDATE "SimulationParameter" SET "numericValue" = 0.9 WHERE key = 'upperLipVolume'$$,
+  'AE001', 'R14 simulation parameters (provenance) are append-only');
+
+INSERT INTO "PhotoPermission" (id, "organizationId", "patientId", category, scope, state, "versionNumber", "effectiveAt")
+VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')), 'PATIENT_APP', 'PATIENT_WIDE', 'GRANTED', 1, now());
+
+BEGIN;
+SET CONSTRAINTS "MediaRelease_requires_permission" IMMEDIATE;
+SELECT pg_temp.expect_error($$
+  INSERT INTO "MediaRelease" (id, "organizationId", "patientId", purpose, "photoId", "releasedById")
+  SELECT gen_random_uuid(), p."organizationId", p."patientId", 'PATIENT_APP', p.id, (SELECT id FROM "User" WHERE email = 'dr.a@example.test')
+  FROM "PatientPhoto" p WHERE p."patientId" = (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')) LIMIT 1$$,
+  '23514', 'R15 a media release must pin at least one permission version');
+COMMIT;
+
+SELECT pg_temp.expect_ok($$
+  WITH r AS (
+    INSERT INTO "MediaRelease" (id, "organizationId", "patientId", purpose, "photoId", "releasedById")
+    SELECT gen_random_uuid(), p."organizationId", p."patientId", 'PATIENT_APP', p.id, (SELECT id FROM "User" WHERE email = 'dr.a@example.test')
+    FROM "PatientPhoto" p WHERE p."patientId" = (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')) LIMIT 1
+    RETURNING id, "organizationId", "patientId")
+  INSERT INTO "MediaReleasePermission" ("organizationId", "patientId", "mediaReleaseId", "permissionId")
+  SELECT r."organizationId", r."patientId", r.id, pp.id FROM r
+  JOIN "PhotoPermission" pp ON pp."patientId" = r."patientId" AND pp.category = 'PATIENT_APP' AND pp."supersededAt" IS NULL$$,
+  'R16 a release with its pinned permission version is accepted');
+
+SELECT pg_temp.expect_error($$
+  DELETE FROM "MediaReleasePermission"$$,
+  'AE001', 'R17 pinned permission versions cannot be removed');
+
+SELECT pg_temp.expect_error($$
+  INSERT INTO "SimulationApproval" (id, "organizationId", "patientId", "simulationId", "simulationVersionId", decision, "reviewerUserId")
+  SELECT gen_random_uuid(), v."organizationId", v."patientId", v."simulationId", v.id, 'REJECTED',
+         (SELECT id FROM "User" WHERE email = 'dr.b@example.test')
+  FROM "SimulationVersion" v WHERE v."versionNumber" = 1$$,
+  '23503', 'R18 the reviewing provider must be a provider of the same organization');
 
 -- =============================================================================
 -- Summary

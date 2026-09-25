@@ -172,7 +172,6 @@ model User {
   simulationsCreated          Simulation[]            @relation("SimulationCreatedBy")
   simulationsReleased         Simulation[]            @relation("SimulationReleasedBy")
   simulationVersionsGenerated SimulationVersion[]
-  simulationReviews           SimulationApproval[]
   similarCasesShown           SimilarCaseMatch[]
   caseLibraryEntriesAdded     CaseLibraryEntry[]
   outcomeMeasurements         OutcomeMeasurement[]
@@ -292,6 +291,8 @@ model Practice {
   integrations     Integration[]
   featureFlags     FeatureFlag[]
   settings         PracticeSetting[]
+  photoSessions    PhotoSession[]
+  caseLibrary      CaseLibraryEntry[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, name])
@@ -573,6 +574,7 @@ model ProviderProfile {
   treatmentPlans      TreatmentPlan[]
   treatmentPlanItems  TreatmentPlanItem[]
   telehealthSessions  TelehealthSession[]
+  simulationReviews   SimulationApproval[]
 
   @@unique([organizationId, userId])
 }
@@ -1130,7 +1132,8 @@ model TreatmentPlanItem {
 //    Bible entities: PhotographyProtocol, PhotographyProtocolView, PhotoSession,
 //    PatientPhoto, PhotoDerivative, PhotoAnnotation, PhotoTag, PhotoPermission,
 //    MediaRelease, BeforeAfterSet
-//    Additions: StorageObject (Media Service ledger), PhotoRequest (13.4)
+//    Additions: StorageObject (Media Service ledger), PhotoRequest (13.4),
+//    MediaReleasePermission (7.3 pin every permission version relied on)
 // =============================================================================
 
 enum ProtocolStatus {
@@ -1353,6 +1356,7 @@ model PhotoSession {
   protocolId       String             @db.Uuid
   source           PhotoSource
   status           PhotoSessionStatus @default(IN_PROGRESS)
+  /// Required except for IMPORT sessions (CHECK in constraints.sql, Bible 6.1).
   capturedByUserId String?            @db.Uuid
   consultationId   String?            @db.Uuid
   procedureId      String?            @db.Uuid
@@ -1369,6 +1373,7 @@ model PhotoSession {
   capturedBy   User?               @relation(fields: [capturedByUserId], references: [id], onDelete: Restrict)
   consultation Consultation?       @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
   procedure    Procedure?          @relation(fields: [organizationId, patientId, procedureId], references: [organizationId, patientId, id], onDelete: Restrict)
+  practice     Practice?           @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
   location     Location?           @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
   photoRequest PhotoRequest?       @relation(fields: [organizationId, patientId, photoRequestId], references: [organizationId, patientId, id], onDelete: Restrict)
 
@@ -1542,16 +1547,17 @@ model PhotoPermission {
   evidenceConsent    ConsentAssignment? @relation(fields: [organizationId, patientId, evidenceConsentAssignmentId], references: [organizationId, patientId, id], onDelete: Restrict)
   recordedBy         User?              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
 
-  mediaReleases      MediaRelease[]
-  caseLibraryEntries CaseLibraryEntry[]
+  releasePins        MediaReleasePermission[]
 
   @@unique([organizationId, patientId, id])
   @@unique([organizationId, patientId, previousVersionId])
   @@index([organizationId, patientId, category])
 }
 
-/// Record that a specific asset was released/exported for a purpose, pinned to
-/// the exact PhotoPermission version that authorized it at that moment.
+/// Record that a specific asset was released/exported for a purpose. Every
+/// PhotoPermission version relied on at that moment is pinned in
+/// MediaReleasePermission (a before/after or simulation can depend on several).
+/// A release without at least one pinned permission is rejected at commit.
 model MediaRelease {
   id               String                  @id @default(uuid(7)) @db.Uuid
   organizationId   String                  @db.Uuid
@@ -1561,7 +1567,6 @@ model MediaRelease {
   derivativeId     String?                 @db.Uuid
   beforeAfterSetId String?                 @db.Uuid
   simulationId     String?                 @db.Uuid
-  permissionId     String                  @db.Uuid
   releasedById     String                  @db.Uuid
   releasedAt       DateTime                @default(now()) @db.Timestamptz(3)
   revokedAt        DateTime?               @db.Timestamptz(3)
@@ -1573,11 +1578,28 @@ model MediaRelease {
   derivative     PhotoDerivative? @relation(fields: [organizationId, patientId, derivativeId], references: [organizationId, patientId, id], onDelete: Restrict)
   beforeAfterSet BeforeAfterSet?  @relation(fields: [organizationId, patientId, beforeAfterSetId], references: [organizationId, patientId, id], onDelete: Restrict)
   simulation     Simulation?      @relation(fields: [organizationId, patientId, simulationId], references: [organizationId, patientId, id], onDelete: Restrict)
-  permission     PhotoPermission  @relation(fields: [organizationId, patientId, permissionId], references: [organizationId, patientId, id])
   releasedBy     User             @relation("MediaReleaseReleasedBy", fields: [releasedById], references: [id])
   revokedBy      User?            @relation("MediaReleaseRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
 
+  permissions        MediaReleasePermission[]
+  caseLibraryEntries CaseLibraryEntry[]
+
+  @@unique([organizationId, patientId, id])
   @@index([organizationId, patientId, purpose])
+}
+
+/// The exact permission versions a MediaRelease relied on. Append-only.
+model MediaReleasePermission {
+  organizationId String @db.Uuid
+  patientId      String @db.Uuid
+  mediaReleaseId String @db.Uuid
+  permissionId   String @db.Uuid
+
+  mediaRelease MediaRelease    @relation(fields: [organizationId, patientId, mediaReleaseId], references: [organizationId, patientId, id])
+  permission   PhotoPermission @relation(fields: [organizationId, patientId, permissionId], references: [organizationId, patientId, id])
+
+  @@id([mediaReleaseId, permissionId])
+  @@index([permissionId])
 }
 
 /// Both photos are constrained by composite FKs to the SAME organization and
@@ -1621,7 +1643,7 @@ model PhotoRequest {
   id                String             @id @default(uuid(7)) @db.Uuid
   organizationId    String             @db.Uuid
   patientId         String             @db.Uuid
-  protocolId        String?            @db.Uuid
+  protocolId        String             @db.Uuid
   requestedViewKeys String[]
   instructions      String?
   status            PhotoRequestStatus @default(OPEN)
@@ -1634,7 +1656,7 @@ model PhotoRequest {
   updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
 
   patient       Patient              @relation(fields: [organizationId, patientId], references: [organizationId, id])
-  protocol      PhotographyProtocol? @relation(fields: [organizationId, protocolId], references: [organizationId, id], onDelete: Restrict)
+  protocol      PhotographyProtocol  @relation(fields: [organizationId, protocolId], references: [organizationId, id])
   requestedBy   User                 @relation(fields: [requestedById], references: [id])
   photoSessions PhotoSession[]
 
@@ -1879,6 +1901,9 @@ model Simulation {
   procedureKey      String?
   treatmentRegion   String
   status            SimulationStatus   @default(DRAFT)
+  /// Provider parameters edited while DRAFT (validated against the active
+  /// model's allow-list at /generate, then frozen into SimulationParameter rows).
+  draftParameters   Json?
   /// The approved version released to the patient (set on RELEASED_TO_PATIENT).
   releasedVersionId String?            @db.Uuid
   createdById       String             @db.Uuid
@@ -1978,7 +2003,8 @@ model SimulationParameter {
   @@unique([simulationVersionId, key])
 }
 
-/// Append-only provider review decision on a specific version.
+/// Append-only provider review decision on a specific version. The reviewer is
+/// a ProviderProfile of the same organization (Bible 9.4 "reviewing provider").
 model SimulationApproval {
   id                  String                   @id @default(uuid(7)) @db.Uuid
   organizationId      String                   @db.Uuid
@@ -1992,7 +2018,7 @@ model SimulationApproval {
 
   simulation        Simulation        @relation(fields: [organizationId, patientId, simulationId], references: [organizationId, patientId, id])
   simulationVersion SimulationVersion @relation(fields: [simulationId, simulationVersionId], references: [simulationId, id])
-  reviewer          User              @relation(fields: [reviewerUserId], references: [id])
+  reviewer          ProviderProfile   @relation(fields: [organizationId, reviewerUserId], references: [organizationId, userId])
 
   @@index([simulationId, decidedAt])
 }
@@ -2021,17 +2047,20 @@ model AIValidationRecord {
   @@index([modelVersionId])
 }
 
-/// Practice-owned, permission-gated historical case library (Bible 10).
+/// Practice-owned, permission-gated historical case library (Bible 10: "the
+/// practice's ... library"). Library use is authorized by a MediaRelease (which
+/// pins the permission versions relied on); revoking it withdraws the entry.
 model CaseLibraryEntry {
   id                  String            @id @default(uuid(7)) @db.Uuid
   organizationId      String            @db.Uuid
+  practiceId          String            @db.Uuid
   patientId           String            @db.Uuid
   beforeAfterSetId    String            @db.Uuid
   treatmentId         String?           @db.Uuid
   viewKey             String?
   status              CaseLibraryStatus @default(ACTIVE)
-  /// The permission version that authorizes library use (category: UD-10).
-  permissionId        String            @db.Uuid
+  /// The release authorizing library use (required category: UD-10).
+  mediaReleaseId      String            @db.Uuid
   /// De-identified display derivative shown to other patients.
   displayDerivativeId String?           @db.Uuid
   addedById           String            @db.Uuid
@@ -2041,13 +2070,15 @@ model CaseLibraryEntry {
 
   beforeAfterSet    BeforeAfterSet   @relation(fields: [organizationId, patientId, beforeAfterSetId], references: [organizationId, patientId, id])
   treatment         Treatment?       @relation(fields: [organizationId, treatmentId], references: [organizationId, id], onDelete: Restrict)
-  permission        PhotoPermission  @relation(fields: [organizationId, patientId, permissionId], references: [organizationId, patientId, id])
+  practice          Practice         @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  mediaRelease      MediaRelease     @relation(fields: [organizationId, patientId, mediaReleaseId], references: [organizationId, patientId, id])
   displayDerivative PhotoDerivative? @relation(fields: [organizationId, patientId, displayDerivativeId], references: [organizationId, patientId, id], onDelete: Restrict)
   addedBy           User             @relation(fields: [addedById], references: [id])
   matches           SimilarCaseMatch[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, beforeAfterSetId])
+  @@index([organizationId, practiceId, status])
 }
 
 /// Records which historical cases were shown, to whom and when (Bible 10).
@@ -2789,6 +2820,10 @@ enum AuditAction {
   DATA_EXPORT_COMPLETED
   SECURITY_SESSION_REVOKED
   // ---- [P] proposed additions (spec section 7.3) ----
+  SIMULATION_CREATED
+  SIMULATION_STATUS_CHANGED
+  CONSENT_STATUS_CHANGED
+  DOCUMENT_VIEWED
   ACCESS_DENIED
   ROLE_REVOKED
   PATIENT_ACCOUNT_LINKED

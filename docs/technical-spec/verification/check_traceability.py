@@ -175,7 +175,7 @@ event_like = {e for e in audit_cols if e.split("_")[0] in {
     "TREATMENT", "DOCUMENT", "CONTENT", "INSTRUCTION", "APPOINTMENT", "TELEHEALTH", "CONFIGURATION"}}
 event_like -= {"PHOTO_ANNOTATED"} if "PHOTO_ANNOTATED" in enums["AuditAction"] else set()
 unknown = sorted(e for e in event_like if e not in enums["AuditAction"] and not e.endswith("_NOT_FOUND")
-                 and e not in {"DOCUMENT_VIEWED", "PATIENT_APP", "SIGNED_CONSENT", "SENT_TO_PATIENT",
+                 and e not in {"PATIENT_APP", "SIGNED_CONSENT", "SENT_TO_PATIENT",
                                "RELEASED_TO_PATIENT", "READY_FOR_PROVIDER_REVIEW", "REQUEST_RETAKE",
                                "DISPLAY_PREVIEW", "INVALID_STATE_TRANSITION", "SOCIAL_MEDIA", "PAID_ADVERTISING",
                                "IN_PROGRESS", "ACCESS_DENIED"})
@@ -374,6 +374,29 @@ missing = [n for n in bible_sections if n not in refs]
 check("Every Bible section 0-36 is referenced in the spec", len(bible_sections) == 37 and not missing,
       f"sections parsed {len(bible_sections)}; unreferenced: {missing}")
 check("Appendix A referenced", "Appendix A" in S)
+
+# --------------------------------------------------------------------------- #
+# 11. Per-layer rollout (spec 5.8): every table exactly once, and no table has a
+#     REQUIRED foreign key to a table that a later layer creates.
+# --------------------------------------------------------------------------- #
+rollout = section(S, "### 5.8 Migration rollout by layer", "ⁱ Beyond the literal")
+layer_of: dict[str, int] = {}
+dupes = []
+for layer, cells in re.findall(r"^\| (\d+) \| (.+?) \|$", rollout, re.M):
+    for name in re.findall(r"\b([A-Z][A-Za-z]+)\b(?! FK)", re.sub(r"\(\+ .*?\)", "", cells)):
+        if name in models:
+            if name in layer_of:
+                dupes.append(name)
+            layer_of[name] = int(layer)
+check("5.8 rollout lists every table exactly once", set(layer_of) == models and not dupes,
+      f"missing: {sorted(models - set(layer_of))}; duplicated: {dupes}")
+late = []
+for m in models:
+    body = re.search(rf"^model {m} \{{(.*?)^\}}", P, re.M | re.S).group(1)
+    for target in re.findall(r"^\s+\w+\s+(\w+)\s+@relation\(", body, re.M):  # no '?' / '[]' => required
+        if target in layer_of and m in layer_of and layer_of[target] > layer_of[m]:
+            late.append(f"{m}(L{layer_of[m]}) -> {target}(L{layer_of[target]})")
+check("No required FK points at a table created in a later layer", not late, f"violations: {late}")
 
 # --------------------------------------------------------------------------- #
 # Report
