@@ -58,7 +58,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.27.1"
           cache: false
 
       - name: API breaking-change gate (oasdiff, spec §6.8)
@@ -101,8 +101,10 @@ jobs:
           python -m pip install --quiet pypdf
           python docs/technical-spec/verification/check_traceability.py
 
-      - name: Documentation pack and references
-        run: python docs/technical-spec/verification/check_docs.py
+      - name: Documentation pack, references and Bible export
+        run: |
+          python docs/technical-spec/verification/export_bible.py --check
+          python docs/technical-spec/verification/check_docs.py
 
       - uses: actions/setup-node@v5
         with:
@@ -168,7 +170,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.27.1"
           cache: false
 
       - name: OSV-Scanner (spec §2.3, Bible §28.2)
@@ -227,4 +229,13 @@ jobs:
           print(next(d["udid"] for runtime, ds in sorted(devices.items(), reverse=True)
                      if "iOS-26" in runtime for d in ds if d["name"].startswith("iPhone")))')
           echo "Simulator: $udid"
-          xcodebuild test -scheme DesignSystem -destination "id=$udid" -quiet
+          bundle="$RUNNER_TEMP/DesignSystem.xcresult"
+          xcodebuild test -scheme DesignSystem -destination "id=$udid" -resultBundlePath "$bundle" -quiet
+          # Prove the tests ran: a green step alone does not show they executed.
+          xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$RUNNER_TEMP/summary.json"
+          python3 - "$RUNNER_TEMP/summary.json" <<'PY'
+          import json, sys
+          s = json.load(open(sys.argv[1]))
+          print(f"result={s['result']} passed={s['passedTests']} failed={s['failedTests']} total={s['totalTestCount']}")
+          assert s["result"] == "Passed" and s["failedTests"] == 0 and s["passedTests"] >= 4, "DesignSystem tests did not all run and pass"
+          PY

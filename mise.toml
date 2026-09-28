@@ -1,4 +1,4 @@
 # Tools installed with mise (https://mise.jdx.dev). Node and pnpm are pinned
 # separately (.nvmrc, packageManager) and are not managed here.
 [tools]
-tuist = "latest" # pinned to an exact version once CI reports it (reproducible generation, Bible §31)
+tuist = "4.209.0" # Xcode project generation (reproducible, Bible §31)
