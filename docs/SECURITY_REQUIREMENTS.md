@@ -128,7 +128,7 @@ The INT area is added to the areas the pack names because Bible §36 has a "Cons
 | SR-DPR-02 | Database connections require TLS (`rds.force_ssl`). | spec §7.1 | CI (checkov) | L0 |
 | SR-DPR-03 | Internal service traffic stays inside the VPC over TLS; service-to-service calls authenticate with IAM-signed requests or mTLS, and queues are guarded by per-producer/consumer IAM policies. | B §21.2; spec §6.7, §7.1 | RV, AT | L2, L7 |
 | SR-DPR-04 | RDS storage and snapshots are encrypted with a KMS customer-managed key. | B §21.2; spec §7.1 | CI (checkov) | L0 |
-| SR-DPR-05 | S3 buckets use SSE-KMS with bucket keys, versioning and account-level Block Public Access. | B §21.2; spec §2.1, §7.1 | CI (checkov) | L0 |
+| SR-DPR-05 | Data buckets (clinical media, exports, integration payloads) use SSE-KMS with bucket keys and versioning, and the account has Block Public Access. The access-log bucket uses SSE-S3, because S3 server access logging cannot deliver to SSE-KMS buckets (ADR-0014). | B §21.2; spec §2.1, §7.1 | CI (checkov) | L0 |
 | SR-DPR-06 | Each environment has its own customer-managed KMS keys; TOTP seeds and integration payloads are envelope-encrypted. | B §21.2; spec §2.3, §7.1 | RV, AT | L0, L1, L10 |
 | SR-DPR-07 | Bucket policies deny non-TLS access and, for services, access that does not come through the VPC endpoint. | spec §7.1 | CI (checkov), RV | L0 (non-TLS deny); L2 (VPC-endpoint condition, with the first service that reads media) |
 | SR-DPR-08 | On iOS, cached sensitive data uses Data Protection class *Complete*, a SQLCipher database and CryptoKit AES-GCM for cached media, with keys in the Keychain. | B §21.2, §23.3; spec §2.2, §7.1 | AT (iOS), RV | L2 |
