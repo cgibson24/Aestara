@@ -4,7 +4,7 @@
 //
 // Source of truth : Software Production Bible v1.0, section 19 (Canonical Data Model)
 // Status          : DRAFT for Layer 0 review. This file is NOT a migration.
-//                   Layer 0 promotes it to packages/database/prisma/schema.prisma.
+//                   Tables move into packages/database layer by layer (spec §5.8).
 // Companion SQL   : docs/technical-spec/constraints.sql (constraints Prisma
 //                   cannot express: partial uniques, CHECKs, append-only triggers).
 //
@@ -32,7 +32,7 @@ datasource db {
 // 1. IDENTITY & TENANCY
 //    Bible entities: User, Organization, Practice, Location, Membership, Role,
 //    Permission, RolePermission, UserRole, Device, Session
-//    Additions: UserCredential (conditional on UD-02)
+//    Additions: UserCredential (first-party identity, D-02)
 // =============================================================================
 
 enum UserKind {
@@ -558,7 +558,7 @@ model ProviderProfile {
   /// e.g. "MD, FACS"
   credentials    String?
   specialty      String?
-  /// US National Provider Identifier (jurisdiction scope: UD-13).
+  /// US National Provider Identifier (United States only, D-06).
   npi            String?  @db.Char(10)
   bio            String?
   isBookable     Boolean  @default(true)
@@ -1295,8 +1295,8 @@ model StorageObject {
   @@index([organizationId, objectClass, createdAt])
 }
 
-/// Standard protocols (Bible 6.2) are seeded into each organization on
-/// creation, so every protocol row is tenant-owned. Views are frozen once the
+/// Every protocol row is tenant-owned. The Bible 6.2 standard protocols are
+/// provided to organizations in Layer 2 (spec §6.3), not at creation. Views are frozen once the
 /// protocol is ACTIVE; changes create a new protocol that supersedes it.
 model PhotographyProtocol {
   id             String         @id @default(uuid(7)) @db.Uuid
@@ -1996,7 +1996,6 @@ model SimulationParameter {
   key                 String
   numericValue        Decimal? @db.Decimal(10, 4)
   optionValue         String?
-  unit                String?
 
   simulationVersion SimulationVersion @relation(fields: [organizationId, simulationVersionId], references: [organizationId, id])
 

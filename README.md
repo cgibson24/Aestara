@@ -7,7 +7,7 @@ A visual consultation, clinical photography and clinician-controlled AI visualiz
 - an admin web portal
 
 > **Source of truth:** `Aesthetic_Platform_Software_Production_Bible_v1.0.pdf` → `docs/TECHNICAL_SPECIFICATION.md` (locked v1.0) → `docs/ARCHITECTURE_DECISIONS.md`.
-> **Where we are:** `docs/DEVELOPMENT_ROADMAP.md`.
+> **Where we are:** `docs/DEVELOPMENT_ROADMAP.md`. Layer 0 (architecture foundation) is built and awaiting acceptance: `docs/ACCEPTANCE_CRITERIA.md`.
 
 ## Quick start
 
@@ -34,13 +34,13 @@ pnpm services:up          # PostgreSQL 18 for local development
 ```
 apps/
   design-prototype/   static, clickable design prototype (hard-coded data, no backend)
-  ios-provider/       provider iOS/iPadOS app (SwiftUI)          · Layer 1+
-  ios-patient/        patient iOS app (SwiftUI)                  · Layer 5+
+  ios-provider/       provider iOS/iPadOS app: Tuist project + 20 module packages · features from Layer 1
+  ios-patient/        patient iOS app: Tuist project                             · features from Layer 5
   admin-web/          admin portal (React + Vite SPA)             · Layer 1+
 services/             api · ai-gateway · image-processing · notifications · integration-service
-packages/             design-tokens · api-contracts · database · security · shared-types
-infrastructure/       terraform (AWS) · local tooling
-docs/                 specification, ADRs, roadmap, design system, changelog
+packages/             design-tokens · api-contracts (OpenAPI 3.1) · database · security · shared-types
+infrastructure/       terraform: AWS baseline for dev/staging/production (checked, not applied)
+docs/                 Bible export, specification, ADRs, roadmap, Layer 0 documentation pack
 ```
 
 Placeholders say which layer builds them. Nothing is faked ahead of its layer.
@@ -49,8 +49,12 @@ Placeholders say which layer builds them. Nothing is faked ahead of its layer.
 
 ```bash
 pnpm verify:spec                                   # Bible → spec traceability (pip install pypdf)
-DATABASE_URL=postgresql://…/empty_db pnpm verify:schema   # schema + 89 database behaviour checks
+DATABASE_URL=postgresql://…/empty_db pnpm verify:schema   # schema + 90 database behaviour checks
 pnpm --filter @aestara/design-tokens test          # WCAG contrast gate for the palette
+python3 docs/technical-spec/verification/check_docs.py    # documentation pack and references
+python3 apps/ios-provider/scripts/check_module_graph.py   # iOS module architecture
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of these on every push.
+iOS (macOS with Xcode 26.6): `mise install`, then `tuist generate` in `apps/ios-provider` or `apps/ios-patient`. Terraform: see `infrastructure/terraform/README.md`.
+
+CI (`.github/workflows/ci.yml`) runs all of these on every push, plus Terraform checks, a dependency vulnerability scan and the iOS build and tests.

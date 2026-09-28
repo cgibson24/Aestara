@@ -10,6 +10,8 @@ You are the principal engineering agent for a production commercial healthcare s
 4. `docs/DESIGN_SYSTEM.md`
 5. The current step in `docs/DEVELOPMENT_ROADMAP.md` and the active micro-prompt
 
+The Layer 0 documentation pack (`docs/*.md`, index in `docs/REPOSITORY_STRUCTURE.md`) explains and links the spec; it never overrides it (ADR-0012). At each layer kickoff, resolve the findings carried to that layer in `docs/ACCEPTANCE_CRITERIA.md` §5.
+
 If something conflicts, the higher source wins. If behaviour is genuinely undefined and would create a permanent dependency, record an unresolved decision; don't invent it.
 
 ## Development Constitution (Bible §30, binding)
@@ -33,11 +35,14 @@ If something conflicts, the higher source wins. If behaviour is genuinely undefi
 | Path | What |
 |---|---|
 | `apps/design-prototype` | Static design prototype (React + Vite, hard-coded data). `pnpm dev:prototype` |
-| `apps/ios-provider`, `apps/ios-patient`, `apps/admin-web` | Product apps (built layer by layer; placeholders now) |
+| `apps/ios-provider`, `apps/ios-patient` | Tuist projects; 20 module packages in `apps/ios-provider/Modules` with a checked tier graph (`modules.json`, ADR-0015) |
+| `apps/admin-web` | Admin SPA (placeholder until Layer 1) |
 | `services/*` | Backend services (placeholders until their layer) |
 | `packages/design-tokens` | **Single source** of colours/type/spacing for iOS (Swift) and web (CSS) |
-| `packages/*` | Contracts, database, security, shared types (placeholders until their layer) |
-| `docs/` | Spec, ADRs, roadmap, design system, changelog |
+| `packages/api-contracts` | Zod → OpenAPI 3.1 (`openapi.json`); Layer 0 holds the shared primitives only (ADR-0013) |
+| `packages/database`, `packages/security`, `packages/shared-types` | Placeholders until Layer 1 |
+| `infrastructure/terraform` | AWS baseline, checked but not applied (ADR-0014) |
+| `docs/` | Bible export, spec, ADRs, roadmap, Layer 0 documentation pack, acceptance review, changelog |
 
 ## Commands
 
@@ -49,6 +54,9 @@ pnpm tokens               # regenerate design tokens after editing packages/desi
 pnpm services:up          # local PostgreSQL 18 (docker compose)
 pnpm verify:spec          # Bible → spec traceability (needs: pip install pypdf)
 DATABASE_URL=… pnpm verify:schema   # schema + DB behaviour suite on an EMPTY database
+python3 docs/technical-spec/verification/check_docs.py    # documentation pack, references, links
+python3 apps/ios-provider/scripts/check_module_graph.py   # iOS module architecture rules
+cd apps/ios-provider && tuist generate                    # Xcode projects (macOS; run `mise install` first)
 ```
 
 ## Conventions

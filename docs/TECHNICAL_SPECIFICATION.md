@@ -102,7 +102,7 @@ These come from Bible §0.1, §1.2 and the Development Constitution (§30). Each
 
 ### 1.5 Explicit non-goals for the first production build [B §1.2]
 
-No automatic diagnosis. No prescribing of medication, product, dosage, injection depth or surgical technique. No visualization presented as an exact prediction. No replacement of billing, claims, e-prescribing or an enterprise EHR. No cross-practice patient data sharing. No 3D digital patient (deferred to Layer 11). No call recording (§16.2). No break-glass impersonation unless separately specified (§17.1).
+No automatic diagnosis. No prescribing of medication, product, dosage, injection depth or surgical technique. No visualization presented as an exact prediction. No replacement of billing, claims, e-prescribing or an enterprise EHR. No patient data sharing across organizations (D-01: Bible §1.2's "cross-practice" is read as cross-organization; sharing across the practices of one organization is allowed, §4.7). No 3D digital patient (deferred to Layer 11). No call recording (§16.2). No break-glass impersonation unless separately specified (§17.1).
 
 ### 1.6 Build layers [B §29]
 
@@ -145,7 +145,7 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | Image processing | **Python 3.13** service using OpenCV + libvips (pyvips) | — | [P] · [UD-06] | Registration and alignment need OpenCV. Keeping all pixel work in one language avoids two imaging stacks. Bible §25.1 prefers TypeScript "or another approved strongly typed framework", so Python (typed, mypy strict) is adopted by delegation (ADR-0008). |
 | AI gateway | NestJS (TypeScript) | — | [P] | Authenticated internal job API, model routing, provenance [B §25.2]. |
 | AI inference | Python + PyTorch / ONNX Runtime in a **private** GPU environment (no public egress) | — | [B §2.1] "Private AI Jobs" (privacy) · [P] Python · [UD-04] hosting | Patient images never go to third-party AI APIs unless a separately approved BAA-covered service is chosen. Python is the de facto ML runtime but is not the Bible's preferred backend language (§25.1), so it is adopted by delegation (ADR-0008). |
-| Notifications | APNs (token auth), Amazon SES (email), AWS End User Messaging (SMS) | — | [P] | HIPAA-eligible AWS services; payloads are generic text only [B §14.3]. |
+| Notifications | APNs (token auth), Amazon SES (email), AWS End User Messaging (SMS) | — | [P] | SES and End User Messaging are HIPAA-eligible AWS services; APNs is Apple's service and receives only generic text plus a deep-link identifier. Payloads are generic text only [B §14.3]. |
 | Authentication | First-party OIDC-compatible auth module: `jose` (JWT), `@node-rs/argon2` (Argon2id), `otplib` (TOTP), `@simplewebauthn/server` (passkeys) | jose 6.2, argon2 2.2, otplib 13.5, simplewebauthn 14.0 | [B §21.1] OIDC-compatible · **D-02** first-party | See §4.2. Enterprise SSO federation can be added later behind an identity-provider adapter. |
 | Telehealth video | Vendor adapter (BAA-capable vendor) | — | [UD-05] | Layer 6 decision; the schema is vendor-agnostic (`TelehealthSession.vendor`). |
 | Malware scanning | Scanning worker on quarantined uploads | — | [UD-22] | Required for patient uploads and attachments [B §13.4, §14.4]. |
@@ -889,7 +889,7 @@ Some forward references are nullable (e.g. `Appointment.consultationId`, `PhotoS
 #### 6.1.1 Base path and versioning
 
 - Staff and admin API: **`/api/v1/...`** [B §20.1]. Patient app: **`/api/v1/portal/...`** (§6.5). Internal services: **`/internal/v1/...`**, never internet-routable. Vendor webhooks: **`/webhooks/v1/{vendor}`**, signature-verified.
-- Within `v1` only **additive** changes are allowed (new endpoints, new optional fields, new enum values that clients must tolerate). Breaking changes require `/api/v2`. Deprecations announce `Deprecation` and `Sunset` headers at least one release ahead. CI blocks breaking changes (§6.7).
+- Within `v1` only **additive** changes are allowed (new endpoints, new optional fields, new enum values that clients must tolerate). Breaking changes require `/api/v2`. Deprecations announce `Deprecation` and `Sunset` headers at least one release ahead. CI blocks breaking changes (§6.8).
 
 #### 6.1.2 Formats
 
@@ -1449,9 +1449,9 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 
 ### 7.5 Security & isolation testing [B §27.1, §36]
 
-- **Cross-tenant suite:** for every tenant-scoped route (enumerated from the route table), tenant B's user requests tenant A's resource IDs and must get `404` with a byte-identical body to a random-UUID request. Runs in CI against a real Postgres (Testcontainers).
+- **Cross-tenant suite:** for every tenant-scoped route (enumerated from the route table), tenant B's user requests tenant A's resource IDs and must get `404` with the same body as a random-UUID request, byte for byte apart from the per-request `requestId`. Runs in CI against a real Postgres (Testcontainers).
 - **Authorization suite:** role × endpoint matrix generated from §4.5; each cell asserts allow or deny.
-- **Database behavior suite:** `technical-spec/verification/schema_behavior_tests.sql` (89 checks today) becomes part of the migration test stage.
+- **Database behavior suite:** `technical-spec/verification/schema_behavior_tests.sql` (90 checks since Layer 0, including the automated V7 audit) becomes part of the migration test stage.
 - **PHI log canary test** and **media permission tests** (export/release with a revoked or expired grant must fail).
 - **Session revocation tests:** a revoked session's refresh and access tokens are both rejected **immediately**, because the session is checked on every request (§3.3 step 3).
 - **Separation-of-duties tests** (§4.5): self-assignment, platform actor granting clinical roles, and a practice admin exceeding its scope are all rejected.
@@ -1620,6 +1620,12 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 | UD-29 | Simulation P transitions, GENERATED timing | §5.4.2 as written | L8 |
 | UD-10 | Case-library permission; de-identification | EDUCATION grant + de-identified display derivative | L9 |
 
+**Raised in Layer 0 (2026-09-28).** New decisions found while building the Layer 0 pack. The full list of Layer 0 findings, with their dispositions, is in `ACCEPTANCE_CRITERIA.md` §5.
+
+| ID | Topic | Working baseline | Confirm at |
+|---|---|---|---|
+| UD-34 | Apple Developer team and bundle identifier prefix for both apps | `com.aestara.provider` / `com.aestara.patient` as placeholders in the Tuist projects | Before the first TestFlight build (end of L1) |
+
 ### 10.3 Proposals adopted [P]
 
 With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 is adopted** and becomes a Layer 0 ADR. Any of them can still be changed through change control. The most consequential ones:
@@ -1655,6 +1661,9 @@ With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 i
 | Layer boundaries slip because code generation is cheap | Unreviewed scope, weaker tests | Per-layer table/API rollout (§5.8, §9.1); acceptance review and a stop at each layer [B §30] |
 | Vendor dependencies without BAAs (video, SMS, crash reporting, AI) | Compliance gap | Only HIPAA-eligible services under BAA; each vendor decision recorded as a UD/ADR |
 | Offline devices hold PHI | Loss/theft exposure | Encrypted store, cache limits, purge on sign-out/revocation, Face ID gate (§8) |
+| Human production access to PHI (operators, support) is not yet specified | Insider misuse, unaudited access | Added in Layer 0 (THREAT_MODEL.md): no standing access; a break-glass role with approval, session recording and audit is designed before production |
+| Supply-chain compromise (dependencies, CI actions, container images) | Code execution in CI or production | Pinned versions and lockfiles, OSV-Scanner and Dependabot, container scanning from Layer 1, least-privilege CI; pinning actions to commit SHAs decided at Layer 1 kickoff |
+| Malicious image files (crafted HEIC/JPEG/PNG) | Exploit in image decoders on servers or devices | Type/size allow-lists at intent and completion, malware scanning (UD-22), decoding only in the isolated image-processing service, patched decoders |
 
 ---
 
@@ -1685,7 +1694,7 @@ With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 i
 | V4 Prisma validate | **Valid** |
 | V5 Apply to PostgreSQL | **Clean.** 87 tables, 82 enum types, 278 foreign keys, 35 triggers, 47 CHECK constraints (tested on PostgreSQL 16) |
 | V6 Behavior tests | **89 / 89 pass**: tenant isolation (5), identity/RBAC (8), photography (10), media permissions (10), AI provenance and review (15), consents (12), audit (4), scheduling/notes/configuration (6), review regressions R1–R18 (18), fixture (1) |
-| V7 `MATCH SIMPLE` audit | 6 composite FKs have ≥ 2 nullable columns. **All 6 covered** (UserRole ×2 scope CHECK; FeatureFlag; AIValidationRecord ×2; PhotoSession, whose gap the review found, now closed) |
+| V7 `MATCH SIMPLE` audit | 6 composite FKs have ≥ 2 nullable columns. **All 6 covered** (UserRole ×2 scope CHECK; FeatureFlag; AIValidationRecord ×2; PhotoSession, whose gap the review found, now closed). Automated in the behaviour suite since Layer 0: a catalog query fails the run on any uncovered FK |
 | V8 Diagrams | **4 / 4 render** |
 | V9 Adversarial review | **30 findings (10 high, 18 medium, 2 low groups). All 30 resolved:** fixed in schema/SQL with a regression test, fixed in the spec, or converted to an explicit decision. See §11.3. |
 
@@ -1739,7 +1748,7 @@ With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 i
 ### 11.4 What these checks do **not** prove (known limitations)
 
 1. **No application code exists yet.** API contracts are verified for coverage and consistency, not executed. Contract, authorization, portal-visibility and cross-tenant suites arrive with Layer 1 onward (§6.8, §7.5).
-2. The DB was exercised on **PostgreSQL 16**; production targets 18. Nothing used is version-specific beyond ≥ 15.
+2. The DB was first exercised on **PostgreSQL 16**; since Layer 0, CI runs the full suite on **PostgreSQL 18** (the production target) on every push. Nothing used is version-specific beyond ≥ 15.
 3. The owner decided D-01…D-07; everything else is **adopted by delegation** (§10.2) and re-confirmed at the kickoff of the layer that needs it. Adopted items are internally consistent, but only real usage validates product choices such as the role matrix.
 4. Tenant isolation is proven at the **database** layer for enforced relations. The few application-enforced links (§5.1) and all API-level isolation are proven only when the Layer 1 test suites run.
 5. AI thresholds, models and validation datasets are out of scope until Layers 7–8.

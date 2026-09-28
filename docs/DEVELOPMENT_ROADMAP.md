@@ -17,7 +17,7 @@
 | 0 | Technical specification | §31 (inputs) | Locked spec: tech stack, schema, API contracts, decisions | ✅ Done (v1.0, on `main`) |
 | 1 | Environment & repository | Layer 0 (part) | Initialized monorepo, local development, cloud IDE, Claude Code web setup, CI | ✅ Done |
 | 2 | Design prototype | Owner request (ADR-0009) | Static, clickable front-end shell with hard-coded data for the core scenes on iPad, iPhone, patient app and admin web | ✅ Built; awaiting your review |
-| 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | Next |
+| 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | ✅ Built; awaiting your acceptance |
 | 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell | — |
 | 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | — |
 | 6 | Layer 3: Consultations & before/after | Layer 3 | Consultation lifecycle, annotations, comparison viewer, timeline | — |
@@ -37,7 +37,7 @@ Steps 4–13 follow the Bible's layer order exactly. Nothing from a later layer 
 
 ## 2. How every step runs
 
-1. **Kickoff.** Confirm the decisions listed for the layer (§4 below). Anything changed becomes an ADR *before* code [B §0].
+1. **Kickoff.** Confirm the decisions listed for the layer (§4 below) and resolve the Layer 0 findings carried to it (`ACCEPTANCE_CRITERIA.md` §5). Anything changed becomes an ADR *before* code [B §0].
 2. **Micro-prompts.** Each micro-prompt implements one feature using the Bible §33 template (purpose, authorized users, data, state machine, workflow, API, UI, security, audit, failure behavior, acceptance criteria, tests, boundary). The technical spec already supplies the DATA / STATE MACHINE / API / SECURITY / AUDIT parts. Each prompt is sized for one working session.
 3. **Definition of done for every micro-prompt** [B §27.2]:
    - functional requirements
@@ -85,15 +85,15 @@ Steps 4–13 follow the Bible's layer order exactly. Nothing from a later layer 
 | Guardrails | Clearly labelled *prototype*: no backend, no auth, never deployed as the product; original design only (no vendor trade dress) [B §0.1] |
 | **Exit** | Owner reviews the scenes on iPad/iPhone-sized screens and approves the look, or lists changes |
 
-### Step 3: Layer 0 completion (next)
+### Step 3: Layer 0 completion (built; awaiting acceptance)
 
 | Deliverable | Detail |
 |---|---|
-| Documentation pack | Split the spec into the Bible §31/§35 documents: SYSTEM_ARCHITECTURE, REPOSITORY_STRUCTURE, DATABASE_SCHEMA, API_CONTRACTS, AUTHENTICATION_ARCHITECTURE, AUTHORIZATION_RBAC, PHOTO_ARCHITECTURE, AI_ARCHITECTURE, SECURITY_REQUIREMENTS, THREAT_MODEL (STRIDE per trust boundary), IOS_ARCHITECTURE, TESTING_STRATEGY, DEPLOYMENT, INFRASTRUCTURE, ACCEPTANCE_CRITERIA, plus the §35 extras |
-| IaC skeleton | Terraform root modules per environment (dev/staging/prod), remote state, VPC/KMS/S3/RDS/ECS module stubs; `terraform validate` + `tflint` + `checkov` in CI |
-| iOS skeleton | Tuist workspace for ios-provider and ios-patient with the 20 Bible §24.4 modules as Swift packages, `DesignTokens.swift` from the token package, a macOS CI job that generates and builds |
+| Documentation pack | The Bible §31/§35 documents, explaining and linking the spec, which stays normative (ADR-0012): SYSTEM_ARCHITECTURE, REPOSITORY_STRUCTURE, DATABASE_SCHEMA, API_CONTRACTS, AUTHENTICATION_ARCHITECTURE, AUTHORIZATION_RBAC, PHOTO_ARCHITECTURE, AI_ARCHITECTURE, SECURITY_REQUIREMENTS, THREAT_MODEL (STRIDE per trust boundary), IOS_ARCHITECTURE, TESTING_STRATEGY, DEPLOYMENT, INFRASTRUCTURE, ACCEPTANCE_CRITERIA, plus the §35 extras |
+| IaC skeleton | Terraform root modules per environment (dev/staging/prod), remote-state bootstrap, and minimal real modules for KMS, account baseline, network, storage, database and compute (not applied yet); `terraform validate` + `tflint` + `checkov` in CI (ADR-0014) |
+| iOS skeleton | Tuist projects for ios-provider and ios-patient with the 20 Bible §24.4 modules as Swift packages and a checked tier graph, `DesignTokens.swift` from the token package, a macOS CI job that generates, builds and tests (ADR-0015) |
 | API contracts skeleton | `packages/api-contracts` (Zod → OpenAPI 3.1 pipeline, `oasdiff` gate) with the error envelope and pagination primitives only |
-| **Exit** | Bible §31 acceptance table: every Layer 0 deliverable PASS or DEFERRED BY SPECIFICATION; the repo initializes reproducibly |
+| **Exit** | Bible §31 acceptance table: every Layer 0 deliverable PASS or DEFERRED BY SPECIFICATION; the repo initializes reproducibly. Result: `ACCEPTANCE_CRITERIA.md` §4 (all PASS), with 56 findings in §5 (12 fixed, the rest carried to their layer). |
 
 ---
 
@@ -109,7 +109,7 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 |---|---|---|
 | M1.1 | Database foundation: Layer 1 tables + constraint fragment + migrations, seed (organization + admin), **RLS policies + performance benchmark** (ADR-0004 gate) | Migrations run; seed works; RLS ≤ 10% / 5 ms |
 | M1.2 | API skeleton: NestJS/Fastify, config, request IDs, error envelope, PHI-safe logging, health endpoints, OpenAPI generation, contract-test harness | Error model and contract tests |
-| M1.3 | Authentication: login, TOTP MFA, rotating refresh, logout, sessions/devices, LoginEvent + audit, lockout | Session revocation is immediate |
+| M1.3 | Authentication: login, TOTP and passkey MFA (spec §6.3), rotating refresh, logout, sessions/devices, LoginEvent + audit, lockout | Session revocation is immediate |
 | M1.4 | Tenancy & authorization core: tenant context, permission guard, scoped repositories, `SET LOCAL`, cross-tenant test generator, ACCESS_DENIED | Cross-tenant access rejected |
 | M1.5 | Organizations, practices, locations APIs | |
 | M1.6 | Users, memberships, roles, scoped assignments, separation-of-duties rules, provider/staff profiles | No self-grant; scope limits |

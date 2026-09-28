@@ -23,6 +23,12 @@ Status values:
 | [0009](#adr-0009) | Static design prototype before feature work | Accepted | 2026-09-25 |
 | [0010](#adr-0010) | Development environment and tooling | Adopted (delegated) | 2026-09-25 |
 | [0011](#adr-0011) | One design-token source for iOS and web | Adopted (delegated) | 2026-09-25 |
+| [0012](#adr-0012) | Layer 0 documentation pack: the spec stays normative | Adopted (delegated) | 2026-09-28 |
+| [0013](#adr-0013) | API contract tooling and forward-compatible error codes | Adopted (delegated) | 2026-09-28 |
+| [0014](#adr-0014) | AWS infrastructure baseline | Adopted (delegated) | 2026-09-28 |
+| [0015](#adr-0015) | iOS module architecture and project generation | Adopted (delegated) | 2026-09-28 |
+| [0016](#adr-0016) | CI supply-chain and security gates | Adopted (delegated) | 2026-09-28 |
+| [0017](#adr-0017) | Layer 0 errata to the locked specification | Accepted | 2026-09-28 |
 
 ---
 
@@ -159,3 +165,95 @@ Status values:
   - Type styles mirror iOS Dynamic Type text styles.
   - Every colour pair used for text must pass WCAG 4.5:1, and every UI pair 3:1, in light and dark mode; this is enforced by tests in CI.
 - **Consequences:** iPhone, iPad and web stay visually identical by construction, and accessibility regressions fail the build.
+
+## ADR-0012
+
+**Layer 0 documentation pack: the spec stays normative**
+
+- **Status:** Adopted (delegated), 2026-09-28.
+- **Context:** Bible §31 and §35 require about 27 named documents. Much of their normative content (entity catalog, state machines, permission matrix, endpoint and error catalogs, audit events) already lives in the locked `TECHNICAL_SPECIFICATION.md`, which the traceability checker verifies.
+- **Decision:**
+  - `TECHNICAL_SPECIFICATION.md`, `schema.prisma` and `constraints.sql` stay the single normative home for those catalogs.
+  - Each pack document explains its topic, adds what the spec lacks (diagrams, threat model, flows, operations, test strategy) and **links** to the spec instead of copying catalogs.
+  - `SOFTWARE_PRODUCTION_BIBLE.md` is generated verbatim from the PDF by `export_bible.py`. The PDF stays authoritative.
+  - `check_docs.py` in CI enforces:
+    - the pack is complete
+    - every `spec §` and Bible `§` reference resolves
+    - every relative link and anchor resolves
+    - no placeholder markers remain
+- **Consequences:** no two copies of a rule can drift apart. Readers may need two documents open (the topic document and the spec section it links).
+
+## ADR-0013
+
+**API contract tooling and forward-compatible error codes**
+
+- **Status:** Adopted (delegated), 2026-09-28. Implements spec §6.8.
+- **Decision:**
+  - Zod 4.6.5 with `@asteasolutions/zod-to-openapi` 9.1.0 generates `openapi.json` (OpenAPI 3.1), which is committed. Schemas import `z` from `src/zod.ts`, which extends Zod once.
+  - Layer 0 registers only the shared primitives: value formats, error envelope, pagination, headers and reusable error responses. Paths arrive with Layer 1.
+  - Error codes are typed as an UPPER_SNAKE **string**, not a closed enum, and clients fall back to the HTTP status for codes they do not know. The catalog grows within v1 (spec §6.1.1), and a closed enum would turn every new code into a breaking change for the iOS decoder.
+  - CI gates: the committed document must equal a fresh render, and `oasdiff` v1.32.1 `breaking --fail-on ERR` runs against the base branch.
+- **Consequences:** contract changes are visible in review as `openapi.json` diffs. Breaking changes need `/api/v2`.
+
+## ADR-0014
+
+**AWS infrastructure baseline**
+
+- **Status:** Adopted (delegated), 2026-09-28. Details in `INFRASTRUCTURE.md`.
+- **Decision:**
+  - **Pins:** Terraform 1.16.4 with the AWS provider pinned exactly to 6.66.0, with committed lock files.
+  - **Accounts and state:** one AWS account per environment, guarded by `allowed_account_ids`. Remote state lives in a versioned, KMS-encrypted S3 bucket with S3 lock files (no DynamoDB table), created by a bootstrap root.
+  - **Keys:** customer-managed KMS keys per purpose (data, media, logs) with yearly rotation.
+  - **Account baseline in every environment:** account-level S3 public-access block, EBS encryption by default, multi-region CloudTrail with log-file validation, GuardDuty, IAM Access Analyzer, and one access-log bucket. That bucket uses SSE-S3 because S3 server access logging cannot deliver to SSE-KMS buckets.
+  - **Network:** VPC with public, private and isolated subnets across pinned zones; NAT per zone except in dev.
+  - **Database:** RDS PostgreSQL 18 in the isolated subnets. TLS is forced, the password is managed by Secrets Manager, statement text is never logged, backups are kept 35 days and deletion protection is on. Multi-AZ in staging and production; dev is single-AZ on synthetic data.
+  - **Clinical-media bucket:** versioned, SSE-KMS with its key enforced, TLS-only, and `DeleteObject`/`DeleteObjectVersion` denied to every principal until a retention role is approved (UD-24).
+  - **Static checks:** `terraform validate`, tflint (with the AWS ruleset) and checkov. Every checkov suppression is inline with its reason.
+  - **Deferred:** services, load balancer, WAF, queues and cross-region backups arrive with the layer that first needs them.
+- **Consequences:** every later layer builds on a reviewed and checked baseline. Nothing is applied until account IDs, the BAA and CI-to-AWS authentication are decided (Layer 1 kickoff).
+
+## ADR-0015
+
+**iOS module architecture and project generation**
+
+- **Status:** Adopted (delegated), 2026-09-28. Details in `IOS_ARCHITECTURE.md`.
+- **Decision:**
+  - **Modules:** the 20 Bible §24.4 modules are local Swift packages under `apps/ios-provider/Modules` (spec §2.2), each on Swift tools 6.2 with iOS 26 as the platform.
+  - **Tiers:** foundation → platform → domain → feature → app. Dependencies point only downward, with same-tier dependencies allowed in foundation and domain. Feature modules never depend on each other. The graph must be acyclic.
+  - **Enforcement:** `modules.json` records each module's tier and allowed dependencies. `check_module_graph.py` enforces it on Linux CI, with no Swift toolchain needed.
+  - **Patient app:** reuses only DesignSystem, CoreNetworking and CoreSecurity.
+  - **Project generation:** Tuist 4.209.0 (pinned in `mise.toml`) generates the Xcode projects, which are never committed. CI builds on macOS 26 with Xcode 26.6.
+  - **Tokens:** DesignSystem compiles a generated copy of `DesignTokens.swift`, and CI fails if it drifts from the token package.
+  - **Layer 0 scope:** no remote Swift packages. The generated API client (swift-openapi-generator) and GRDB + SQLCipher arrive with the first code that uses them.
+- **Consequences:** architecture rules are enforced mechanically from day one. Modules other than DesignSystem and AppShell hold only their documented boundary until their layer.
+
+## ADR-0016
+
+**CI supply-chain and security gates**
+
+- **Status:** Adopted (delegated), 2026-09-28. Implements the Bible §28.2 "dependency/security scanning" gate with the tools named in spec §2.3.
+- **Decision:**
+  - OSV-Scanner v2.6.0 scans `pnpm-lock.yaml` on every push (`security` job, Go 1.27.1).
+  - Dependabot opens weekly update pull requests for npm, GitHub Actions and Terraform.
+  - Container scanning with Trivy joins when the first image exists (Layer 1).
+  - GitHub's native secret scanning covers the public repository. The choice of a dedicated secret scanner, SAST, and pinning third-party actions to commit SHAs are decided at the Layer 1 kickoff.
+- **Consequences:** known-vulnerable dependencies fail the build before they reach any environment.
+
+## ADR-0017
+
+**Layer 0 errata to the locked specification**
+
+- **Status:** Accepted, 2026-09-28. Change control for the locked spec (Bible §0): these corrections remove contradictions and change no owner decision.
+- **Decision:**
+  - **`schema.prisma`:** removed `SimulationParameter.unit`, which contradicted spec §6.6.3 ("no … unit … fields, by construction") and Bible §9.6. A new traceability check keeps any dose, unit, product or technique field out of that model.
+  - **Spec §1.5** now states the D-01 boundary ("no patient data sharing across organizations") instead of the unqualified "no cross-practice sharing".
+  - **Spec §6.1.1** points to §6.8 for contract tooling, not §6.7.
+  - **Spec §2.1** no longer calls APNs an AWS service.
+  - **Spec §7.5:** the no-enumeration 404 comparison ignores only the per-request `requestId`.
+  - **Spec §7.6 context and §11:** the database suite runs on PostgreSQL 18 in CI, and the V7 `MATCH SIMPLE` audit is automated in the behaviour suite, bringing it to 90 checks.
+  - **Spec §10.4:** three risks added: human production access, supply chain, malicious image files.
+  - **Spec §10.2:** UD-34 added (Apple team and bundle identifier prefix).
+  - **Schema comments:** stale remarks corrected (UD-02, UD-13, protocol seeding, how tables move into `packages/database`).
+  - **`DESIGN_SYSTEM.md` C13:** exiting signing mode needs staff re-authentication (UD-31), not specifically Face ID.
+  - **Roadmap M1.3** includes passkeys, matching spec §6.3.
+- **Consequences:** the locked baseline is internally consistent on these points. Every other Layer 0 finding is carried to the kickoff of the layer that needs it (`ACCEPTANCE_CRITERIA.md` §5).

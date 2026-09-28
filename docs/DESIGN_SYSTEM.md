@@ -63,7 +63,7 @@ The owner's requirement is that the iPhone and iPad controls are intuitive. Thes
 - **C12: Separate steps stay separate.** Approving an AI visualization shares nothing. Releasing it is a second, explicit act with its own confirmation (Bible §9).
   - The same applies to choosing a plan versus consenting to treatment, and to capturing a photo versus exporting it.
   - The UI says so where people might assume otherwise.
-- **C13: Device handoff is locked.** Patient signing mode shows a persistent banner. Leaving it requires staff Face ID, and the patient cannot navigate elsewhere.
+- **C13: Device handoff is locked.** Patient signing mode shows a persistent banner. Leaving it requires staff re-authentication (Face ID or Touch ID, UD-31), and the patient cannot navigate elsewhere.
 
 ### Capture
 

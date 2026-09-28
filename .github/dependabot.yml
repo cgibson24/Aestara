@@ -1,0 +1,26 @@
+# Weekly dependency update pull requests (spec §2.3, ADR-0016).
+# Every update goes through the same CI gates as any other change.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: terraform
+    directories:
+      - /infrastructure/terraform/bootstrap
+      - /infrastructure/terraform/environments/dev
+      - /infrastructure/terraform/environments/staging
+      - /infrastructure/terraform/environments/production
+    schedule:
+      interval: weekly

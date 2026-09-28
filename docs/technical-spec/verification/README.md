@@ -1,6 +1,13 @@
 # Specification verification
 
-These checks back the verification report in `docs/TECHNICAL_SPECIFICATION.md` §11. Re-run them whenever the Bible, the spec, `schema.prisma` or `constraints.sql` changes.
+These checks back the verification report in `docs/TECHNICAL_SPECIFICATION.md` §11 and the Layer 0 acceptance review (`docs/ACCEPTANCE_CRITERIA.md`). CI runs all of them on every push. Re-run them locally whenever the Bible, the spec, the docs, `schema.prisma` or `constraints.sql` changes.
+
+| Script | What it proves |
+|---|---|
+| `check_traceability.py` | Every canonical list in the Bible is represented in the spec and schema (58 checks) |
+| `run_schema_checks.sh` | The schema validates, applies to an empty PostgreSQL, and the database rejects every forbidden operation (90 checks, including the V7 `MATCH SIMPLE` audit) |
+| `check_docs.py` | The Bible §31/§35 documentation pack is complete; every `spec §`/Bible `§` reference, relative link and anchor resolves; no placeholder markers |
+| `export_bible.py` | Generates `docs/SOFTWARE_PRODUCTION_BIBLE.md` verbatim from the PDF; `--check` fails on drift |
 
 ## 1. Traceability: Bible → spec + schema
 
@@ -25,6 +32,8 @@ python3 docs/technical-spec/verification/check_traceability.py   # exit 0 = all 
 ```
 
 ## 2. Schema validity and database behaviour
+
+The one-command form is `DATABASE_URL=postgresql://…/empty_db pnpm verify:schema` (runs `run_schema_checks.sh`). The manual steps it performs:
 
 Needs Node.js ≥ 20 and PostgreSQL ≥ 15 (Docker works: `docker run -e POSTGRES_PASSWORD=verify -p 5432:5432 postgres:18`).
 
@@ -67,3 +76,13 @@ psql "$DATABASE_URL" -q -f <repo>/docs/technical-spec/verification/schema_behavi
 - and more
 
 It also confirms that the legitimate operations right next to each violation still succeed.
+
+The suite ends with the V7 audit. It reads the live catalog and fails if any composite foreign key with two or more nullable columns lacks a CHECK covering those columns: PostgreSQL skips such a key whenever one column is NULL (`MATCH SIMPLE`).
+
+## 3. Documentation pack
+
+```bash
+pip install pypdf
+python3 docs/technical-spec/verification/export_bible.py --check   # Bible export matches the PDF
+python3 docs/technical-spec/verification/check_docs.py             # pack, references, links, placeholders
+```

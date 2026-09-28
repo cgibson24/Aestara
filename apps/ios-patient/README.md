@@ -1,11 +1,11 @@
 # Patient iOS app
 
-SwiftUI app showing a patient only what their practice explicitly released (Bible §13).
+SwiftUI app that shows a patient only what their practice has explicitly released (Bible §13).
 
-**Status:** placeholder. No code yet, by design: the Bible forbids fake business implementations (§0.1, §31).
+**Status:** Layer 0 skeleton. The Tuist project builds in CI. It reuses the provider app's DesignSystem, CoreNetworking and CoreSecurity modules (spec §2.2), and the module-graph check enforces that it uses no others. Its screens arrive in Layer 5.
 
-**Built in:** Layer 5 (M5.3 onward); project skeleton in Step 3.
+```bash
+mise install && tuist generate                 # AestaraPatient.xcworkspace (never committed)
+```
 
-Shares CoreNetworking, CoreSecurity and DesignSystem with the provider app.
-
-Roadmap: `docs/DEVELOPMENT_ROADMAP.md`.
+Architecture: [`docs/IOS_ARCHITECTURE.md`](../../docs/IOS_ARCHITECTURE.md).

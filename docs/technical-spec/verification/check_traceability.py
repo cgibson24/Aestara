@@ -341,6 +341,10 @@ check("B16.2 no recording field on TelehealthSession",
       not any("record" in f.lower() for f in model_fields("TelehealthSession")))
 check("B14.3 Notification has no free-text content field",
       not ({"body", "text", "content", "message", "payload"} & model_fields("Notification")))
+forbidden_sim = ("dose", "dosage", "unit", "product", "drug", "depth", "technique", "syringe")
+check("B9.6 simulation parameters have no dose/unit/product/technique fields",
+      not any(word in f.lower() for f in model_fields("SimulationParameter") for word in forbidden_sim),
+      f"fields: {sorted(model_fields('SimulationParameter'))}")
 
 # --------------------------------------------------------------------------- #
 # 9. Surfaces: patient-app navigation (13.1) and patient profile tabs (4.3)
