@@ -1,0 +1,161 @@
+{
+  "$comment": "The 20 provider modules of Bible §24.4. Tier order: foundation < platform < domain < feature < app. scripts/check_module_graph.py enforces that Package.swift dependencies only point to lower tiers (same tier allowed for foundation and domain), that features never depend on features, and that the graph has no cycles. See docs/IOS_ARCHITECTURE.md.",
+  "tiers": ["foundation", "platform", "domain", "feature", "app"],
+  "patientAppModules": ["DesignSystem", "CoreNetworking", "CoreSecurity"],
+  "modules": {
+    "DesignSystem": {
+      "tier": "foundation",
+      "bible": "§24.1–24.2",
+      "layer": 0,
+      "summary": "Design tokens (generated from packages/design-tokens) and the shared SwiftUI components: buttons, cards, lists, badges, states.",
+      "dependsOn": []
+    },
+    "CoreSecurity": {
+      "tier": "foundation",
+      "bible": "§21.2, §23.3",
+      "layer": 1,
+      "summary": "Keychain access, the encrypted local store (GRDB + SQLCipher), biometric gate, secure wipe on sign-out.",
+      "dependsOn": []
+    },
+    "CoreNetworking": {
+      "tier": "foundation",
+      "bible": "§20",
+      "layer": 1,
+      "summary": "API client generated from packages/api-contracts/openapi.json, request correlation, idempotency keys, error-envelope handling.",
+      "dependsOn": []
+    },
+    "AuditSupport": {
+      "tier": "foundation",
+      "bible": "§22, §23.3",
+      "layer": 2,
+      "summary": "Client audit context and the offline audit replay queue.",
+      "dependsOn": ["CoreNetworking", "CoreSecurity"]
+    },
+    "Authentication": {
+      "tier": "platform",
+      "bible": "§21.1",
+      "layer": 1,
+      "summary": "Sign-in, MFA, token refresh, biometric unlock, session revocation handling.",
+      "dependsOn": ["CoreNetworking", "CoreSecurity"]
+    },
+    "Media": {
+      "tier": "platform",
+      "bible": "§6.6, §21.2",
+      "layer": 2,
+      "summary": "Signed upload and download, checksum verification, the encrypted local media cache.",
+      "dependsOn": ["CoreNetworking", "CoreSecurity"]
+    },
+    "PatientDomain": {
+      "tier": "domain",
+      "bible": "§4, §23",
+      "layer": 1,
+      "summary": "Patient models, search, create with duplicate check, the offline cache of recent patients.",
+      "dependsOn": ["CoreNetworking", "CoreSecurity"]
+    },
+    "ConsultationDomain": {
+      "tier": "domain",
+      "bible": "§5",
+      "layer": 3,
+      "summary": "Consultation lifecycle, notes and concerns, following the spec §5.4.1 state machine.",
+      "dependsOn": ["CoreNetworking", "PatientDomain"]
+    },
+    "Photography": {
+      "tier": "feature",
+      "bible": "§6",
+      "layer": 2,
+      "summary": "Guided clinical capture: protocols, live guidance, ghost overlay, capture review, offline upload queue.",
+      "dependsOn": ["DesignSystem", "Media", "PatientDomain", "AuditSupport"]
+    },
+    "Annotations": {
+      "tier": "feature",
+      "bible": "§6.6",
+      "layer": 3,
+      "summary": "Annotation layers drawn over photos, stored separately from the immutable original.",
+      "dependsOn": ["DesignSystem", "Media"]
+    },
+    "BeforeAfter": {
+      "tier": "feature",
+      "bible": "§8",
+      "layer": 3,
+      "summary": "Before/after comparison: side by side, slider, cross-fade, blink, overlay; display-only alignment.",
+      "dependsOn": ["DesignSystem", "Media", "PatientDomain"]
+    },
+    "Simulation": {
+      "tier": "feature",
+      "bible": "§9",
+      "layer": 8,
+      "summary": "AI visualization request, provider review, approve and separate release, with the mandatory disclaimer.",
+      "dependsOn": ["DesignSystem", "Media", "PatientDomain", "ConsultationDomain"]
+    },
+    "TreatmentPlans": {
+      "tier": "feature",
+      "bible": "§11",
+      "layer": 4,
+      "summary": "Plans A/B/C, estimates and procedure tracking.",
+      "dependsOn": ["DesignSystem", "PatientDomain", "ConsultationDomain"]
+    },
+    "DocumentsConsent": {
+      "tier": "feature",
+      "bible": "§12",
+      "layer": 4,
+      "summary": "Consent assignment and signing, including staff-assisted in-clinic signing mode, and documents.",
+      "dependsOn": ["DesignSystem", "PatientDomain", "CoreSecurity"]
+    },
+    "Education": {
+      "tier": "feature",
+      "bible": "§12.5",
+      "layer": 4,
+      "summary": "Education content and care instructions assigned to patients.",
+      "dependsOn": ["DesignSystem", "PatientDomain"]
+    },
+    "Appointments": {
+      "tier": "feature",
+      "bible": "§15",
+      "layer": 6,
+      "summary": "Schedule and appointment lifecycle.",
+      "dependsOn": ["DesignSystem", "PatientDomain"]
+    },
+    "Messaging": {
+      "tier": "feature",
+      "bible": "§14",
+      "layer": 5,
+      "summary": "Secure patient messaging with attachments; no PHI in notifications.",
+      "dependsOn": ["DesignSystem", "PatientDomain", "Media"]
+    },
+    "Telehealth": {
+      "tier": "feature",
+      "bible": "§16",
+      "layer": 6,
+      "summary": "Virtual consultation sessions through the approved vendor SDK.",
+      "dependsOn": ["DesignSystem", "PatientDomain"]
+    },
+    "Settings": {
+      "tier": "feature",
+      "bible": "§17, §21.1",
+      "layer": 1,
+      "summary": "Account, security and device settings.",
+      "dependsOn": ["DesignSystem", "Authentication"]
+    },
+    "AppShell": {
+      "tier": "app",
+      "bible": "§24.4–24.5",
+      "layer": 1,
+      "summary": "Composition root: adaptive navigation (iPad sidebar, iPhone tabs), routing, deep links that re-run authorization.",
+      "dependsOn": [
+        "DesignSystem",
+        "Authentication",
+        "Photography",
+        "Annotations",
+        "BeforeAfter",
+        "Simulation",
+        "TreatmentPlans",
+        "DocumentsConsent",
+        "Education",
+        "Appointments",
+        "Messaging",
+        "Telehealth",
+        "Settings"
+      ]
+    }
+  }
+}

@@ -1,0 +1,461 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Aestara API",
+    "version": "0.1.0",
+    "description": "Staff/admin API (/api/v1) and patient portal API (/api/v1/portal). Conventions: docs/API_CONTRACTS.md and docs/TECHNICAL_SPECIFICATION.md §6. Within v1 only additive changes are allowed."
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Version 1"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Access token from /auth. Tenant context comes from the token only (spec §6.1.3)."
+      }
+    },
+    "parameters": {
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Page size, 1–100.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 25
+        }
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "description": "Opaque, signed, expiring cursor from page.nextCursor.",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "Client-generated UUID. Retained per actor for 7 days (spec §6.1.8).",
+        "schema": {
+          "$ref": "#/components/schemas/Uuid"
+        }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "description": "The resource ETag, e.g. \"v7\" (spec §6.1.7).",
+        "schema": {
+          "type": "string",
+          "pattern": "^\"v[0-9]+\"$"
+        }
+      },
+      "ClientRequestId": {
+        "name": "X-Client-Request-Id",
+        "in": "header",
+        "required": false,
+        "description": "Optional client correlation ID. Logged, never trusted.",
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "headers": {
+      "X-Request-Id": {
+        "description": "Server-generated request identifier (UUIDv7).",
+        "schema": {
+          "$ref": "#/components/schemas/RequestId"
+        }
+      },
+      "ETag": {
+        "description": "Resource version, e.g. \"v7\".",
+        "schema": {
+          "type": "string",
+          "pattern": "^\"v[0-9]+\"$"
+        }
+      },
+      "Retry-After": {
+        "description": "Seconds to wait before retrying.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "responses": {
+      "Error400": {
+        "description": "Error envelope. Codes: VALIDATION_FAILED, MALFORMED_REQUEST.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error401": {
+        "description": "Error envelope. Codes: UNAUTHENTICATED, SESSION_INVALID, MFA_REQUIRED.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error403": {
+        "description": "Error envelope. Codes: PERMISSION_DENIED, REAUTHENTICATION_REQUIRED, MEDIA_PERMISSION_NOT_GRANTED.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error404": {
+        "description": "Error envelope. Codes: <RESOURCE>_NOT_FOUND.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "Error envelope. Codes: INVALID_STATE_TRANSITION, IMMUTABLE_RECORD, DUPLICATE_PATIENT_SUSPECTED, IDEMPOTENCY_IN_PROGRESS, IDEMPOTENCY_KEY_REUSED, CONFLICT, SYNC_CONFLICT.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error412": {
+        "description": "Error envelope. Codes: VERSION_CONFLICT.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error413": {
+        "description": "Error envelope. Codes: PAYLOAD_TOO_LARGE.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error415": {
+        "description": "Error envelope. Codes: UNSUPPORTED_MEDIA_TYPE.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error422": {
+        "description": "Error envelope. Codes: UPLOAD_VERIFICATION_FAILED, INPUT_QUALITY_INSUFFICIENT, UNSUPPORTED_SIMULATION_INPUT.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error428": {
+        "description": "Error envelope. Codes: PRECONDITION_REQUIRED.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error429": {
+        "description": "Error envelope. Codes: RATE_LIMITED.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error500": {
+        "description": "Error envelope. Codes: INTERNAL_ERROR.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Error503": {
+        "description": "Error envelope. Codes: SERVICE_UNAVAILABLE.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Uuid": {
+        "type": "string",
+        "format": "uuid",
+        "description": "Resource identifier (UUID).",
+        "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+      },
+      "RequestId": {
+        "type": "string",
+        "format": "uuid",
+        "description": "Server-generated request identifier (UUIDv7). Quote it when reporting a problem.",
+        "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+      },
+      "Timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "description": "RFC 3339 UTC timestamp with milliseconds.",
+        "example": "2026-09-25T14:03:11.412Z"
+      },
+      "DateOnly": {
+        "type": "string",
+        "format": "date",
+        "description": "Calendar date (YYYY-MM-DD).",
+        "example": "1988-04-12"
+      },
+      "Currency": {
+        "type": "string",
+        "enum": [
+          "USD"
+        ],
+        "description": "ISO 4217 currency code. USD only (ADR-0006); new codes are additive."
+      },
+      "Money": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9]\\d*)\\.\\d{2}$",
+            "example": "1250.00"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "additionalProperties": false,
+        "description": "Monetary amount as a decimal string with two fraction digits, plus its currency."
+      },
+      "ErrorCode": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$",
+        "description": "UPPER_SNAKE error code from the catalog (spec §6.2), or <RESOURCE>_NOT_FOUND. Clients must handle codes they do not recognise by falling back to the HTTP status.",
+        "example": "PATIENT_NOT_FOUND"
+      },
+      "FieldError": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Dotted path of the invalid field.",
+            "example": "dateOfBirth"
+          },
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "path",
+          "code",
+          "message"
+        ],
+        "additionalProperties": false,
+        "description": "One invalid field in a VALIDATION_FAILED error."
+      },
+      "ErrorDetails": {
+        "type": "object",
+        "properties": {
+          "fieldErrors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            }
+          }
+        },
+        "additionalProperties": {},
+        "description": "Optional, code-specific details. Never contains PHI."
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Human-readable and safe to show. No stack traces, SQL or storage keys.",
+                "example": "The requested patient could not be accessed."
+              },
+              "requestId": {
+                "$ref": "#/components/schemas/RequestId"
+              },
+              "details": {
+                "$ref": "#/components/schemas/ErrorDetails"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false,
+        "description": "Every error response has this shape (Bible §20.4)."
+      },
+      "PageInfo": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hasMore"
+        ],
+        "additionalProperties": false,
+        "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+      }
+    }
+  },
+  "paths": {},
+  "webhooks": {}
+}

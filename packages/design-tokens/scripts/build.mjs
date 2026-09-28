@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Compiles tokens.json into generated/tokens.css, generated/tokens.ts and
-// generated/DesignTokens.swift. Generated files are committed so the iOS apps
+// generated/DesignTokens.swift (plus the iOS DesignSystem module's copy). Generated files are committed so the iOS apps
 // can consume them without Node; CI fails if they drift from tokens.json.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -170,6 +170,11 @@ extension UIColor {
 }
 `;
 writeFileSync(join(outDir, "DesignTokens.swift"), swift);
+// The iOS DesignSystem module compiles its own copy (Swift packages cannot
+// reach outside their directory); CI fails if the two drift.
+const iosDesignSystem = join(root, "../../apps/ios-provider/Modules/DesignSystem/Sources/DesignSystem");
+mkdirSync(iosDesignSystem, { recursive: true });
+writeFileSync(join(iosDesignSystem, "DesignTokens.swift"), swift);
 
 console.log(
   `design-tokens: wrote tokens.css, tokens.ts, DesignTokens.swift (${lightKeys.length} colour roles)`,

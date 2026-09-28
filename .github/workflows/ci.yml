@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   workspace:
-    name: Lint · typecheck · test · build
+    name: Lint · typecheck · test · build · contracts
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -48,13 +48,31 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Design tokens are up to date
+      - name: Generated files are up to date (design tokens, OpenAPI)
         run: |
           pnpm tokens
-          git diff --exit-code -- packages/design-tokens/generated
+          git diff --exit-code -- \
+            packages/design-tokens/generated \
+            apps/ios-provider/Modules/DesignSystem/Sources/DesignSystem/DesignTokens.swift \
+            packages/api-contracts/openapi.json
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: API breaking-change gate (oasdiff, spec §6.8)
+        run: |
+          base="${{ github.base_ref || 'main' }}"
+          git fetch --no-tags --depth=1 origin "$base:refs/remotes/origin/$base"
+          go install github.com/oasdiff/oasdiff@v1.32.1
+          PATH="$(go env GOPATH)/bin:$PATH" bash packages/api-contracts/scripts/check-breaking.sh "origin/$base"
+
+      - name: iOS module architecture rules
+        run: python3 apps/ios-provider/scripts/check_module_graph.py
 
   spec:
-    name: Spec traceability · schema · DB behaviour
+    name: Spec traceability · docs · schema · DB behaviour
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -83,6 +101,9 @@ jobs:
           python -m pip install --quiet pypdf
           python docs/technical-spec/verification/check_traceability.py
 
+      - name: Documentation pack and references
+        run: python docs/technical-spec/verification/check_docs.py
+
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -92,3 +113,118 @@ jobs:
         env:
           DATABASE_URL: postgresql://verify:verify@localhost:5432/aestara_verify
         run: bash docs/technical-spec/verification/run_schema_checks.sh
+
+  terraform:
+    name: Terraform · fmt · validate · tflint · checkov
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: infrastructure/terraform
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
+
+      - name: Format
+        run: terraform fmt -recursive -check -diff
+
+      - name: Validate every root (no credentials, no backend)
+        run: |
+          for root in bootstrap environments/dev environments/staging environments/production; do
+            terraform -chdir="$root" init -backend=false -input=false
+            terraform -chdir="$root" validate
+          done
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.64.0
+
+      - name: tflint (Terraform + AWS rulesets)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint --init --config "$PWD/.tflint.hcl"
+          tflint --recursive --config "$PWD/.tflint.hcl" --format compact
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: checkov (security policy)
+        run: |
+          python -m pip install --quiet checkov==3.3.20
+          checkov -d . --framework terraform --quiet --compact
+
+  security:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: OSV-Scanner (spec §2.3, Bible §28.2)
+        run: |
+          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
+          "$(go env GOPATH)/bin/osv-scanner" scan source --lockfile pnpm-lock.yaml
+
+  ios:
+    name: iOS · Tuist generate · build · test
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - uses: jdx/mise-action@v2
+
+      - name: Tool versions
+        run: |
+          xcodebuild -version
+          swift --version
+          tuist version
+
+      - name: Module architecture rules
+        run: python3 apps/ios-provider/scripts/check_module_graph.py
+
+      - name: Generate Xcode projects (Tuist)
+        run: |
+          (cd apps/ios-provider && tuist generate --no-open)
+          (cd apps/ios-patient && tuist generate --no-open)
+
+      - name: Build provider app (iPad + iPhone, simulator)
+        run: >-
+          xcodebuild build
+          -workspace apps/ios-provider/AestaraProvider.xcworkspace
+          -scheme AestaraProvider
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO -quiet
+
+      - name: Build patient app (iPhone, simulator)
+        run: >-
+          xcodebuild build
+          -workspace apps/ios-patient/AestaraPatient.xcworkspace
+          -scheme AestaraPatient
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO -quiet
+
+      - name: Test DesignSystem on an iPhone simulator
+        working-directory: apps/ios-provider/Modules/DesignSystem
+        run: |
+          udid=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          print(next(d["udid"] for runtime, ds in sorted(devices.items(), reverse=True)
+                     if "iOS-26" in runtime for d in ds if d["name"].startswith("iPhone")))')
+          echo "Simulator: $udid"
+          xcodebuild test -scheme DesignSystem -destination "id=$udid" -quiet

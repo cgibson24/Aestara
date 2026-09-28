@@ -36,3 +36,21 @@ __pycache__/
 # local tool output
 playwright-report/
 test-results/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+crash.log
+.tflint.d/
+
+# iOS (Tuist generates the Xcode projects; they are never committed)
+apps/ios-*/*.xcodeproj/
+apps/ios-*/*.xcworkspace/
+apps/ios-*/Derived/
+.build/
+.swiftpm/
+xcuserdata/
+DerivedData/

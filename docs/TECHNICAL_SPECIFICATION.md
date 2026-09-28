@@ -22,7 +22,7 @@
 5. [Database schema](#5-database-schema)
 6. [API contracts](#6-api-contracts)
 7. [Security, privacy & audit](#7-security-privacy--audit)
-8. [Offline & synchronization contract](#8-offline--synchronization-contract)
+8. [Offline & synchronization contract](#8-offline--synchronization-contract-b-23)
 9. [Build-layer mapping](#9-build-layer-mapping)
 10. [Assumptions, unresolved decisions & proposals](#10-assumptions-unresolved-decisions--proposals)
 11. [Verification report](#11-verification-report)

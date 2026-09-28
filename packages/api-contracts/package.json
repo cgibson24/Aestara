@@ -1,0 +1,27 @@
+{
+  "name": "@aestara/api-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zod request/response schemas and the generated OpenAPI 3.1 document (spec §6.8).",
+  "exports": {
+    ".": "./src/index.ts",
+    "./openapi.json": "./openapi.json"
+  },
+  "scripts": {
+    "build": "node scripts/generate-openapi.ts",
+    "openapi:check": "node scripts/generate-openapi.ts --check",
+    "openapi:breaking": "bash scripts/check-breaking.sh",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@asteasolutions/zod-to-openapi": "9.1.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "typescript": "6.0.3",
+    "vitest": "5.0.2"
+  }
+}
