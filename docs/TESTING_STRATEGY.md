@@ -27,7 +27,7 @@ Rows are the Bible §27.1 test layers. Tools come from spec §2.3 unless noted. 
 
 | Bible §27.1 test layer | Tool | Planned location | From |
 |---|---|---|---|
-| Unit tests | Vitest | Co-located `*.test.ts` in each TypeScript package and service | L0 (`packages/design-tokens`, `apps/design-prototype` today) |
+| Unit tests | Vitest | Co-located `*.test.ts` in each TypeScript package and service | L0 (`packages/design-tokens`, `packages/api-contracts`, `apps/design-prototype` today) |
 | Domain and state-machine tests | Vitest for transition tables; Testcontainers PostgreSQL for persisted transitions | `services/api/test/state-machines/` | L2 (photo permission), then every layer (§8) |
 | API contract tests | Vitest over the OpenAPI 3.1 document from `packages/api-contracts`; `oasdiff` | `services/api/test/contract/`, `packages/api-contracts` | L0 (drift), L1 |
 | Database and migration tests | SQL behaviour suite on PostgreSQL 18; Prisma migrations applied to an empty database | `docs/technical-spec/verification/` today; migration test stage from M1.1 | L0 |
@@ -70,10 +70,11 @@ The summary also lists the SR IDs the micro-prompt satisfies and any threat-mode
 
 | Job | Runs | Notes |
 |---|---|---|
-| `workspace` | Biome lint and format, typecheck, Vitest unit tests, build, design-token drift, OpenAPI drift | Node 24, frozen lockfile |
-| `spec` | Bible → spec traceability, documentation link check, schema validity plus database behaviour suite on PostgreSQL 18 | `run_schema_checks.sh` on an empty database |
-| `terraform` | `fmt`, `validate`, `tflint`, `checkov` | dev, staging and prod root modules |
-| `ios` | Tuist generate, then build and test on the iOS simulator with Xcode 26 | macOS runner |
+| `workspace` | Biome lint and format, typecheck, Vitest unit tests, build, generated-file drift (design tokens, OpenAPI), `oasdiff` breaking-change gate, iOS module architecture rules (`check_module_graph.py`) | Node 24, frozen lockfile |
+| `spec` | Bible → spec traceability, Bible export drift, documentation pack and reference check (`check_docs.py`), schema validity plus database behaviour suite on PostgreSQL 18 | `run_schema_checks.sh` on an empty database |
+| `terraform` | `fmt`, `validate`, `tflint` (Terraform and AWS rulesets), `checkov` | The bootstrap root and the dev, staging and production roots |
+| `security` | OSV-Scanner on `pnpm-lock.yaml` (ADR-0016) | Dependabot update pull requests run through the same jobs |
+| `ios` | Module architecture rules, Tuist generate, build of both apps for the simulator, DesignSystem tests on an iPhone simulator | macOS 26 runner, Xcode 26.6; each layer adds its module tests |
 
 Every job must be green before the owner approves a merge to `main` (DEVELOPMENT_ROADMAP.md §2).
 
@@ -85,7 +86,7 @@ Every job must be green before the owner approves a merge to `main` (DEVELOPMENT
 | Type checking | `workspace` | In place |
 | Unit, API and database tests | `workspace` (unit), `spec` (database) | API tests arrive with the M1.2 contract-test harness; their job placement is decided then (open item 4) |
 | Migration validation | `spec` | Today the draft schema plus `constraints.sql`; real per-layer migrations from M1.1 (§6) |
-| Dependency and security scanning | None yet | Open item 3 (OSV-Scanner and Dependabot per spec §2.3; SAST and secret scanning have no named tool) |
+| Dependency and security scanning | `security` (OSV-Scanner); Dependabot weekly updates (`.github/dependabot.yml`) | In place (ADR-0016); SAST and a dedicated secret scanner are open item 3 |
 | Container scanning | None yet | Trivy from the first container image in Layer 1 (spec §2.3, §7.1) |
 | Terraform validation and plan review | `terraform` (validation) | Plan review is a human step before apply ([`DEPLOYMENT.md`](DEPLOYMENT.md)) |
 | iOS build and tests | `ios` | In place |
@@ -99,7 +100,7 @@ Every job must be green before the owner approves a merge to `main` (DEVELOPMENT
 - **Fixtures:** organization A with two practices and a patient in each; organization B with users holding every staff role; a patient-app user in each organization. All data is synthetic.
 - **Assertions for each tenant-scoped route:**
   1. A user of B holding the route's permission, requesting A's resource ID, gets `404 <RESOURCE>_NOT_FOUND`.
-  2. That body is identical to the body for a random UUID, apart from the per-request `requestId` (open item 6).
+  2. That body is identical to the body for a random UUID, apart from the per-request `requestId` (spec §7.5).
   3. There is no timing difference; the measurement method is fixed in M1.4 (open item 7).
   4. Mixed nested IDs (`/patients/{A}/photos/{B}` and the reverse) and IDs inside request bodies (`sourcePhotoIds`, before/after photo IDs, `practiceId`) are swapped as well [B §34.1 #13].
   5. List and search routes never return B's rows to A or A's to B.
@@ -121,7 +122,7 @@ Every job must be green before the owner approves a merge to `main` (DEVELOPMENT
 
 ## 6. Database behaviour suite
 
-`schema_behavior_tests.sql` holds 89 checks today (groups A–H and R). Each attempts a forbidden operation and the legitimate operation next to it (spec §11.1). The `spec` job applies `schema.prisma` and all of `constraints.sql` to an empty PostgreSQL 18 database and runs the suite; the first failure aborts the run.
+`schema_behavior_tests.sql` holds 90 checks today: groups A–H and R, plus the automated V7 `MATCH SIMPLE` audit (spec §7.5, §11.2). Each labelled check attempts a forbidden operation or the legitimate operation next to it (spec §11.1). The `spec` job applies `schema.prisma` and all of `constraints.sql` to an empty PostgreSQL 18 database and runs the suite; the first failure aborts the run.
 
 **How it grows with each layer:**
 
@@ -130,13 +131,13 @@ Every job must be green before the owner approves a merge to `main` (DEVELOPMENT
 3. Every new constraint or trigger gets a violation check and an adjacent legitimate check. A constraint that a later fragment drops and re-creates is re-tested.
 4. Regression checks (the R series) are never removed; a defect found later adds a new R check.
 5. Layer 1 adds RLS checks (§5.1).
-6. The spec §11.1 V7 query (composite foreign keys with two or more nullable columns must be covered by a CHECK) becomes an automated check (open item 9).
+6. The spec §11.1 V7 audit (composite foreign keys with two or more nullable columns must be covered by a CHECK) is already automated in the suite; it reads the live catalog, so every new table is audited.
 
 **Where today's checks become live (by the tables they touch, spec §5.8):**
 
 | Layer | Checks |
 |---|---|
-| 1 | A2, A5, B1–B8, G1–G4, R4 |
+| 1 | A2, A5, B1–B8, G1–G4, R4; the V7 audit from Layer 1 on |
 | 2 | C1–C4, C8–C10, D1–D10, H4–H6, R1–R3, R15–R17 |
 | 3 | A1, C5–C7, F11, H2, H3 |
 | 4 | F1–F10, F12, R5–R9 |
@@ -216,7 +217,7 @@ A coverage check lists every `AuditAction` value whose layer exists and fails if
 | 44 pt targets, Reduce Motion | UI and snapshot tests on critical screens |
 | Admin web semantics | Biome's recommended rules, which include its accessibility group, run repo-wide (`pnpm lint`); Playwright checks labels on critical flows |
 
-The `ios` CI job generates the Tuist workspace and builds and tests both apps on the simulator with Xcode 26.
+The `ios` CI job generates both Tuist projects, builds both apps for the simulator and runs the DesignSystem tests on an iPhone simulator (Xcode 26.6). Each layer adds its module tests to the job.
 
 ## 11. Offline and sync tests
 
@@ -261,16 +262,16 @@ The benchmark dataset size and environment (open item 11) and the load-test targ
 | PHI log canary, media permission, session revocation | §5.2 | Every PR from their layer | Planned |
 | Database behaviour suite | §6 | Every PR | In place |
 | Infrastructure scanning | `checkov`, `tflint` | Every PR | In place (`terraform` job) |
-| Dependency scanning | OSV-Scanner and Dependabot (spec §2.3) | Every PR | Open item 3 |
+| Dependency scanning | OSV-Scanner (`security` job) and Dependabot (spec §2.3, ADR-0016) | Every push; weekly updates | In place |
 | Container scanning | Trivy; block high or critical findings without an approved exception (spec §7.1) | Every image build from L1 | Planned |
-| Static analysis (SAST) | Not named by any source | Every PR | Open item 3 |
-| Secret scanning | Not named by any source | Every push | Open item 3 |
+| Static analysis (SAST) | Deferred by ADR-0016 | Every PR | Open item 3 |
+| Secret scanning | GitHub's native secret scanning (ADR-0016); a dedicated scanner is deferred | Every push | In place (native); open item 3 |
 | Penetration test | External, covering the identity module (ADR-0002) and every trust boundary in THREAT_MODEL.md | Before production | Planned; findings become regression tests |
 
 ## 15. Test data
 
 - **Synthetic only; never real PHI** [B §28.1; spec §7.2 rule 8]. People are fictional, as in the design prototype.
-- Contact data uses reserved example domains and fictional numbers, as the existing fixtures do (`example.test`).
+- Contact data uses reserved example domains and fictional numbers, as the existing fixtures do (`example.test` in the database suite, `example.com` in the design prototype).
 - Clinical images in tests are synthetic or non-patient images whose licence permits the use; never patient photographs.
 - Canary PHI values are distinctive synthetic strings so the log test can search for them.
 - The Layer 1 seed (organization and admin, B §32 #3) is synthetic.
@@ -377,13 +378,13 @@ Planned locations follow §2. Numbers are the Bible's own.
 |---|---|---|
 | 1 | Test runner for the Python services (`image-processing`, inference) | Layer 2 kickoff (UD-06) |
 | 2 | iOS snapshot-testing tool and automated accessibility audit | M1.9 |
-| 3 | Dependency scanning in CI (named in spec §2.3 but not in the Layer 0 jobs); tools for SAST and secret scanning | Layer 1 kickoff |
+| 3 | Tools for SAST and a dedicated secret scanner (ADR-0016 defers both; dependency scanning is in place) | Layer 1 kickoff |
 | 4 | Which CI job runs the Testcontainers API suites | M1.2 |
 | 5 | Lint rules that reject focused or skipped tests | Layer 1 kickoff |
-| 6 | Spec §7.5 says "byte-identical" 404 bodies, but every envelope carries its own `requestId`; the comparison must exclude it | M1.4 |
+| 6 | Closed by ADR-0017: spec §7.5 now excludes the per-request `requestId` from the 404 comparison | Closed |
 | 7 | How "no timing difference" for cross-tenant 404s is measured | M1.4 |
 | 8 | Splitting the behaviour suite so each layer runs only its live checks against real migrations | M1.1 |
-| 9 | Automating the spec §11.1 V7 `MATCH SIMPLE` query (today a manual check, not in `run_schema_checks.sh`) | M1.1 |
+| 9 | Closed by ADR-0017: the V7 `MATCH SIMPLE` audit is automated in the behaviour suite | Closed |
 | 10 | AI regression threshold values, and where governed evaluation sets are processed | Layer 7 kickoff (UD-04) |
 | 11 | RLS benchmark dataset size and environment | M1.1 |
 | 12 | Load-test targets and SLOs | INFRASTRUCTURE.md; before production |

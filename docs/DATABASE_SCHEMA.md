@@ -738,7 +738,7 @@ A derivative row therefore cannot name a photo of another organization or anothe
 
 ### 4.2 Closing the `MATCH SIMPLE` gap
 
-PostgreSQL checks a composite foreign key under `MATCH SIMPLE`: if **any** referencing column is `NULL`, the whole key is not checked. A composite FK whose columns can be partly `NULL` could therefore store an unchecked, possibly cross-tenant value. Spec verification V7 lists every composite FK with two or more nullable columns and requires a CHECK that forces evaluation (spec §11.1–§11.2):
+PostgreSQL checks a composite foreign key under `MATCH SIMPLE`: if **any** referencing column is `NULL`, the whole key is not checked. A composite FK whose columns can be partly `NULL` could therefore store an unchecked, possibly cross-tenant value. Spec verification V7 lists every composite FK with two or more nullable columns and requires a CHECK that forces evaluation (spec §11.1–§11.2). Since Layer 0 the V7 audit is a catalog query inside the behaviour suite, and it fails the run on any uncovered FK (spec §7.5, ADR-0017):
 
 | Table and FK | Gap | Closing CHECK (`constraints.sql`) | Verified |
 |---|---|---|---|
@@ -749,7 +749,7 @@ PostgreSQL checks a composite foreign key under `MATCH SIMPLE`: if **any** refer
 | `AIValidationRecord` → `SimulationVersion` `(organizationId, simulationVersionId)` | As above (Layer 8 re-creation) | `AIValidationRecord_tenant_chk` | — |
 | `PhotoSession` → `Location` `(organizationId, practiceId, locationId)` | A location with a `NULL` practice | `PhotoSession_location_needs_practice_chk` | R1–R2 |
 
-Rule for new tables: every parent/child link is composite; if a composite FK has two or more nullable columns, add a CHECK and extend the V7 query.
+Rule for new tables: every parent/child link is composite; if a composite FK has two or more nullable columns, add a CHECK on the same table that names those columns. The V7 audit reads the live catalog, so an uncovered FK fails the behaviour suite.
 
 ### 4.3 Links that are application-enforced
 
@@ -911,8 +911,8 @@ DATABASE_URL=postgresql://aestara:aestara_local_only@localhost:5432/aestara_veri
 docker compose exec postgres dropdb -U aestara aestara_verify  # the suite inserts fixtures; recreate before re-running
 ```
 
-- Each check prints `PASS`; the run stops at the first failure. The script ends with the labeled and total pass counts (89 at spec lock, spec §11.2).
-- Test groups: A tenant isolation, B identity and RBAC, C photography, D media permissions, E AI provenance and review, F consents, G audit, H scheduling, notes and configuration, R regressions from the independent review.
+- Each check prints `PASS`; the run stops at the first failure. The script ends with the labeled and total pass counts: 89 at spec lock (spec §11.2), 90 since Layer 0 added the automated V7 audit (spec §7.5).
+- Test groups: A tenant isolation, B identity and RBAC, C photography, D media permissions, E AI provenance and review, F consents, G audit, H scheduling, notes and configuration, R regressions from the independent review, V7 the `MATCH SIMPLE` audit (section 4.2).
 - Every rule has a pair of checks: `expect_error` proves the violation is rejected with the expected SQLSTATE, and `expect_ok` proves the legitimate operation next to it still succeeds. Add both when you add a constraint.
 - `pnpm verify:spec` (needs `pip install pypdf`) checks Bible → spec traceability, including the per-layer placement of every table.
 

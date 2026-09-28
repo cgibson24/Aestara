@@ -97,7 +97,7 @@ Rules:
 | Delivered in | Layer 3 (M3.1–M3.3, M3.8). Materials release endpoint: Layer 5 |
 | States | Consultation (diagram 17.1), spec §5.4.1 |
 | Audit events | `CONSULTATION_CREATED`, `CONSULTATION_STATUS_CHANGED` [P], `CONSULTATION_COMPLETED` |
-| Offline | Draft notes and consultation content, with client-generated IDs [B §23.1]. Lifecycle transitions are not offline-capable, and completion and release need real-time authorization (spec §8) |
+| Offline | Draft notes and consultation content, with client-generated IDs [B §23.1]. Completion (sign-off) and release need real-time authorization (spec §8). Whether other lifecycle transitions may be queued offline is not specified; spec §6.1.8 does not list them among offline-capable operations |
 
 The Bible's mandatory sequence [B §5.1], grouped by phase:
 
@@ -192,7 +192,7 @@ Rules:
 |---|---|
 | Actors | Create and queue registration: `photo.view` holders. Manual alignment: `photo.annotate` (SURGEON_PHYSICIAN, NURSE_INJECTOR_AESTHETICIAN). Export: `photo.export` |
 | Delivered in | Layer 3 (M3.5–M3.7) |
-| States | No Appendix A machine. `BeforeAfterSet.registrationMode`: `NONE`, `AUTOMATIC`, `MANUAL`. The registration job is an `AIJob` of type `IMAGE_REGISTRATION` (`QUEUED → RUNNING → SUCCEEDED \| FAILED \| TIMED_OUT`, spec §5.4.10) |
+| States | No Appendix A machine. `BeforeAfterSet.registrationMode`: `NONE`, `AUTOMATIC`, `MANUAL`. The registration job is an `AIJob` of type `IMAGE_REGISTRATION` (`QUEUED → RUNNING → SUCCEEDED \| FAILED \| TIMED_OUT`; `QUEUED \| RUNNING → CANCELLED`; spec §5.4.10) |
 | Audit events | `BEFORE_AFTER_CREATED` [P], `PHOTO_EXPORTED` |
 | Offline | Comparison modes are client rendering of display previews; whether previews are cached follows the cache policy (UD-25). Creating sets, registration and export need the server |
 
@@ -272,7 +272,7 @@ Preconditions and rules:
 
 Steps:
 
-1. Create up to three options (Plan A, B, C) as `DRAFT`, with items: treatment, area, provider, description, quantity, price, discount, notes, proposed date [B §11.1]. The server computes totals; clients never submit them.
+1. Create the plan options (Plan A, B, C [B §11.1]; no maximum is specified) as `DRAFT`, with items: treatment, area, provider, description, quantity, price, discount, notes, proposed date [B §11.1]. The server computes totals; clients never submit them.
 2. `/propose`. Issue an estimate for an option as needed: a frozen priced snapshot with a PDF. Financing is a reference only [B §11.3].
 3. `/send`. The patient opens the plan in the portal (`VIEWED`) and accepts or declines it with `Idempotency-Key`; unanswered plans expire at `expiresAt`.
 4. In clinic, staff may record the patient's response from `PROPOSED` with patient attestation (UD-14).
@@ -348,7 +348,7 @@ Rules:
 Education steps:
 
 1. Admins author versioned content (video, image, animation, text, PDF, procedure explanation, FAQ, pre-op and post-op instruction) and publish it; publishing freezes the version.
-2. A clinician assigns a published version to the patient (`POST …/content-assignments`), optionally linked to a consultation or procedure, and may record that it was presented in the consultation.
+2. A clinician assigns a content version to the patient (`POST …/content-assignments`), optionally linked to a consultation or procedure, and may record that it was presented in the consultation.
 3. Portal engagement events move the assignment through its states.
 
 Instruction steps:
@@ -393,7 +393,7 @@ How each item is released (the visibility predicates are an excerpt; normative r
 | Other documents | `POST …/documents/{docId}/release` | `document.manage` [P] | Document released |
 | Simulation | `POST …/simulations/{simId}/release` | `simulation.release` | `RELEASED_TO_PATIENT`, released version only |
 | Photo, before/after | Media release with purpose `PATIENT_APP` | `consultation.complete` | Current `PATIENT_APP` grant and an unrevoked release |
-| Treatment plan | `/send` | `treatmentplan.send` | `SENT_TO_PATIENT` or later |
+| Treatment plan | `/send` | `treatmentplan.send` | `SENT_TO_PATIENT`, `VIEWED`, `ACCEPTED`, `DECLINED`, `EXPIRED`, `SCHEDULED` or `COMPLETED` (never `CANCELLED`, `DRAFT` or `PROPOSED`) |
 | Consent | `/assign` | `consent.assign` | Any status except `DRAFT` |
 | Instruction | `POST …/instructions/{id}/release` | Not explicit in spec (section 18) | Released |
 | Education | Content assignment | `content.read` | Assigned |
