@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           # Its automatic pnpm cache runs before corepack has installed pnpm and fails.
@@ -106,7 +106,7 @@ jobs:
           python docs/technical-spec/verification/export_bible.py --check
           python docs/technical-spec/verification/check_docs.py
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           package-manager-cache: false # this job uses npm/npx only; pnpm is not installed
