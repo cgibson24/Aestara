@@ -80,6 +80,8 @@ flowchart TB
     AuditSupport
   end
   app --> feature
+  app --> platform
+  app --> foundation
   feature --> domain
   feature --> platform
   domain --> foundation
@@ -90,12 +92,12 @@ flowchart TB
 | Module | Tier | Bible | Responsibility | Built from |
 |---|---|---|---|---|
 | DesignSystem | foundation | §24.1–24.2 | Design tokens (generated), shared SwiftUI components and view states | Layer 0 (tokens); Layer 1 (components) |
-| CoreSecurity | foundation | §21.2, §23.3 | Keychain, encrypted store (GRDB + SQLCipher), biometric gate, secure wipe | Layer 1 |
+| CoreSecurity | foundation | §21.2, §23.3 | Keychain and biometric gate (Layer 1); encrypted store with GRDB + SQLCipher and secure wipe (Layer 2, M2.9) | Layer 1 |
 | CoreNetworking | foundation | §20 | Generated API client, request correlation, idempotency keys, error envelope | Layer 1 |
 | AuditSupport | foundation | §22, §23.3 | Client audit context; offline audit replay queue | Layer 2 |
 | Authentication | platform | §21.1 | Sign-in, MFA, token refresh, biometric unlock, revocation handling | Layer 1 |
 | Media | platform | §6.6, §21.2 | Signed upload/download, checksums, encrypted media cache | Layer 2 |
-| PatientDomain | domain | §4, §23 | Patient models, search, create with duplicate check, cached recent patients | Layer 1 |
+| PatientDomain | domain | §4, §23 | Patient models, search, create with duplicate check (Layer 1); cached recent patients (Layer 2, UD-25) | Layer 1 |
 | ConsultationDomain | domain | §5 | Consultation lifecycle, notes and concerns (spec §5.4.1) | Layer 3 |
 | Photography | feature | §6 | Guided capture, live guidance, ghost overlay, capture review, upload queue | Layer 2 |
 | Annotations | feature | §6.6 | Annotation layers kept separate from the immutable original | Layer 3 |
@@ -199,7 +201,6 @@ The CI `ios` job generates both projects, builds both apps for the simulator (th
 | Item | Decision point |
 |---|---|
 | Apple Developer team and bundle identifier prefix (`com.aestara.*` is provisional) | UD-34, before the first TestFlight build (end of Layer 1) |
-| Tuist version pin (currently resolved by mise from `mise.toml`) | Pinned from the first macOS CI run, in Layer 0 |
-| Keychain accessibility class and exact biometric flags (`.biometryCurrentSet` does not itself give a passcode fallback) | Layer 1 (M1.9), see [AUTHENTICATION_ARCHITECTURE.md](AUTHENTICATION_ARCHITECTURE.md) |
+| Keychain accessibility class and exact biometric flags: spec §4.2 asks for `.biometryCurrentSet` with a passcode fallback, which that flag alone does not give (F-32) | Layer 1 (M1.9), see [AUTHENTICATION_ARCHITECTURE.md](AUTHENTICATION_ARCHITECTURE.md) |
 | Snapshot-testing tool for SwiftUI views | Layer 1 kickoff |
 | App-switcher privacy screen and jailbreak signals | Layer 1 kickoff, see [THREAT_MODEL.md](THREAT_MODEL.md) |

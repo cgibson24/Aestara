@@ -15,7 +15,7 @@ This document explains how the API is described, versioned, validated and checke
 |---|---|---|---|
 | Staff and admin API | `/api/v1/…` | Provider iOS app, admin web | Bearer access token; tenant context from the token only |
 | Patient portal API | `/api/v1/portal/…` | Patient iOS app | Bearer token for a patient identity; deny-by-default visibility (spec §4.7) |
-| Internal service API | `/internal/v1/…` | api ↔ ai-gateway | Service-to-service auth inside the VPC; never internet-routable (spec §6.7) |
+| Internal service API | `/internal/v1/…` | api ↔ ai-gateway, api ↔ integration-service | Service-to-service auth inside the VPC; never internet-routable (spec §6.7) |
 | Vendor webhooks | `/webhooks/v1/{vendor}` | EMR and other vendors | Vendor signature (HMAC), replay-protected, then enqueued |
 | Health | `/health/live`, `/health/ready` | Load balancer | Unauthenticated; no data and no dependency details |
 

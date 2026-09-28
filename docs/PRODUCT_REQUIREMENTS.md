@@ -375,7 +375,7 @@ Requirements say *what*; acceptance criteria say *how we prove it*. They live in
 | [B §34.1], [B §34.2] | Representative criteria #12–31 for before/after and AI simulation. The Bible numbers them from 12; keep its numbers when citing | Layers 3 and 8 |
 | [B §36] | Production readiness checklist | Before production |
 | spec §9.1 | Must-pass tests per layer | Each layer |
-| [`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md) | The consolidated, numbered criteria per layer, traced to the `PR-*` IDs above | Each layer's acceptance review |
+| [`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md) | Exit conditions per layer with their detailed criteria and tests, the Layer 0 acceptance review, and the register of Layer 0 findings carried to later layers. It does not cite `PR-*` IDs; the layer column above gives the link | Each layer's acceptance review |
 | Feature prompts [B §33] | Numbered, objectively testable criteria for one micro-prompt | One micro-prompt |
 | [`TESTING_STRATEGY.md`](TESTING_STRATEGY.md) | Which test level proves each kind of criterion | All |
 
@@ -407,3 +407,5 @@ Every layer ends with a PASS / FAIL / DEFERRED BY SPECIFICATION table and a stop
 | UD-32 media grant for simulation sources; UD-29 simulation transitions | Adopted baseline | L8 kickoff |
 | UD-10 case-library permission and de-identification | Adopted baseline | L9 kickoff |
 | UD-25 offline cache policy | Adopted baseline | L2 kickoff |
+| Spec §6.1.8 lists patient creation as offline-queueable, but Bible §4.1 puts a search for probable duplicates before creation (served by `POST /patients/duplicate-check`, spec §6.3) and Bible §23.1 does not list patient creation as an offline operation (PR-PATIENT-01, PR-OFFLINE-01; [`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md) F-29) | Source conflict; recommended resolution (online-only creation) not yet adopted | L1 kickoff |
+| Patient INACTIVE and DECEASED transitions (PR-PATIENT-03), the consultation cancellation policy (PR-CONSULT-01) and patient-app offline caching (F-55) | Not specified | L1, L3 and L5 kickoffs |

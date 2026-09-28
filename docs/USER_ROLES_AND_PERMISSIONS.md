@@ -205,7 +205,7 @@ Four rules (spec §4.5, adopted with ADR-0008). How they are enforced and tested
 ## 6. Patient access
 
 - **Identity.** A patient signs in with a PATIENT-kind identity, separate from any staff identity, even when the email address is the same (`User` is unique per kind and email).
-- **Link.** Staff invite the patient; accepting the invitation creates an ACTIVE `PatientUserLink` between the login and one patient record in one organization (Layer 5). One login may link to records in several organizations, but the app shows one organization at a time and never combines them (UD-08).
+- **Link.** Staff invite the patient, which the schema records as an INVITED `PatientUserLink` between the login and one patient record in one organization; accepting the invitation (spec §6.5) sets credentials and makes the link ACTIVE (Layer 5). The staff-side invitation endpoint and its permission are not in spec §6.3 (§9). One login may link to records in several organizations, but the app shows one organization at a time and never combines them (UD-08).
 - **What the patient sees.** Only their own records, and only items released or assigned to the patient surface [B §13.2]. Drafts, rejected or failed simulations, unreleased documents, planned procedures and internal notes never appear. Every item type needs an approved visibility rule; anything without one is hidden (deny by default, spec §4.7).
 - **What the patient can do.** The Bible §13.3 actions: view released items, upload requested photos into intake, review and sign consents, acknowledge instructions, view or propose appointments where enabled, message, join telehealth, manage their account and sessions.
 - **Revocation.** Revoking the link ends access on the next request, because access is evaluated per request.
@@ -256,3 +256,4 @@ Until custom roles exist (UD-07), every change to a system role applies to **eve
 | Minors and guardian signing | UD-23 baseline | L4 kickoff |
 | Support access to tenant data | Not in scope until specified | Separate specification |
 | Which surface MARKETING uses (the Bible §2 surface table names none) | Not specified | L2 kickoff (first media releases) |
+| Staff endpoint and permission for inviting a patient to the app (spec §6.5 has only the accept endpoint; `PatientUserLink.invitedById` implies a staff action) | Not specified | L5 kickoff (M5.1) |

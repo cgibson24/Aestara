@@ -55,7 +55,7 @@ Flaky tests are fixed, never skipped, disabled or quarantined to get a green bui
 ## 3. Services (from Layer 1)
 
 1. CI builds one Docker image per service, tagged with the git commit SHA. ECR tags are immutable.
-2. Trivy scans the image; critical findings fail the build.
+2. Trivy scans the image. High or critical findings block the deployment unless an approved exception exists (spec §7.1).
 3. The image is pushed to the environment's ECR repository (`modules/compute`).
 4. The ECS service is updated to the new task definition with a rolling deployment. It uses a deployment circuit breaker with automatic rollback when health checks fail.
 5. `/health/ready` gates traffic. Synthetic journeys confirm the release ([INFRASTRUCTURE.md](INFRASTRUCTURE.md) §6).
@@ -104,15 +104,15 @@ It is a static build of the React SPA (ADR-0003), uploaded to a private S3 bucke
 AI model deployments are independent of application deployments, versioned, and support rollback [B §28.3]:
 - A model version is registered, validated against the harness thresholds, then rolled out through the registry (`AIModelRollout`).
 - Rollback activates the previous version.
-- A version that fails validation is never rolled out ([AI_ARCHITECTURE.md](AI_ARCHITECTURE.md)).
+- A version that fails validation must not be rolled out ([AI_ARCHITECTURE.md](AI_ARCHITECTURE.md)). The registry's enforcement of this arrives in Layer 7 (F-49).
 
 ## 9. Feature flags
 
-Flags allow controlled rollout per organization or practice [B §26]. **A flag never bypasses authorization**: it can hide a feature, never grant access. Flags are stored as `FeatureFlag` rows (Layer 2), changed by platform administrators, and audited.
+Flags allow controlled rollout per organization or practice [B §26]. **A flag never bypasses authorization**: it can hide a feature, never grant access. Flags are stored as `FeatureFlag` rows (Layer 2). Holders of `configuration.manage` change them within their scope (organization and practice admins, spec §4.5), and every change is audited (`CONFIGURATION_CHANGED`). Who manages platform-wide defaults is an open item (F-67).
 
 ## 10. Secrets and configuration
 
-- Runtime secrets (database credentials, signing keys, vendor credentials) live in AWS Secrets Manager. They are injected into ECS tasks as secrets, never as plain environment variables in task definitions or images.
+- Runtime secrets (database credentials, vendor credentials) live in AWS Secrets Manager. They are injected into ECS tasks as secrets, never as plain environment variables in task definitions or images.
 - Signing keys for access tokens are KMS keys (spec §4.2).
 - Configuration that is not secret lives in the task definition, per environment.
 - Nothing secret is committed. `.env.example` holds local-only values.
@@ -123,7 +123,7 @@ Each runbook is kept with the operations dashboards and exercised before product
 
 | Runbook | Detect | First actions | Recover and follow up |
 |---|---|---|---|
-| **Authentication outage** | Login-failure spike; `/health/ready` failing on auth dependencies | Check KMS signing-key access, database connectivity and recent deploys; roll back if a deploy caused it | Existing sessions keep working until their access tokens expire; communicate to practices; post-incident review |
+| **Authentication outage** | Login-failure spike; `/health/ready` failing on auth dependencies | Check KMS signing-key access, database connectivity and recent deploys; roll back if a deploy caused it | The session is checked on every request (spec §3.3), so an outage affects all signed-in traffic, not just new logins. The iOS apps keep offline work queued (spec §8). Communicate to practices; post-incident review. |
 | **Storage outage** | Upload success rate drops; S3 or KMS errors | Confirm with AWS Health; the iOS apps keep capturing offline and queue uploads (spec §8) | Queued uploads replay with the same idempotency keys; verify checksums; review |
 | **AI outage** | AI job failure rate; queue age | Pause generation (flag); the UI shows the service-unavailable state; nothing is released to patients automatically | Resume; failed jobs are re-requested by providers, never auto-retried into release |
 | **Integration outage** | Sync health; dead-letter growth | Pause the adapter; nothing is silently dropped (spec §5.4.9) | Replay dead letters after the fix; surface conflicts to staff |
@@ -135,7 +135,6 @@ Each runbook is kept with the operations dashboards and exercised before product
 | Item | Decision point |
 |---|---|
 | CI → AWS authentication (GitHub OIDC roles) and deployment job | Layer 1 kickoff |
-| Container scanning threshold policy (which severities block) | Layer 1, with the first image |
 | Pinning third-party GitHub Actions to commit SHAs | Layer 1 kickoff (see [THREAT_MODEL.md](THREAT_MODEL.md)) |
 | iOS distribution model for practices (App Store vs custom apps) | Before the first release to a practice |
 | Release approval roles beyond the owner | Production readiness |

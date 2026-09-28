@@ -102,7 +102,7 @@ These come from Bible §0.1, §1.2 and the Development Constitution (§30). Each
 
 ### 1.5 Explicit non-goals for the first production build [B §1.2]
 
-No automatic diagnosis. No prescribing of medication, product, dosage, injection depth or surgical technique. No visualization presented as an exact prediction. No replacement of billing, claims, e-prescribing or an enterprise EHR. No patient data sharing across organizations (D-01: Bible §1.2's "cross-practice" is read as cross-organization; sharing across the practices of one organization is allowed, §4.7). No 3D digital patient (deferred to Layer 11). No call recording (§16.2). No break-glass impersonation unless separately specified (§17.1).
+No automatic diagnosis. No prescribing of medication, product, dosage, injection depth or surgical technique. No visualization presented as an exact prediction. No replacement of billing, claims, e-prescribing or an enterprise EHR. No patient data sharing across organizations (D-01: Bible §1.2's "cross-practice" is read as cross-organization; sharing across the practices of one organization is allowed, §4.6). No 3D digital patient (deferred to Layer 11). No call recording (§16.2). No break-glass impersonation unless separately specified (§17.1).
 
 ### 1.6 Build layers [B §29]
 
@@ -673,8 +673,8 @@ erDiagram
   Organization ||--o{ Patient : owns
   Patient ||--o{ Consultation : ""
   Patient ||--o{ PhotoSession : ""
-  PhotoSession ||--o{ PatientPhoto : ""
-  PatientPhoto ||--|| StorageObject : "immutable ORIGINAL"
+  PhotoSession |o--o{ PatientPhoto : ""
+  PatientPhoto |o--|| StorageObject : "immutable ORIGINAL"
   PatientPhoto ||--o{ PhotoDerivative : ""
   Patient ||--o{ PhotoPermission : "versioned per category"
   PatientPhoto ||--o{ BeforeAfterSet : "before / after (same patient)"
@@ -1693,7 +1693,7 @@ With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 i
 | V3 Mutation test | **10 / 10 planted defects detected**; unmodified control passes |
 | V4 Prisma validate | **Valid** |
 | V5 Apply to PostgreSQL | **Clean.** 87 tables, 82 enum types, 278 foreign keys, 35 triggers, 47 CHECK constraints (tested on PostgreSQL 16) |
-| V6 Behavior tests | **89 / 89 pass**: tenant isolation (5), identity/RBAC (8), photography (10), media permissions (10), AI provenance and review (15), consents (12), audit (4), scheduling/notes/configuration (6), review regressions R1–R18 (18), fixture (1) |
+| V6 Behavior tests | **89 / 89 pass** at spec lock; **90 / 90** since Layer 0, when V7 was automated: tenant isolation (5), identity/RBAC (8), photography (10), media permissions (10), AI provenance and review (15), consents (12), audit (4), scheduling/notes/configuration (6), review regressions R1–R18 (18), fixture (1) |
 | V7 `MATCH SIMPLE` audit | 6 composite FKs have ≥ 2 nullable columns. **All 6 covered** (UserRole ×2 scope CHECK; FeatureFlag; AIValidationRecord ×2; PhotoSession, whose gap the review found, now closed). Automated in the behaviour suite since Layer 0: a catalog query fails the run on any uncovered FK |
 | V8 Diagrams | **4 / 4 render** |
 | V9 Adversarial review | **30 findings (10 high, 18 medium, 2 low groups). All 30 resolved:** fixed in schema/SQL with a regression test, fixed in the spec, or converted to an explicit decision. See §11.3. |
@@ -1759,7 +1759,7 @@ With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 i
 The foundation is **complete against the Bible and internally consistent**:
 
 - Every entity, permission, role, audit event, state and resource the Bible defines has a place in the schema and the contracts.
-- The database enforces the Bible's hardest rules (tenancy, immutable originals, versioned consents and permissions, append-only audit, explicit AI review and release, no silent model replacement) independently of application code, proven by 89 passing behavior tests.
+- The database enforces the Bible's hardest rules (tenancy, immutable originals, versioned consents and permissions, append-only audit, explicit AI review and release, no silent model replacement) independently of application code, proven by 90 passing behavior tests (89 at spec lock).
 - An independent review found 30 issues; all are resolved, and the risky ones are locked in by regression tests.
 - Every gap was surfaced as a tagged decision rather than buried in code, and every decision is now recorded (§10.2).
 

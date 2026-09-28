@@ -85,16 +85,16 @@ erDiagram
   Patient ||--o{ PhotoSession : has
   PhotographyProtocol ||--o{ PhotographyProtocolView : defines
   PhotographyProtocol ||--o{ PhotoSession : "captured under"
-  PhotoSession ||--o{ PatientPhoto : contains
-  PatientPhoto ||--|| StorageObject : "immutable original"
+  PhotoSession |o--o{ PatientPhoto : contains
+  StorageObject ||--o| PatientPhoto : "immutable original"
   PatientPhoto ||--o{ PhotoDerivative : "source of"
-  PhotoDerivative ||--|| StorageObject : "stored as"
+  StorageObject ||--o| PhotoDerivative : "stored as"
   PatientPhoto ||--o{ PhotoAnnotation : "vector layers"
   Patient ||--o{ PhotoPermission : "versioned per category"
   MediaRelease ||--|{ MediaReleasePermission : pins
   PhotoPermission ||--o{ MediaReleasePermission : "pinned by"
   PatientPhoto ||--o{ BeforeAfterSet : "before or after"
-  PhotoRequest ||--o{ PhotoSession : "fulfilled by"
+  PhotoRequest |o--o{ PhotoSession : "fulfilled by"
 ```
 
 ---
@@ -196,22 +196,22 @@ Rules:
 - Every derivative references its source photo and carries `generationMetadata` (generator name and version, parameters, transforms) and, where a job produced it, `generatedByJobId` [B §6.6].
 - Derivatives are immutable. Regenerating one inserts a new row and a new object (verified C8–C9).
 - Annotations are separate rows and never alter pixels of the original. Only a render creates pixels, and it is a new derivative.
-- Archiving a photo (`POST …/photos/{phid}/archive`, `ACCEPTED → ARCHIVED`) hides it from normal lists; the original is retained (spec §6.3, §5.4.10).
+- Archiving a photo (`POST …/photos/{phid}/archive`, `ACCEPTED → ARCHIVED`) changes its status only; the original is retained (spec §6.3, §5.4.10). How archived photos appear in lists and viewers is not specified (open item).
 - `ORIGINAL` bytes are served only through `access-urls` with the `photo.export` permission, and every issuance is audited (spec §6.3).
 
 ---
 
 ## 7. Storage layout and encryption
 
-From spec §7.4 and §7.1:
+From spec §7.4 and §7.1, and as built in `infrastructure/terraform/modules/storage` (Layer 0, not yet applied; [INFRASTRUCTURE.md](INFRASTRUCTURE.md)):
 
 | Concern | Design |
 |---|---|
-| Buckets | One private bucket per environment for clinical media, plus separate buckets for exports and for integration payloads (different lifecycle and IAM) |
+| Buckets | One private bucket per environment for clinical media, plus separate buckets for exports and for integration payloads (different lifecycle and IAM). Terraform names them `clinical-media`, `exports` and `integration-payloads` |
 | Keys | `{objectClass}/{random UUIDv7}`: opaque, with no tenant, patient or PHI in the key, and never overwritten. `objectClass` is a `StorageObjectClass` value (`CLINICAL_ORIGINAL`, `CLINICAL_DERIVATIVE`, `AI_ARTIFACT`, `DOCUMENT`, `SIGNATURE`, `MESSAGE_ATTACHMENT`, `CONTENT_MEDIA`, `DATA_EXPORT`, `INTEGRATION_PAYLOAD`) |
-| Overwrite protection | S3 versioning on; non-admin roles are denied `s3:DeleteObject`, and `s3:PutObject` on existing keys |
-| Encryption at rest | SSE-KMS with bucket keys, per-environment customer-managed KMS keys; `StorageObject.kmsKeyAlias` records the key |
-| Public access | S3 Block Public Access at account level; bucket policies deny non-TLS access, and deny service access that does not come through the VPC endpoint |
+| Overwrite and delete protection | S3 versioning on every bucket. The `clinical-media` bucket policy denies `s3:DeleteObject` and `s3:DeleteObjectVersion` to every principal until a retention role is approved (UD-24, ADR-0014). Spec §7.4 also denies `s3:PutObject` on existing keys to non-admin roles; that belongs to the per-service IAM roles (spec §7.1), which do not exist before Layer 1 |
+| Encryption at rest | SSE-KMS with bucket keys, using the per-environment customer-managed `media` KMS key; the bucket policy rejects uploads encrypted with any other key. `StorageObject.kmsKeyAlias` records the key |
+| Public access | S3 Block Public Access at account and bucket level; bucket policies deny non-TLS access. Spec §7.1 also denies service access that does not come through the VPC endpoint; the S3 gateway endpoint exists (`modules/network`), but that bucket-policy condition is not yet in `modules/storage` (open item) |
 | IAM | One role per service; S3 access scoped per object class |
 | Checksums | SHA-256 declared at intent, verified by S3 on `PUT` and again by the API on completion |
 | Device | Data Protection *Complete*, SQLCipher database, CryptoKit AES-GCM for cached media, keys in Keychain |
@@ -413,7 +413,7 @@ Excerpt; the catalog and event contents are normative in spec §7.3. Audit metad
 
 | Never | Prevented by | Proven by |
 |---|---|---|
-| An original is edited, overwritten, deleted by the app or re-pointed | `PatientPhoto_original_immutable`, `StorageObject_write_once` and `StorageObject_identity_immutable` triggers; S3 versioning; IAM denies overwrite and delete; derivatives are new objects | C1–C4, C8–C9; `checkov` in the `terraform` CI job |
+| An original is edited, overwritten, deleted by the app or re-pointed | `PatientPhoto_original_immutable`, `StorageObject_write_once` and `StorageObject_identity_immutable` triggers; S3 versioning; the `clinical-media` bucket policy denies deletes (overwrite denial arrives with the per-service IAM roles); derivatives are new objects | C1–C4, C8–C9; `checkov` in the `terraform` CI job |
 | An annotation or registration alters the original's pixels | Annotations are vector rows; registration is a display-time transform; renders are new derivatives | C8–C9; before/after API tests ([B §34.1 #14]) |
 | A permission is inferred from another category, or from clinical consent | Independent rows per category; `SIGNED_CONSENT` is evidence for an explicit transition, not a grant | D3; media permission tests (spec §7.5) |
 | A use without a current grant | Use-time check on export, release and portal read | Media permission tests with revoked and expired grants (spec §7.5) |
@@ -453,6 +453,8 @@ See [TESTING_STRATEGY.md](TESTING_STRATEGY.md) for tooling and [SECURITY_REQUIRE
 | UD-24 retention defaults and legal hold | Layers 1–2 |
 | Upload size limit; multipart resumption; renewing an expired upload URL; retry policy for derivative jobs | Layer 2 (M2.1, M2.6) |
 | Bucket placement of object classes other than clinical photos, exports and integration payloads | Layer 2 (M2.1) |
+| Spec §7.1/§7.4 storage controls not yet in Terraform: the VPC-endpoint condition in the bucket policies, and the denial of `s3:PutObject` on existing keys (per-service IAM roles) | Layer 1 (first IAM roles) and Layer 2 (M2.1) |
+| How `ARCHIVED` photos appear in lists and viewers | Layer 2 (M2.7) |
 | What `CLINICAL_USE` gates beyond simulation sources (UD-32); neither the Bible nor the spec says whether it gates capture or staff viewing | Layer 2 kickoff |
 | Which export purposes produce `MARKETING_DERIVATIVE` versus `EXPORT_DERIVATIVE`; the "compatible view" rule for before/after | Layer 3 (M3.5, M3.7) |
 | Whether revoking a permission also revokes the releases that pinned it (downstream compliance workflow, [B §7.3]) | Layer 2 (M2.8) |

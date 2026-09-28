@@ -19,7 +19,7 @@ This document models the threats to Aestara with STRIDE per trust boundary, name
 | Third-party boundaries: APNs, email/SMS, EMR vendors, telehealth vendor, package registries | The static design prototype (ADR-0009): no backend, no data, never deployed |
 | Operator, support and engineering access to production | Customer workforce policy, training, physical clinic security and incident response, which are the customer's obligations [B §21.3] |
 
-**Status of evidence.** No application code exists yet (spec §11.4). Every "verified by" entry is a planned check, except the database behaviour suite and the design-token contrast test, which run in CI today.
+**Status of evidence.** No application code exists yet (spec §11.4). Every "verified by" entry is a planned check, except the database behaviour suite, the Terraform static checks (fmt, validate, tflint, checkov) on the Layer 0 modules and the dependency scan (OSV-Scanner), which run in CI today. Checkov entries for resources that do not exist yet (ALB, WAF, queues, service roles) are planned too.
 
 ## 2. Assets
 
@@ -238,7 +238,7 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 | T4.5 | E | URL issued for another tenant's object | SR-MED-04, SR-TEN-08 | spec §6.1.9 | L | Cross-tenant suite covers `access-urls` routes |
 | T4.6 | I | Object key reveals patient or tenant | SR-MED-03 | spec §7.4 | L | Key-format test |
 | T4.7 | E | Service role has broad bucket access | SR-SEC-06, SR-MED-15 | spec §7.1 | L | IAM review; checkov |
-| T4.8 | T/D | Media deleted by a rogue admin or ransomware | SR-MED-03, SR-BCR-02 | spec §7.4, §7.6 | M: admin roles can still delete; recovery relies on versioning and replication | Restore drill |
+| T4.8 | T/D | Media deleted by a rogue admin or ransomware | SR-MED-03, SR-BCR-02 | spec §7.4, §7.6 | M: the clinical-media bucket policy denies deletes to every principal (ADR-0014), but an account administrator can change the policy; recovery relies on versioning and, from production readiness, replication | Restore drill |
 | T4.9 | R | Media fetched without a trace | SR-MED-06 (audit on issuance) | spec §6.1.9 | L: repeated fetches inside 120 s are one audit event | Audit assertions |
 
 ### TB5 Queues → image-processing / ai-gateway → inference
@@ -340,10 +340,10 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 
 | ID | S | Threat | Mitigation | Spec | Res. | Verified by |
 |---|---|---|---|---|---|---|
-| T13.1 | T | Malicious or vulnerable dependency | SR-SCI-06, SR-SCI-02, SR-IDN-02 | spec §2.3 | M: dependency scanning is not yet in CI; scanners find known issues only | CI scan output |
-| T13.2 | T | Compromised GitHub Action (tag moved) | Not specified: `ci.yml` references actions by version tag (open item 11) | — | M | — |
+| T13.1 | T | Malicious or vulnerable dependency | SR-SCI-06, SR-SCI-02, SR-IDN-02 | spec §2.3; ADR-0016 | M: OSV-Scanner and Dependabot find known vulnerabilities only, not a malicious new release | CI scan output (`security` job) |
+| T13.2 | T | Compromised GitHub Action (tag moved) | Not specified: `ci.yml` references actions by version tag; pinning to commit SHAs is deferred by ADR-0016 (open item 11) | — | M | — |
 | T13.3 | E | Workflow token with write access abused | SR-SCI-07 | `ci.yml` | L | Workflow review |
-| T13.4 | I | Secrets committed to the repository | SR-SCI-10 | — | M until a tool is chosen | Secret-scan output |
+| T13.4 | I | Secrets committed to the repository | SR-SCI-10 (GitHub's native secret scanning, ADR-0016) | ADR-0016 | M until a dedicated scanner is chosen | Secret-scan output |
 | T13.5 | T | Vulnerable base image deployed | SR-SCI-03 | spec §7.1 | L | Trivy gate |
 | T13.6 | T | Terraform change opens public access | SR-SCI-04, SR-SCI-05 | spec §2.3 | L | checkov; plan review |
 | T13.7 | T | Unreviewed change reaches `main` | SR-SCI-12 | CLAUDE.md | L | Branch protection |
@@ -356,7 +356,7 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 |---|---|---|---|---|---|---|
 | T14.1 | I | Platform operator browses patient records | SR-AUZ-05 | B §17.2; spec §4.5 | L | Authorization suite |
 | T14.2 | E | Operator grants itself a clinical role | SR-AUZ-04 | spec §4.5 | L | Separation-of-duties tests; DB R4 |
-| T14.3 | I | Engineer reads PHI directly through the console or the database owner role | SR-SEC-06, SR-AUD-13 | spec §7.1 | H: human production-access controls are not specified (open item 13) | — |
+| T14.3 | I | Engineer reads PHI directly through the console or the database owner role | SR-SEC-06, SR-AUD-13 | spec §7.1, §10.4 | H: spec §10.4 sets only the direction (no standing access; a break-glass role with approval, session recording and audit); the design does not exist yet (open item 13) | — |
 | T14.4 | T | Owner role disables audit triggers and edits history | SR-AUD-08 (WORM copy and reconciliation) | spec §7.3 | M: exposure window until reconciliation; no WORM copy in Layer 1 | Reconciliation test; alert-fire test |
 | T14.5 | R | Operator activity cannot be traced | SR-AUD-12, SR-AUD-13 | spec §7.1 | L | CloudTrail review |
 | T14.6 | E | Support impersonation of a user | SR-AUZ-05: not built until specified | B §17.1 | L | Review |
@@ -439,14 +439,14 @@ These are the Medium and High residuals that matter most, linked to the risk reg
 
 | # | Residual risk | Rating | Threats | Spec §10.4 row | Treatment |
 |---|---|---|---|---|---|
-| 1 | Human production access (console, database owner role) can reach PHI or alter audit | High | T14.3, T14.4 | Not in spec §10.4 (gap) | Specify production access and break-glass for engineers before the first environment that holds PHI (open item 13) |
+| 1 | Human production access (console, database owner role) can reach PHI or alter audit | High | T14.3, T14.4 | "Human production access to PHI (operators, support) is not yet specified" (added by ADR-0017) | Design the spec §10.4 controls (no standing access; break-glass with approval, session recording and audit) before the first environment that holds PHI (open item 13) |
 | 2 | A defect in the in-house authentication module | Medium | T2.1, AC-04 | "In-house authentication (D-02) has a security defect" | Vetted libraries, reuse detection, pen test before production (SR-IDN-18) |
 | 3 | Offline devices hold PHI | Medium | T6.1, AC-03 | "Offline devices hold PHI" | Cache limits (UD-25); device-management decision (open item 3) |
-| 4 | Supply-chain compromise | Medium | T13.1, T13.2, T13.4, T13.8 | Not in spec §10.4 (gap) | Dependency and secret scanning, action pinning, deploy credentials (open items 11, 12; SECURITY_REQUIREMENTS.md open items 1–2) |
+| 4 | Supply-chain compromise | Medium | T13.1, T13.2, T13.4, T13.8 | "Supply-chain compromise (dependencies, CI actions, container images)" (added by ADR-0017) | Dependency scanning is in place; a dedicated secret scanner, action pinning and deploy credentials remain (open items 11, 12; SECURITY_REQUIREMENTS.md open item 2) |
 | 5 | Vendors handling PHI without BAAs | Medium | T12.1, T12.4 | "Vendor dependencies without BAAs" | Each vendor through a UD or ADR (SR-VEN-07) |
 | 6 | AI output misread as a prediction, or identity drift | Medium | AC-09 | "AI visualization quality or identity drift"; "Regulatory scope creep" | Harness thresholds, disclaimer by construction, intended-use review (SR-AI-06, SR-AI-11, SR-AI-15) |
 | 7 | Within-organization browsing enabled by organization-wide reads | Medium (accepted, ADR-0001) | AC-06 | "Cross-organization data exposure" (the cross-organization part is Low) | Detective controls: `PATIENT_VIEWED`, access reports, alerts |
-| 8 | Decoder exploit through a crafted image | Medium | T5.2, AC-05 | Not in spec §10.4 (gap) | Sandboxing decision (open item 6); scanning; patching |
+| 8 | Decoder exploit through a crafted image | Medium | T5.2, AC-05 | "Malicious image files (crafted HEIC/JPEG/PNG)" (added by ADR-0017) | Sandboxing decision (open item 6); scanning; patching |
 | 9 | Account takeover for roles without mandatory MFA | Medium | T1.1, T7.3 | Related to "In-house authentication" | Revisit MFA scope at UD-18 (open items 20–21) |
 
 ## 10. Review cadence
@@ -469,7 +469,7 @@ Each is a gap in the sources, not a decided control.
 | # | Gap | Threats | Decide at |
 |---|---|---|---|
 | 1 | Content Security Policy for the admin SPA | T8.1 | Layer 1 kickoff (admin web shell) |
-| 2 | Lifetime and single use of password-reset and patient-invitation tokens; the invitation token also travels in the URL path (spec §6.5) | T7.7, T10.3 | Layer 1 (reset), Layer 5 (invitations) |
+| 2 | Lifetime and single use of password-reset and patient-invitation tokens; the invitation token also travels in the URL path (spec §6.5) | T7.7, T10.3 | Layer 1 kickoff (reset tokens; moving the invitation token into the request body, [`API_CONTRACTS.md`](API_CONTRACTS.md) open items); Layer 5 (invitation lifetime) |
 | 3 | Device passcode enforcement, device management and remote wipe for clinical devices | AS4, T6.1, AC-03 | Layer 2 kickoff, with UD-25 |
 | 4 | Hiding PHI in the iOS app-switcher snapshot and screenshots | T6.7 | Layer 1 (provider iOS shell) |
 | 5 | Jailbreak detection or app attestation | T6.9 | Layer 1 kickoff |
@@ -478,12 +478,12 @@ Each is a gap in the sources, not a decided control.
 | 8 | Egress allow-list for `integration-service` (SSRF) | T11.6 | Layer 10 kickoff |
 | 9 | What session metadata is sent to the telehealth vendor | T12.4 | Layer 6, with UD-05 |
 | 10 | Email sender authentication for patient messages | T10.2 | Layer 5 kickoff |
-| 11 | Pinning GitHub Actions to commit SHAs | T13.2 | Next CI change |
-| 12 | How CI authenticates to AWS for deployments | T13.8 | DEPLOYMENT.md |
-| 13 | Human access to production AWS and the database owner role, including break-glass | T14.3, T14.4 | Before the first environment that holds PHI |
+| 11 | Pinning GitHub Actions to commit SHAs | T13.2 | Layer 1 kickoff (ADR-0016; [`DEPLOYMENT.md`](DEPLOYMENT.md) open items) |
+| 12 | How CI authenticates to AWS for deployments (GitHub OIDC with per-environment roles is the proposed baseline) | T13.8 | Layer 1 kickoff ([`DEPLOYMENT.md`](DEPLOYMENT.md), [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
+| 13 | Human access to production AWS and the database owner role: the break-glass design that spec §10.4 requires (approval, session recording, audit; no standing access) | T14.3, T14.4 | Before the first environment that holds PHI (production; [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
 | 14 | Anchoring consent snapshot hashes in the WORM audit copy | AC-07 | Layer 4 kickoff |
 | 15 | Burned-in AI label on patient-visible simulation images | AC-09 | Layer 8 kickoff |
-| 16 | Denial-of-service protection beyond AWS WAF | T1.5 | INFRASTRUCTURE.md |
+| 16 | Denial-of-service protection beyond AWS WAF (AWS Shield Advanced is the named candidate) | T1.5 | Production readiness ([`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
 | 17 | Rules for raw SQL in application code | T3.2 | Layer 1 (M1.1) |
 | 18 | How "no timing difference" for cross-tenant 404s is measured | AC-01 | Layer 1 (M1.4) |
 | 19 | Malware scanning of staff-uploaded documents | AC-05 | Layer 2 kickoff, with UD-22 |

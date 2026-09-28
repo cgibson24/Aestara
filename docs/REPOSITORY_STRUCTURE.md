@@ -33,7 +33,7 @@ This document explains where everything lives, what state each part is in, and t
 ├── infrastructure/
 │   └── terraform/           AWS: bootstrap, environments/{dev,staging,production}, modules/
 ├── docs/                    Bible export, spec, ADRs, Layer 0 documentation pack
-├── .github/workflows/ci.yml CI gates (Bible §28.2)
+├── .github/                workflows/ci.yml (CI gates, Bible §28.2), dependabot.yml
 ├── .claude/                 Claude Code on the web: SessionStart hook
 ├── .devcontainer/           Codespaces / Dev Container
 ├── Aesthetic_Platform_Software_Production_Bible_v1.0.pdf   (authoritative)
@@ -66,7 +66,7 @@ This document explains where everything lives, what state each part is in, and t
 | Terraform, AWS provider | 1.16.4, 6.66.0 (exact) | environment roots, `.terraform.lock.hcl` |
 | tflint (+ AWS ruleset), checkov | 0.64.0 (0.49.0), 3.3.20 | `.tflint.hcl`, CI |
 | Xcode, Swift | 26.6 on macOS 26 runners; Swift tools 6.2 | CI `ios` job, `Package.swift` |
-| Tuist | from `mise.toml`. Pinned to the exact version once the first macOS CI run reports it. | `mise.toml` |
+| Tuist | 4.209.0 (via mise) | `mise.toml` |
 | PostgreSQL | 18 (≥ 15 required) | `docker-compose.yml`, CI service |
 | OSV-Scanner | v2.6.0 | CI `security` job |
 

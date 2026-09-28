@@ -93,7 +93,7 @@ Steps 4–13 follow the Bible's layer order exactly. Nothing from a later layer 
 | IaC skeleton | Terraform root modules per environment (dev/staging/prod), remote-state bootstrap, and minimal real modules for KMS, account baseline, network, storage, database and compute (not applied yet); `terraform validate` + `tflint` + `checkov` in CI (ADR-0014) |
 | iOS skeleton | Tuist projects for ios-provider and ios-patient with the 20 Bible §24.4 modules as Swift packages and a checked tier graph, `DesignTokens.swift` from the token package, a macOS CI job that generates, builds and tests (ADR-0015) |
 | API contracts skeleton | `packages/api-contracts` (Zod → OpenAPI 3.1 pipeline, `oasdiff` gate) with the error envelope and pagination primitives only |
-| **Exit** | Bible §31 acceptance table: every Layer 0 deliverable PASS or DEFERRED BY SPECIFICATION; the repo initializes reproducibly. Result: `ACCEPTANCE_CRITERIA.md` §4 (all PASS), with 56 findings in §5 (12 fixed, the rest carried to their layer). |
+| **Exit** | Bible §31 acceptance table: every Layer 0 deliverable PASS or DEFERRED BY SPECIFICATION; the repo initializes reproducibly. Result: `ACCEPTANCE_CRITERIA.md` §4 (all PASS), with 67 findings in §5 (14 fixed, the rest carried to their layer). |
 
 ---
 

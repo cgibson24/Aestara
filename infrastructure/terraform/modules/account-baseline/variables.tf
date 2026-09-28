@@ -25,3 +25,20 @@ variable "access_log_retention_days" {
   type        = number
   default     = 365
 }
+
+variable "trail_object_lock_mode" {
+  description = "Object Lock mode for CloudTrail files: COMPLIANCE (nobody can delete before expiry) or GOVERNANCE (privileged override, for non-production)."
+  type        = string
+  default     = "COMPLIANCE"
+
+  validation {
+    condition     = contains(["COMPLIANCE", "GOVERNANCE"], var.trail_object_lock_mode)
+    error_message = "trail_object_lock_mode must be COMPLIANCE or GOVERNANCE."
+  }
+}
+
+variable "trail_object_lock_days" {
+  description = "Days each CloudTrail file stays locked."
+  type        = number
+  default     = 365
+}

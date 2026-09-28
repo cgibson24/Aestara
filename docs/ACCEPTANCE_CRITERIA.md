@@ -182,6 +182,8 @@ Writing and cross-checking the pack against the Bible, the spec and the schema s
 | F-10 | Roadmap M1.3 omitted passkeys, which spec §6.3 puts in Layer 1 | Roadmap aligned to the spec |
 | F-11 | Spec §10.4 lacked the risks of human production access, supply-chain compromise and malicious images | Rows added |
 | F-12 | No dependency scanning in CI (Bible §28.2) | OSV-Scanner job and Dependabot added (ADR-0016) |
+| F-57 | Spec §5.3 ER diagram used cardinalities that contradict the schema (the photo-session link is optional; a storage object is not always a photo) | Diagram corrected |
+| F-58 | The Layer 0 CloudTrail bucket had no Object Lock (spec §7.1) | Object Lock added: compliance mode in staging and production, governance mode in dev (ADR-0014). The separate security account is carried as F-59. |
 
 ### 5.2 Carried to the Layer 1 kickoff (identity, tenancy, patients, platform)
 
@@ -201,13 +203,14 @@ Writing and cross-checking the pack against the Bible, the spec and the schema s
 | F-24 | `LOGIN_FAILURE` for an unknown identifier cannot satisfy the audit actor CHECK | Record it as an anonymous actor, with the hashed identifier kept in `LoginEvent` only |
 | F-25 | Staff invites and password reset need email in Layer 1; the notifications service arrives in Layer 5 | The api sends templated transactional email (no PHI) through SES from Layer 1; Mailpit joins local compose in Layer 1 |
 | F-26 | RLS policy design is open: membership lookups before a tenant is chosen, tables with a nullable organization, platform access without `BYPASSRLS`, worker tenant context, `FORCE`, `SET LOCAL` through Prisma | Designed in M1.1 together with the performance gate (ADR-0004) |
-| F-27 | Account recovery, lockout thresholds, a password-change endpoint, and audit events for MFA changes, password reset and organization switch are unspecified | Specify in M1.3 |
+| F-27 | Unspecified: account recovery, lockout thresholds, a password-change endpoint, audit events for MFA changes, password reset and organization switch, and the meaning of the `MFA_REQUIRED` login-failure reason | Specify in M1.3 |
 | F-28 | `UserRole.roleId` references `Role(id)` alone, so a custom role (UD-07) could be assigned across organizations | Composite key when custom roles are enabled |
 | F-29 | Spec §6.1.8 lists patient creation as offline-queueable; Bible §4.1 needs a server duplicate check, and Bible §23.1 does not list it | Patient creation is online-only |
 | F-30 | Layer 1 has no WORM audit copy until the outbox arrives in Layer 2 (spec §7.3) | Accept for Layer 1 (append-only triggers and grants), or bring the outbox forward |
 | F-31 | The database behaviour suite is one file, but spec §9.1 expects per-layer fragments | Split it by layer in M1.1 |
 | F-32 | Platform prerequisites (see the list after this table) | Decide at the Layer 1 kickoff |
 | F-33 | Bible §1 names success criteria without measurable targets | The owner sets pilot success metrics |
+| F-59 | Spec §7.1 delivers CloudTrail to a bucket in a separate security account; Layer 0 uses the environment's own account | Decide with the AWS account structure (F-32) |
 
 F-32 covers these platform prerequisites:
 - AWS account IDs, the BAA, domains and certificates
@@ -215,9 +218,8 @@ F-32 covers these platform prerequisites:
 - UD-34 (Apple team and bundle IDs)
 - pinning GitHub Actions to commit SHAs
 - the secret-scanning and SAST tools
-- the container-scan threshold
 - the design for human production access
-- the iOS Keychain accessibility class, app-switcher privacy and jailbreak signals
+- the iOS Keychain accessibility class and biometric flags (spec §4.2 asks for `.biometryCurrentSet` with a passcode fallback, which that flag alone does not give), app-switcher privacy and jailbreak signals
 - the SwiftUI snapshot tool
 
 ### 5.3 Carried to later layers
@@ -247,6 +249,14 @@ F-32 covers these platform prerequisites:
 | F-54 | 5, 10 | The runtime language of the notifications and integration services | Decide at their layer's kickoff |
 | F-55 | 1, 3, 5 | Patient INACTIVE/DECEASED transitions, the consultation cancellation policy, patient-app offline caching | Decide at the kickoff of each layer |
 | F-56 | Owner | The repository is public, but the Bible is marked "Confidential Product Specification" | The owner decides the repository's visibility |
+| F-60 | 5 | Spec §6.3/§6.5 have no staff endpoint or permission for inviting a patient, though `PatientUserLink.invitedById` implies one | Add the endpoint and permission in Layer 5 |
+| F-61 | 2 | The spec §7.1 VPC-endpoint bucket condition and the spec §7.4 denial of overwriting existing keys are not yet in Terraform | Add with the upload flow in Layer 2 (conditional writes) |
+| F-62 | 7 | GPU inference needs a subnet tier with no internet egress (spec §2.1); the Layer 0 private subnets route through NAT | Add the tier in Layer 7 (UD-04) |
+| F-63 | 2 | Spec §5.4 has no photography-protocol state machine (the lifecycle is read from `/activate` and `/retire`) | Add an explicit machine in Layer 2 |
+| F-64 | 3 | Whether consultation transitions other than sign-off and release may be queued offline | Decide in Layer 3 |
+| F-65 | 4 | Whether education and instruction assignments may reference only PUBLISHED content versions | Decide in Layer 4 |
+| F-66 | 2 | How archived photos are shown in lists | Decide in Layer 2 |
+| F-67 | 2 | Who manages platform-wide feature-flag defaults (`configuration.manage` is held by organization and practice admins) | Decide in Layer 2 |
 
 F-35 covers these photo details:
 - resumable upload and upload-URL renewal

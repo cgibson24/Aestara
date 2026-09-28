@@ -11,8 +11,9 @@ module "kms" {
 module "account_baseline" {
   source = "../account-baseline"
 
-  name_prefix      = var.name_prefix
-  logs_kms_key_arn = module.kms.key_arns["logs"]
+  name_prefix            = var.name_prefix
+  logs_kms_key_arn       = module.kms.key_arns["logs"]
+  trail_object_lock_mode = var.trail_object_lock_mode
 }
 
 module "network" {

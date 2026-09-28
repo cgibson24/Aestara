@@ -204,7 +204,7 @@ Status values:
   - **Pins:** Terraform 1.16.4 with the AWS provider pinned exactly to 6.66.0, with committed lock files.
   - **Accounts and state:** one AWS account per environment, guarded by `allowed_account_ids`. Remote state lives in a versioned, KMS-encrypted S3 bucket with S3 lock files (no DynamoDB table), created by a bootstrap root.
   - **Keys:** customer-managed KMS keys per purpose (data, media, logs) with yearly rotation.
-  - **Account baseline in every environment:** account-level S3 public-access block, EBS encryption by default, multi-region CloudTrail with log-file validation, GuardDuty, IAM Access Analyzer, and one access-log bucket. That bucket uses SSE-S3 because S3 server access logging cannot deliver to SSE-KMS buckets.
+  - **Account baseline in every environment:** account-level S3 public-access block, EBS encryption by default, multi-region CloudTrail with log-file validation delivered to an Object Lock bucket (compliance mode in staging and production, governance mode in dev), GuardDuty, IAM Access Analyzer, and one access-log bucket. Delivery to a separate security account (spec §7.1) waits for the AWS account structure (Layer 1 kickoff). That bucket uses SSE-S3 because S3 server access logging cannot deliver to SSE-KMS buckets.
   - **Network:** VPC with public, private and isolated subnets across pinned zones; NAT per zone except in dev.
   - **Database:** RDS PostgreSQL 18 in the isolated subnets. TLS is forced, the password is managed by Secrets Manager, statement text is never logged, backups are kept 35 days and deletion protection is on. Multi-AZ in staging and production; dev is single-AZ on synthetic data.
   - **Clinical-media bucket:** versioned, SSE-KMS with its key enforced, TLS-only, and `DeleteObject`/`DeleteObjectVersion` denied to every principal until a retention role is approved (UD-24).
@@ -246,6 +246,7 @@ Status values:
 - **Status:** Accepted, 2026-09-28. Change control for the locked spec (Bible §0): these corrections remove contradictions and change no owner decision.
 - **Decision:**
   - **`schema.prisma`:** removed `SimulationParameter.unit`, which contradicted spec §6.6.3 ("no … unit … fields, by construction") and Bible §9.6. A new traceability check keeps any dose, unit, product or technique field out of that model.
+  - **Spec §5.3** ER diagram: the photo session link and the photo↔storage-object cardinalities now match the schema.
   - **Spec §1.5** now states the D-01 boundary ("no patient data sharing across organizations") instead of the unqualified "no cross-practice sharing".
   - **Spec §6.1.1** points to §6.8 for contract tooling, not §6.7.
   - **Spec §2.1** no longer calls APNs an AWS service.
@@ -254,6 +255,6 @@ Status values:
   - **Spec §10.4:** three risks added: human production access, supply chain, malicious image files.
   - **Spec §10.2:** UD-34 added (Apple team and bundle identifier prefix).
   - **Schema comments:** stale remarks corrected (UD-02, UD-13, protocol seeding, how tables move into `packages/database`).
-  - **`DESIGN_SYSTEM.md` C13:** exiting signing mode needs staff re-authentication (UD-31), not specifically Face ID.
+  - **`DESIGN_SYSTEM.md` C13:** exiting signing mode is described as staff re-authentication (UD-31), with Face ID or Touch ID as the means, matching the spec.
   - **Roadmap M1.3** includes passkeys, matching spec §6.3.
 - **Consequences:** the locked baseline is internally consistent on these points. Every other Layer 0 finding is carried to the kickoff of the layer that needs it (`ACCEPTANCE_CRITERIA.md` §5).

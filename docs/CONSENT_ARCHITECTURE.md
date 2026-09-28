@@ -214,7 +214,7 @@ UD-31 baseline, confirmed at Layer 4 kickoff: yes, with a consent-scoped hand-of
 | Opening | `POST …/{consentId}/patient-signing` by a holder of `consent.assign`, `Idempotency-Key` required | spec §4.4, §6.3 |
 | Scope | The hand-off session is short-lived and limited to that one consent: review, respond, sign | spec §6.3 |
 | Lock | A persistent banner shows signing mode; the patient cannot navigate elsewhere | DESIGN_SYSTEM.md C13 |
-| Exit | Leaving signing mode requires staff re-authentication (DESIGN_SYSTEM.md names Face ID) | spec §6.3; DESIGN_SYSTEM.md C13 |
+| Exit | Leaving signing mode requires staff re-authentication (UD-31; DESIGN_SYSTEM.md C13 gives Face ID or Touch ID as the means) | spec §6.3; DESIGN_SYSTEM.md C13 |
 | Audit | `CONSENT_VIEWED` and `CONSENT_SIGNED` as for portal signing | spec §6.3 |
 | Confirmation | Signing and voiding are confirmed with a sheet that says who sees what and whether it can be undone | DESIGN_SYSTEM.md C11 |
 
@@ -271,7 +271,7 @@ UD-23 baseline, confirmed at Layer 4 kickoff: "GUARDIAN signer if minors are in 
 
 | Aspect | Education [B §12.5] | Instructions [B §12.6] |
 |---|---|---|
-| Model | `EducationContent` with `EducationContentVersion` (`DRAFT → PUBLISHED → RETIRED`, one draft, published frozen, R7) | `PatientInstruction` pointing at a published content version (types include `PRE_OP_INSTRUCTION`, `POST_OP_INSTRUCTION`) |
+| Model | `EducationContent` with `EducationContentVersion` (`DRAFT → PUBLISHED → RETIRED`, one draft, published frozen, R7) | `PatientInstruction` pointing at a content version (types include `PRE_OP_INSTRUCTION`, `POST_OP_INSTRUCTION`) |
 | Content types | Video, image, animation, text, PDF, procedure explanation, FAQ, pre-op instruction, post-op instruction | Same library |
 | Assignment | `ContentAssignment`, optionally tied to a consultation or procedure; `POST …/content-assignments` (`content.read`); `…/{id}/presented` records presentation in the consultation | Assigned by procedure **or** consultation (CHECK, at least one); `POST …/instructions` (`content.read`); `…/{id}/release` sets `releasedToPatientAt` |
 | Tracking | `ASSIGNED → OPENED → VIEWED → COMPLETED → ACKNOWLEDGED` (states from the Bible, ordering proposed, spec §5.4.10), each with a timestamp | Patient acknowledgment (`patientAcknowledgedAt`) is tracked **separately** from clinical completion (`clinicalCompletedAt`, `consultation.edit`) |
@@ -326,5 +326,7 @@ Excerpt; the catalog is normative in spec §7.3. Metadata holds identifiers and 
 | Canonicalization for `contentHash`; PDF snapshot layout; relation of `signedSnapshotHash` to `DocumentVersion.sha256` | Layer 4 (M4.5–M4.6) |
 | When the superseded consent changes state; discarding an unused `DRAFT` | Layer 4 (M4.6) |
 | `POST …/{consentId}/access-urls` lists no audit event, while `DOCUMENT_VIEWED` exists for signed-consent downloads | Layer 4 kickoff (UD-19) |
+| Spec §5.4.4 audits prepare (`DRAFT`) and supersede with `CONSENT_STATUS_CHANGED`, but the spec §6.3 rows for `POST …/consents` and `POST …/{consentId}/supersede` list no audit event; this document follows §5.4.4 | Layer 4 kickoff (UD-19) |
+| Whether education and instruction assignments may reference only `PUBLISHED` content versions (spec §5.4.4 requires it for consents only; the database does not check it) | Layer 4 (M4.7–M4.8) |
 | Whether voiding a consent that was evidence for a media permission triggers a permission review | Layer 4 kickoff |
 | Engagement states per education content type | Layer 4 (M4.7) |

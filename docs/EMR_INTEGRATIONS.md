@@ -69,7 +69,7 @@ flowchart LR
 
 "Vendor A" and "Vendor B" are the Bible's placeholders [B §18.1]; no vendor has been selected (section 11).
 
-**The interface.** Spec §6.7 names the `IntegrationAdapter` operations `fetchChanges`, `upsert`, `mapToCanonical` and `mapFromCanonical`. As the names indicate, adapters read changes from the external system, write to it, and translate between the vendor format and Aestara's canonical resources. Signatures, error model and paging are defined in roadmap M10.1.
+**The interface.** Spec §6.7 names the `IntegrationAdapter` operations `fetchChanges`, `upsert`, `mapToCanonical` and `mapFromCanonical`. As the names indicate, adapters read changes from the external system, write to it, and translate between the vendor format and Aestara's canonical resources. Signatures, error model and paging are not specified yet; they are defined in roadmap M10.1.
 
 **An integration instance** (`Integration` row) records:
 
@@ -96,7 +96,7 @@ The Bible fixes nine canonical resources [B §18.2]; they are the `CanonicalReso
 | Appointment | `APPOINTMENT` | `Appointment.sourceSystem = INTEGRATION`, `integrationId`, `externalId`, `externalVersion`, `lastSyncedAt`, `syncConflictDetectedAt`; unique `(integrationId, externalId)` |
 | Encounter | `ENCOUNTER` | `IntegrationMapping` only |
 | DocumentReference | `DOCUMENT_REFERENCE` | `Document.type = EXTERNAL_EMR` |
-| Media | `MEDIA` | `PhotoSession.source` and `PatientPhoto.source = IMPORT` (only imports may omit the capturing user) |
+| Media | `MEDIA` | `PhotoSession.source` and `PatientPhoto.source = IMPORT` (an `IMPORT` session is the only kind that may omit the capturing user, verified R3) |
 | Consent | `CONSENT` | `IntegrationMapping` only; separately, `PhotoPermission.evidence = INTEGRATION_IMPORT` records a media-permission version whose evidence came from an integration |
 | Procedure | `PROCEDURE` | `Procedure.externalId` |
 | Observation | `OBSERVATION` | None; "where genuinely needed" [B §18.2] |
@@ -124,11 +124,11 @@ stateDiagram-v2
 
 `FAILED → RETRY_SCHEDULED` is the spec's reading of the Bible diagram; `PARTIAL → RETRY_SCHEDULED` is proposed (P). A retry is a **new** `EMRSyncEvent` (trigger `RETRY`, `retryOfId` set, `attempt` incremented) that starts again at `PENDING`.
 
-**An inbound run** (spec §3.4 flow D; the internal call shapes are defined in M10.1):
+**An inbound run**, shown for a manual trigger through the API (spec §3.4 flow D; the internal call shapes are not specified yet and are defined in M10.1). Scheduled and webhook runs create the same `EMRSyncEvent`; which audit event they write is an open item (section 11):
 
 ```mermaid
 sequenceDiagram
-  actor T as Admin, schedule or webhook
+  actor T as Admin, manual trigger
   participant API as api
   participant DB as PostgreSQL
   participant Q as SQS
@@ -209,7 +209,7 @@ Constraint added in Layer 10: `Appointment_integration_source_chk` is re-created
 | Internal traffic | api and integration-service talk only inside the VPC; the specific service-authentication mechanism for this interface is listed as "Internal" in spec §6.7 | spec §6.7 |
 | PHI in operations data | Queue messages carry identifiers only; logs carry IDs and codes only; audit metadata never holds clinical content; `errorSummary` carries no PHI | spec §7.2 |
 | Encryption | Integration payloads are envelope-encrypted with KMS | spec §7.1 |
-| Least privilege | Only integration-service calls external EMRs; network egress controls are in [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | spec §3.2 |
+| Least privilege | Only integration-service calls external EMRs. The Layer 0 network sends private-subnet egress through NAT ([INFRASTRUCTURE.md](INFRASTRUCTURE.md)); an egress allow-list for integration-service is an open item in [THREAT_MODEL.md](THREAT_MODEL.md) (Layer 10 kickoff) | spec §3.2 |
 | Permissions | `integration.read` (default: SUPER_ADMIN, ORGANIZATION_ADMIN) and `integration.manage` (default: ORGANIZATION_ADMIN) | spec §4.5 (UD-17) |
 | Tenancy | Integration, mapping, sync and dead-letter rows are tenant-owned with composite FKs; routes are covered by the generated cross-tenant tests | spec §5.1, §7.5 |
 
@@ -258,3 +258,4 @@ Earlier layers already carry the hooks listed in section 3 (for example `Patient
 | Dead-letter and `IntegrationStatus` transitions | Enums exist; transitions and the meaning of `ERROR` are not specified | Layer 10 |
 | System-of-record behavior beyond appointments | Specified for appointments only (spec §5.4.6) | Layer 10 |
 | integration-service runtime and service authentication | Language not fixed by spec §2; the internal interface's authentication is listed only as "Internal" | Layer 10 (M10.1) |
+| Egress allow-list for adapters | Not specified; tracked in [THREAT_MODEL.md](THREAT_MODEL.md) open items | Layer 10 kickoff |

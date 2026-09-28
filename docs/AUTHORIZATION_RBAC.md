@@ -369,4 +369,6 @@ Bible §36 requires automated cross-tenant tests for every sensitive domain and 
 | RLS design questions (§9.1) | L1 (M1.1) |
 | UD-30 portal visibility of procedures, appointments, telehealth; UD-20 PATIENT_APP grant | L5 kickoff |
 | `PatientUserLink` allows several patient records per login in one organization, while spec §4.7 assumes a single `link.patientId` | L5 kickoff (UD-08) |
+| Spec §4.7 shows a released simulation without checking the current PATIENT_APP grant at read time, while Bible §7.3 and the UD-20 baseline require that check for patient-app media; the Bible wins ([`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md) F-44) | L5 and L8 kickoffs (UD-20) |
+| `UserRole.roleId` references `Role(id)` alone, so once custom roles exist another organization's custom role could be assigned (F-28) | With UD-07, before custom roles are enabled |
 | Support access to tenant data | Not in scope until specified [B §17.1] |

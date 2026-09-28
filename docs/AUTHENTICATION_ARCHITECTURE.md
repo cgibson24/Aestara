@@ -457,6 +457,7 @@ Whatever the answers, these invariants stay: server-side sessions with immediate
 | Refresh concurrency grace window, if any (§4.3) | L1 kickoff (M1.3) |
 | Audit events for MFA enrollment and removal, password reset, and organization switch (none listed in spec §6.3); a password-change endpoint for signed-in users is also absent from spec §6.3 | L1 kickoff (UD-19) |
 | How `LOGIN_FAILURE` for an unknown identifier is recorded, since `AuditEvent_actor_chk` requires a user ID for actor type USER | L1 kickoff (M1.3) |
+| Whether the password step that ends in an MFA challenge is ledgered (`LoginFailureReason` MFA_REQUIRED exists) and audited (§6.1) | L1 kickoff (M1.3) |
 | Scope of administrator revocation and of "disable revokes all sessions" for a user who also works in other organizations | L1 kickoff |
 | Session policy for platform operators, whose sessions have no organization | L1 kickoff |
 | Delivery channel for staff invitations and password reset before the Layer 5 notifications service | L1 kickoff |

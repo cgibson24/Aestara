@@ -68,6 +68,7 @@ stateDiagram-v2
   ACTIVE --> RETIRED: retire
 ```
 
+- The spec has no transition table for protocols (spec §5.4.10 lists none). The diagram is this document's reading of the `/activate` and `/retire` endpoints (spec §6.3); whether a `DRAFT` protocol may be retired or deleted is not specified (open item).
 - A protocol is **frozen once `ACTIVE`**. Changing it means creating a new protocol that supersedes it (spec §5.2). This is enforced by the API; `constraints.sql` has no trigger for it (open item).
 - Because active protocols never change, every photo keeps an exact link to the view definition it was captured under (`PatientPhoto.protocolViewId` and `viewKey`), and before/after pairs can compare like with like.
 - A photo session always names its protocol [B §6.1]; a `PhotoRequest` must name one too (spec §5.2).
@@ -129,7 +130,7 @@ The Bible's vocabulary [B §6.4] and its codes (spec §6.6.6). The provider app'
 
 Rules:
 
-- **Exactly 13 codes.** They are shared enumerations in `packages/api-contracts`, and the traceability check confirms all 13 (spec §11.2). A condition none of them expresses has no code; adding one changes a Bible vocabulary and needs an ADR and a `CHANGELOG.md` entry first [B §0].
+- **Exactly 13 codes.** Spec §6.6.6 publishes them as shared enumerations in `packages/api-contracts`. They are not in the package yet (Layer 0 holds only the shared primitives, [API_CONTRACTS.md](API_CONTRACTS.md) §3) and join it with the first contract that uses them. The traceability check already confirms all 13 in the spec (spec §11.2). A condition none of them expresses has no code; adding one changes a Bible vocabulary and needs an ADR and a `CHANGELOG.md` entry first [B §0].
 - The same codes appear in `PatientPhoto.qualityChecks` and in `INPUT_QUALITY_INSUFFICIENT.details.reasons` when AI input quality fails (spec §6.2, §6.6.6), so staff see one vocabulary everywhere.
 - **One instruction at a time, in words** (DESIGN_SYSTEM.md C14): for example "Raise chin slightly", with a framing oval sized to the face and quality chips for lighting, distance and pose. On iPhone the chips are hidden and the guidance line stays (DESIGN_SYSTEM.md §4).
 - Guidance text is US English (ADR-0006) and externalized so it can be localized later (spec §10.1).
@@ -202,9 +203,10 @@ The request moves `OPEN → SUBMITTED → COMPLETED`, or `OPEN → CANCELLED | E
 | Item | Decided at |
 |---|---|
 | Required/optional flags, instructions and pose tolerances for the standard views; exact view keys | Layer 2 kickoff (M2.3) |
-| Seeding: initial status of standard protocols; how organizations created in Layer 1 receive them (the `schema.prisma` comment says "on creation", while spec §6.3 and §11.3 #16 move protocol seeding to Layer 2) | Layer 2 kickoff (M2.3) |
+| Seeding: initial status of standard protocols; how organizations created in Layer 1 receive them (spec §6.3 and §11.3 #16 move protocol seeding to Layer 2, and the `schema.prisma` comment now says the same, ADR-0017) | Layer 2 kickoff (M2.3) |
 | Protocol freeze is application-enforced only; add a database trigger or accept | Layer 2 kickoff |
 | Whether activating a superseding protocol retires its predecessor automatically | Layer 2 (M2.3) |
+| Protocol status transitions beyond `/activate` and `/retire` (for example retiring or discarding a `DRAFT`); no spec §5.4 table exists | Layer 2 (M2.3) |
 | Whether `POST …/photo-sessions/{sid}/complete` is refused while required views are missing | Layer 2 (M2.4) |
 | Quality thresholds; whether any check blocks acceptance | Layer 2 (M2.5) |
 | Ghost overlay reference-image selection and offline behaviour | Layer 2 (M2.5) |

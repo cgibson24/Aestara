@@ -147,7 +147,8 @@ resource "aws_s3_bucket_policy" "access_logs" {
 resource "aws_s3_bucket" "trail" {
   # checkov:skip=CKV_AWS_144: Cross-region replication is a production-readiness item (spec §7.6, roadmap step 14); single region for now (ADR-0006)
   # checkov:skip=CKV2_AWS_62: No S3 event consumers: uploads are verified by the api on complete-upload (spec §6.1.9)
-  bucket = local.bucket_name
+  bucket              = local.bucket_name
+  object_lock_enabled = true
 
   tags = { Purpose = "cloudtrail" }
 }
@@ -175,6 +176,22 @@ resource "aws_s3_bucket_versioning" "trail" {
   versioning_configuration {
     status = "Enabled"
   }
+}
+
+# Object Lock makes delivered trail files immutable for the retention period
+# (spec §7.1, Bible §21.2 "tamper-resistant audit"). Delivery to a separate
+# security account is decided with the AWS account structure (Layer 1 kickoff).
+resource "aws_s3_bucket_object_lock_configuration" "trail" {
+  bucket = aws_s3_bucket.trail.id
+
+  rule {
+    default_retention {
+      mode = var.trail_object_lock_mode
+      days = var.trail_object_lock_days
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.trail]
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "trail" {

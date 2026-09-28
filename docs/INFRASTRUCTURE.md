@@ -36,9 +36,12 @@ flowchart TB
   end
   subgraph vpc [VPC us-east-1, 2-3 AZs]
     subgraph private [Private subnets]
-      api["ECS Fargate: api"]
+      api["ECS Fargate: api + worker process"]
       workers["ECS Fargate: image-processing,<br/>notifications, integration-service"]
-      ai["ai-gateway + GPU inference<br/>(UD-04)"]
+      ai["ai-gateway"]
+    end
+    subgraph noegress [Inference tier, no internet egress]
+      gpu["GPU inference<br/>(UD-04, Layer 7)"]
     end
     subgraph isolated [Isolated subnets]
       rds[("RDS PostgreSQL 18<br/>multi-AZ")]
@@ -55,31 +58,34 @@ flowchart TB
   api --> rds
   api --> s3
   api --> queues
+  api -- "internal API /internal/v1" --> ai
+  ai --> gpu
+  ai -- "results as events" --> queues
   queues --> workers
-  queues --> ai
+  queues --> api
   workers --> s3
-  ai --> s3
+  gpu --> s3
   api -.-> ops
   workers -.-> ops
 ```
 
-This is the Bible §25.3 deployment map. The api is the only component that talks to the database. Imaging and AI services receive opaque object references through queues and never see demographics (spec §3.1).
+This is the Bible §25.3 deployment map. The api and its worker process (same codebase, spec §3.1) are the only components that talk to the database. AI jobs are submitted through the internal API and their results come back as queue events (spec §6.7). Imaging and AI services receive opaque object references and never see demographics (spec §3.1).
 
 ## 3. What exists now and what each layer adds
 
 | Component | Terraform module | Layer 0 | Added later |
 |---|---|---|---|
 | KMS keys (data, media, logs) | `modules/kms` | Yes | — |
-| Account baseline: S3 public-access block, EBS default encryption, multi-region CloudTrail with log-file validation, GuardDuty, IAM Access Analyzer, access-log bucket | `modules/account-baseline` | Yes | Security alert metric filters and alarms (Layer 1) |
+| Account baseline: S3 public-access block, EBS default encryption, multi-region CloudTrail with log-file validation delivered to an Object Lock bucket, GuardDuty, IAM Access Analyzer, access-log bucket | `modules/account-baseline` | Yes | Security alert metric filters and alarms (Layer 1); CloudTrail delivery to a separate security account (spec §7.1, F-59) |
 | VPC: public, private and isolated subnets; NAT; flow logs; S3 gateway endpoint | `modules/network` | Yes | Interface endpoints (ECR, Secrets Manager, Logs) as services arrive |
-| Buckets: clinical-media (deletes denied), exports, integration-payloads | `modules/storage` | Yes | Presigned-upload CORS rules (Layer 2) |
+| Buckets: clinical-media (deletes denied), exports, integration-payloads | `modules/storage` | Yes | Presigned-upload CORS rules, the VPC-endpoint bucket condition and the overwrite denial from spec §7.1/§7.4 (Layer 2, F-61) |
 | RDS PostgreSQL 18 | `modules/database` | Yes | RDS Proxy if connection counts need it (~100 practices) |
 | ECS cluster, ECR repositories, service log groups, task security group | `modules/compute` | Yes | api task definition and service, ALB, WAF, ACM certificate (Layer 1) |
 | Remote state (versioned, KMS, TLS-only S3 with lock files) | `bootstrap` | Yes | — |
 | SQS / EventBridge for the transactional outbox | — | No | Layer 2 (M2.2) |
 | CloudFront + WAF for the admin SPA | — | No | Layer 1, with the admin web |
 | Notifications: APNs credentials, SES, SMS | — | No | Layer 5 |
-| AI inference: ECS on EC2 GPU in private subnets | — | No | Layer 7 (UD-04) |
+| AI inference: ECS on EC2 GPU in a subnet tier with **no internet egress** (spec §2.1) | — | No | Layer 7 (UD-04, F-62) |
 | Cross-region backup copies | — | No | Production readiness (roadmap step 14) |
 
 Layer 0 deploys nothing that runs code. The modules exist so every later layer adds to a reviewed, checked baseline instead of starting from scratch.
@@ -105,7 +111,7 @@ Production data is never copied into a lower environment unless an approved de-i
 | Originals never destroyed | Versioning on, and `s3:DeleteObject`/`DeleteObjectVersion` denied on clinical media for every principal (a future retention role can be allowed once UD-24 is decided) | `modules/storage` |
 | Secrets Manager | RDS master password created and rotated by Secrets Manager (`manage_master_user_password`); no secrets in Terraform or state | `modules/database` |
 | Least privilege | One IAM role per service (Layer 1+); task security group with no inbound access until a load balancer exists | `modules/compute` |
-| Tamper-resistant audit trail | CloudTrail across all regions with log-file validation and KMS. The application audit log's WORM copy arrives with the outbox (Layer 2, spec §7.3). | `modules/account-baseline` |
+| Tamper-resistant audit trail | CloudTrail across all regions with log-file validation and KMS, delivered to an Object Lock bucket (compliance mode in staging and production). A separate security account follows the account-structure decision (F-59). The application audit log's WORM copy arrives with the outbox (Layer 2, spec §7.3). | `modules/account-baseline` |
 | No PHI in logs | The database logs no statement text (`log_statement=none`). Application logs are filtered before they leave the process (spec §7.2). | `modules/database`, services |
 | WAF and rate limits | WAF on the ALB and CloudFront with rate rules on public and auth endpoints | Layer 1 |
 
@@ -155,7 +161,7 @@ CI never applies. It only validates (see [DEPLOYMENT.md](DEPLOYMENT.md)).
 
 | Item | Decision point |
 |---|---|
-| AWS account IDs and the AWS Organizations structure; BAA signed | Before the first `apply` (Layer 1) |
+| AWS account IDs and the AWS Organizations structure, including the separate security account for CloudTrail (spec §7.1); BAA signed | Before the first `apply` (Layer 1) |
 | Domain names and TLS certificates for the api and admin web | Layer 1 kickoff |
 | How CI authenticates to AWS for plans and deploys (GitHub OIDC with per-environment roles is the proposed baseline) | Layer 1 kickoff |
 | Second US region for backup copies; RPO/RTO targets | Production readiness (roadmap step 14) |

@@ -22,3 +22,8 @@ variable "db_instance_class" {
 variable "db_multi_az" {
   type = bool
 }
+
+variable "trail_object_lock_mode" {
+  description = "COMPLIANCE in staging and production; GOVERNANCE in dev."
+  type        = string
+}

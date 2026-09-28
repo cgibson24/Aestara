@@ -53,9 +53,9 @@ flowchart TB
     W["worker: outbox relay"]
     PG[("PostgreSQL")]
   end
-  subgraph AIZone["AI zone, private subnet: no database, no demographics, no public egress"]
+  subgraph AIZone["AI zone: no database, no demographics"]
     AIG["ai-gateway: job API, model routing, provenance, validation harness"]
-    INF["Private GPU inference"]
+    INF["Private GPU inference, no public egress"]
   end
   IP["image-processing"]
   S3[("S3 private buckets, SSE-KMS")]
@@ -80,7 +80,7 @@ flowchart TB
 
 | Control | Design | Source |
 |---|---|---|
-| Network | Inference runs in a private subnet with no public egress; `/internal/v1/...` is never internet-routable | [B §2.1 "Private AI Jobs", §25.3]; spec §2.1, §6.1.1; UD-04 |
+| Network | Inference runs in a private environment with no public egress; `/internal/v1/...` is never internet-routable. The Layer 0 `modules/network` has no such compute tier yet: its private subnets (where ai-gateway will run) route out through NAT, and the isolated subnets hold only RDS. The no-egress placement for inference is added with UD-04 at Layer 7 (open item) | [B §2.1 "Private AI Jobs", §25.3]; spec §2.1, §6.1.1; UD-04 |
 | Service authentication | api → ai-gateway uses IAM-signed requests or mTLS inside the VPC; queues are protected by IAM policies per producer and consumer | [B §21.2]; spec §6.7, §7.1 |
 | No database | ai-gateway and inference cannot query PostgreSQL | spec §3.1 |
 | Minimum necessary | A job carries `jobId`, `organizationId`, `jobType`, `modelKey`, `inputs: [{objectRef, role}]` and `parameters`. Never a name, date of birth, MRN, contact detail or free text | spec §3.1, §6.7, §7.2 rule 6 |
@@ -150,7 +150,7 @@ stateDiagram-v2
   RUNNING --> CANCELLED
 ```
 
-A `SimulationVersion` links exactly one `AIJob` (`aiJobId` is unique). Whether the simulation pipeline also records its stages as separate `AIJob` rows, or only as validation records of that one job, is not specified (Layer 7, M7.1).
+A `SimulationVersion` links at most one `AIJob` (`aiJobId` is nullable and unique per organization), and spec §3.4 flow B creates one with every version. Whether the simulation pipeline also records its stages as separate `AIJob` rows, or only as validation records of that one job, is not specified (Layer 7, M7.1).
 
 ### 6.2 Simulation job sequence
 
@@ -190,7 +190,7 @@ sequenceDiagram
 
 ### 6.3 Provenance
 
-Every Bible provenance item [B §9.4] has a home, and all of it is immutable once written.
+Every Bible provenance item [B §9.4] has a home. The last column names what the database enforces; `—` means the database does not freeze that value.
 
 | Bible item | Recorded in | Immutability |
 |---|---|---|
@@ -203,7 +203,7 @@ Every Bible provenance item [B §9.4] has a home, and all of it is immutable onc
 | Timestamps | Version `createdAt` / `completedAt`; job `queuedAt` / `startedAt` / `finishedAt`; approval `decidedAt`; `Simulation.releasedAt` | E10 |
 | Generating user | `SimulationVersion.generatedById` | E8 |
 | Reviewing provider | `SimulationApproval.reviewerUserId`, a `ProviderProfile` of the same organization | E14, R18 |
-| Approval and release events | `SimulationApproval` rows; `Simulation.releasedVersionId`, `releasedById`, `releasedAt`; `AuditEvent` | E12–E14; audit append-only (G1–G3) |
+| Approval and release events | `SimulationApproval` rows; `Simulation.releasedVersionId`, `releasedById`, `releasedAt`; `AuditEvent` | Approvals append-only (E14); release columns required together (E12) and limited to the simulation's own versions (E13), but not trigger-frozen; audit append-only (G1–G3) |
 
 Non-simulation jobs keep their provenance on `AIJob` (model version, input and result summaries), and `OutcomeMeasurement` records its method and model version (Layer 9).
 
@@ -298,7 +298,7 @@ Failed and rejected outputs are never visible to patients ([AI_SIMULATION_RULES.
 |---|---|---|
 | SQL behaviour suite ([`schema_behavior_tests.sql`](technical-spec/verification/schema_behavior_tests.sql)) | E1–E5 (registry, rollouts), E6–E15 (sources, provenance, approvals, release, parameters), R10–R14, R18 | Every CI run |
 | Internal contract tests | The job submission schema has no demographic or free-text fields; unauthenticated internal calls are rejected | Layer 7 |
-| Rollback test | Deactivate and re-activate a previous version; new jobs use it and history is unchanged (spec §9.1 Layer 7) | Layer 7 |
+| Rollback test | Deactivate the current rollout and activate the previous version with a new rollout row; new jobs use it and history is unchanged (spec §9.1 Layer 7; R11–R13) | Layer 7 |
 | Idempotency tests | Repeated `/generate` or `/regenerate` with one key yields one `AIJob` | Layer 8 |
 | AI regression and identity-preservation tests | Validation harness runs against governed datasets before a version is activated [B §27.1] | Layer 7 onward |
 | Cross-tenant and authorization tests | Simulation and similar-case routes; registry management is platform-scoped | Layers 7–9 |
@@ -312,6 +312,7 @@ Failed and rejected outputs are never visible to patients ([AI_SIMULATION_RULES.
 | Item | Decided at |
 |---|---|
 | UD-04 inference hosting and model licensing | Layer 7 kickoff |
+| A no-egress network placement for inference (the Layer 0 private subnets route through NAT; see section 3) | Layer 7 kickoff, with UD-04 |
 | How model versions are registered (the endpoint catalog has none) | Layer 7 (M7.2) |
 | Which status a version needs before activation; the `AIModelVersionStatus` transitions (spec §5.4.10 has no machine for it) | Layer 7 (M7.2) |
 | Rollout precedence when both an organization and a platform-wide `ACTIVE` rollout exist | Layer 7 (M7.2) |

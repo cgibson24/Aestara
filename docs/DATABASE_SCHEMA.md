@@ -822,7 +822,7 @@ RLS is a second, independent isolation net beneath application scoping and compo
 
 Questions M1.1 must answer and record (none is decided by the spec):
 
-1. Tables whose `organizationId` is nullable for platform rows (`Role`, `FeatureFlag`, `AIModelRollout`, `AuditEvent`, `LoginEvent`, `Session`, `Notification`, `OutboxEvent`, `IdempotencyKey`, `AIValidationRecord`, `UserRole`): how platform rows are read.
+1. Tables whose `organizationId` is nullable for platform rows (`Role`, `FeatureFlag`, `AIModelRollout`, `AuditEvent`, `LoginEvent`, `Session`, `Notification`, `OutboxEvent`, `IdempotencyKey`, `AIValidationRecord`, `UserRole`): how platform rows are read. Tables with no `organizationId` at all (`User`, `UserCredential`, `Device`, `Permission`, `RolePermission`, `AIModel`, `AIModelVersion`) are outside tenant policies, so their protection is application-level. `Organization` is the tenant row itself; how its policy is written is part of the same question.
 2. Queries that run before a tenant is chosen, such as listing a user's memberships at login and on organization switch.
 3. Cross-tenant background work in the worker (outbox relay, retention, expiry, sync scheduling).
 4. Whether the migration owner role is also subject to policies (`FORCE ROW LEVEL SECURITY`).

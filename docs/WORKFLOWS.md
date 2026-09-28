@@ -658,12 +658,14 @@ stateDiagram-v2
 | Offline patient creation | Spec §6.1.8 lists patient create among offline-queueable creates, but `Patient` is not in its client-generated-ID list and the duplicate check needs the server [B §4.1] | Layer 2 (M2.9) |
 | Patient status changes | Moving to `INACTIVE` or `DECEASED` ("where policy supports" [B §4.2]) has no specified action | Layer 1 |
 | Consultation cancellation policy | "When allowed by policy" [B §5.2] is not defined | Layer 3 |
+| Offline consultation transitions | Spec §8 excludes sign-off and release offline, but does not say whether `/start`, `/request-information` and similar transitions may be queued | Layer 3 |
 | Release-decision precondition | Spec §5.4.1 requires a recorded release decision for `/complete`, but no column stores it, and the consultation release endpoint arrives in Layer 5 | Layer 3 (UD-33) |
 | UD-28, UD-33 | Consultation proposed transitions and completion preconditions | Layer 3 |
 | UD-14 sibling auto-decline | Siblings in `DRAFT` or `SENT_TO_PATIENT` have no transition to `DECLINED` in spec §5.4.3, and no system actor row exists | Layer 4 |
 | Plan scheduling before Layer 6 | `/schedule` "links appointment/procedure"; appointments exist only from Layer 6 | Layer 4 |
 | Staff-assisted signing actors | Spec §5.4.4 lists only "patient (link)" for patient transitions; the hand-off session (UD-31) is described only in spec §6.3. `ConsentSignature.signerUserId` is documented as `NULL` for a non-user witness, but a Layer 4 patient has no user account yet | Layer 4 (UD-31) |
 | Instruction release permission | Spec §6.3 groups the release endpoint with `content.read` / `consultation.edit` without saying which applies | Layer 4 (UD-16) |
+| Content version status for assignment | Spec §5.4.4 requires a `PUBLISHED` version for consents; it does not say whether education and instruction assignments may reference only `PUBLISHED` content versions, and the database does not check it | Layer 4 (M4.7–M4.8) |
 | UD-23, UD-31, UD-11 | Pre-completion void and minors; staff-assisted signing; estimate versus quote | Layer 4 |
 | Simulation visibility after revocation | Spec §4.7 checks only `RELEASED_TO_PATIENT` for simulations, while photos also need a current `PATIENT_APP` grant; what revoking that grant does to a released simulation is not specified | Layer 5 / Layer 8 (UD-20) |
 | Patient-app offline | Spec §8 describes the provider app's clinical cache only | Layer 5 |
