@@ -2,6 +2,10 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-09-28: Layer 0 accepted
+
+- The owner accepted the Layer 0 acceptance review (`ACCEPTANCE_CRITERIA.md` §4) and read the findings register (§5). Layer 1 waits for the owner's go-ahead (Bible Appendix B #38).
+
 ## 2026-09-28: Layer 0 architecture foundation
 
 - **Documentation pack** (Bible §31, §35): all 27 documents are present. The spec stays normative and the pack explains and links it (ADR-0012). `SOFTWARE_PRODUCTION_BIBLE.md` is a verbatim export generated from the PDF. `check_docs.py` checks completeness, references, links and placeholders in CI.

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 acceptance review, 2026-09-28. **Awaiting the owner's acceptance** (Bible Appendix B #37). |
+| Status | Layer 0 acceptance review, 2026-09-28. **Accepted by the owner on 2026-09-28** (Bible Appendix B #37). |
 | Authority | Bible §27.2 (definition of done), §29 (layer exit conditions), §30 (acceptance review and stop), §31 (Layer 0 kickoff and review), §32 (Layer 1 acceptance), §34 (representative criteria), §36 (production readiness), Appendix B |
 | Normative sources | [TESTING_STRATEGY.md](TESTING_STRATEGY.md) §17–18 (review format and traceability to tests), spec §9.1 (what each layer must pass), [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) |
 
@@ -274,4 +274,6 @@ Each carried finding also appears in the relevant document's open items. The lay
 
 ## 6. Sign-off
 
-Layer 0 is complete when the owner accepts §4 and has read §5. Until then no Layer 1 work starts (Bible §30, Appendix B #37–38).
+**Accepted by the owner on 2026-09-28.** Layer 0 is complete.
+
+Layer 1 starts only when the owner authorizes it (Bible Appendix B #38). Its kickoff first resolves the Layer 1 findings in §5.2 (F-13 to F-33, F-59) together with the decisions the roadmap lists for Layer 1.

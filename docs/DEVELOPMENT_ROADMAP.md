@@ -17,7 +17,7 @@
 | 0 | Technical specification | §31 (inputs) | Locked spec: tech stack, schema, API contracts, decisions | ✅ Done (v1.0, on `main`) |
 | 1 | Environment & repository | Layer 0 (part) | Initialized monorepo, local development, cloud IDE, Claude Code web setup, CI | ✅ Done |
 | 2 | Design prototype | Owner request (ADR-0009) | Static, clickable front-end shell with hard-coded data for the core scenes on iPad, iPhone, patient app and admin web | ✅ Built; awaiting your review |
-| 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | ✅ Built; awaiting your acceptance |
+| 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | ✅ Accepted 2026-09-28 |
 | 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell | — |
 | 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | — |
 | 6 | Layer 3: Consultations & before/after | Layer 3 | Consultation lifecycle, annotations, comparison viewer, timeline | — |
@@ -85,7 +85,7 @@ Steps 4–13 follow the Bible's layer order exactly. Nothing from a later layer 
 | Guardrails | Clearly labelled *prototype*: no backend, no auth, never deployed as the product; original design only (no vendor trade dress) [B §0.1] |
 | **Exit** | Owner reviews the scenes on iPad/iPhone-sized screens and approves the look, or lists changes |
 
-### Step 3: Layer 0 completion (built; awaiting acceptance)
+### Step 3: Layer 0 completion (accepted 2026-09-28)
 
 | Deliverable | Detail |
 |---|---|

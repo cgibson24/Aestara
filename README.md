@@ -7,7 +7,7 @@ A visual consultation, clinical photography and clinician-controlled AI visualiz
 - an admin web portal
 
 > **Source of truth:** `Aesthetic_Platform_Software_Production_Bible_v1.0.pdf` → `docs/TECHNICAL_SPECIFICATION.md` (locked v1.0) → `docs/ARCHITECTURE_DECISIONS.md`.
-> **Where we are:** `docs/DEVELOPMENT_ROADMAP.md`. Layer 0 (architecture foundation) is built and awaiting acceptance: `docs/ACCEPTANCE_CRITERIA.md`.
+> **Where we are:** `docs/DEVELOPMENT_ROADMAP.md`. Layer 0 (architecture foundation) was accepted on 2026-09-28 (`docs/ACCEPTANCE_CRITERIA.md`); Layer 1 is next.
 
 ## Quick start
 
