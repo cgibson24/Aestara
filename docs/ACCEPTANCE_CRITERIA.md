@@ -187,40 +187,43 @@ Writing and cross-checking the pack against the Bible, the spec and the schema s
 
 ### 5.2 Carried to the Layer 1 kickoff (identity, tenancy, patients, platform)
 
-| ID | Finding | Recommended resolution |
-|---|---|---|
-| F-13 | ADR-0002 says MFA is required for admin roles; Bible §21.1 says "according to deployment policy" | MFA is always required for admin roles; organization policy may only strengthen it (UD-18) |
-| F-14 | Separation-of-duties rule 2 (spec §4.5) forbids a platform actor granting any role with a `consent.*` key, but ORGANIZATION_ADMIN holds `consent.template.manage`, so the first organization admin cannot be created | Limit rule 2 to clinical consent actions (signing, voiding); create the first admin through an audited platform bootstrap action |
-| F-15 | SUPER_ADMIN holds `practice.read`, `user.*`, `integration.read`, but spec §4.6 says the platform branch reaches no tenant data | Platform permissions return organization metadata only, never patient data |
-| F-16 | The patient invitation token travels in a URL path (spec §6.5), against spec §6.1.10 | Send the token in the request body |
-| F-17 | A practice-scoped PRACTICE_ADMIN can update or disable users of other practices (spec §4.6 else-branch) | User management is limited to users whose memberships fall inside the admin's scope |
-| F-18 | Location-scoped writes need a location on the record: TreatmentPlan has none, and it is optional on several models. Models with an optional `practiceId` are not classified as practice-owned or not. | Classify every model; add `locationId` where location scoping must apply |
-| F-19 | Spec §4.6 audits `ACCESS_DENIED` on every denial; spec §7.3 says sensitive endpoints only | Audit denials on all PHI routes, with rate limiting |
-| F-20 | `PatientUserLink` allows several patient records per login in one organization; spec §4.7 assumes one | One patient per login per organization, or an explicit patient picker (with UD-08) |
-| F-21 | Admin SPA cookie contents and the "PKCE-style proof" are not defined against the direct `/auth/login` exchange | Define both in M1.3 |
-| F-22 | MFA policy is per organization, but sign-in happens before an organization is chosen | Apply the strictest policy across the user's active memberships |
-| F-23 | Session revocation is unscoped for users in several organizations | An organization admin revokes only sessions bound to that organization |
-| F-24 | `LOGIN_FAILURE` for an unknown identifier cannot satisfy the audit actor CHECK | Record it as an anonymous actor, with the hashed identifier kept in `LoginEvent` only |
-| F-25 | Staff invites and password reset need email in Layer 1; the notifications service arrives in Layer 5 | The api sends templated transactional email (no PHI) through SES from Layer 1; Mailpit joins local compose in Layer 1 |
-| F-26 | RLS policy design is open: membership lookups before a tenant is chosen, tables with a nullable organization, platform access without `BYPASSRLS`, worker tenant context, `FORCE`, `SET LOCAL` through Prisma | Designed in M1.1 together with the performance gate (ADR-0004) |
-| F-27 | Unspecified: account recovery, lockout thresholds, a password-change endpoint, audit events for MFA changes, password reset and organization switch, and the meaning of the `MFA_REQUIRED` login-failure reason | Specify in M1.3 |
-| F-28 | `UserRole.roleId` references `Role(id)` alone, so a custom role (UD-07) could be assigned across organizations | Composite key when custom roles are enabled |
-| F-29 | Spec §6.1.8 lists patient creation as offline-queueable; Bible §4.1 needs a server duplicate check, and Bible §23.1 does not list it | Patient creation is online-only |
-| F-30 | Layer 1 has no WORM audit copy until the outbox arrives in Layer 2 (spec §7.3) | Accept for Layer 1 (append-only triggers and grants), or bring the outbox forward |
-| F-31 | The database behaviour suite is one file, but spec §9.1 expects per-layer fragments | Split it by layer in M1.1 |
-| F-32 | Platform prerequisites (see the list after this table) | Decide at the Layer 1 kickoff |
-| F-33 | Bible §1 names success criteria without measurable targets | The owner sets pilot success metrics |
-| F-59 | Spec §7.1 delivers CloudTrail to a bucket in a separate security account; Layer 0 uses the environment's own account | Decide with the AWS account structure (F-32) |
+The owner confirmed the Layer 1 kickoff on 2026-09-29 (ADR-0018, [LAYER_1_KICKOFF.md](LAYER_1_KICKOFF.md)). Each finding's disposition names the decision (K-nn) and where it is built or specified. "Resolved" means the spec now states the rule. "Scheduled" means the named micro-prompt delivers and tests it.
 
-F-32 covers these platform prerequisites:
-- AWS account IDs, the BAA, domains and certificates
-- CI-to-AWS authentication (GitHub OIDC proposed)
-- UD-34 (Apple team and bundle IDs)
-- pinning GitHub Actions to commit SHAs
-- the secret-scanning and SAST tools
-- the design for human production access
-- the iOS Keychain accessibility class and biometric flags (spec §4.2 asks for `.biometryCurrentSet` with a passcode fallback, which that flag alone does not give), app-switcher privacy and jailbreak signals
-- the SwiftUI snapshot tool
+| ID | Finding | Disposition (ADR-0018) |
+|---|---|---|
+| F-13 | ADR-0002 says MFA is required for admin roles; Bible §21.1 says "according to deployment policy" | **Resolved** (K-03): MFA is always required for admin roles and the admin web; organization policy may only strengthen it (spec §4.2). |
+| F-14 | Separation-of-duties rule 2 (spec §4.5) forbids a platform actor granting any role with a `consent.*` key, but ORGANIZATION_ADMIN holds `consent.template.manage`, so the first organization admin cannot be created | **Resolved** (K-05): rule 2 covers clinical consent actions only; an audited platform bootstrap creates the first admin (spec §4.5, §6.3). Built in M1.5. |
+| F-15 | SUPER_ADMIN holds `practice.read`, `user.*`, `integration.read`, but spec §4.6 says the platform branch reaches no tenant data | **Resolved** (K-06): platform permissions reach organization metadata only (spec §4.6); the platform database role has no access to patient or clinical tables (spec §3.5). Built in M1.1. |
+| F-16 | The patient invitation token travels in a URL path (spec §6.5), against spec §6.1.10 | **Resolved** (K-09): every token travels in a request body (spec §6.1.10, §6.5). |
+| F-17 | A practice-scoped PRACTICE_ADMIN can update or disable users of other practices (spec §4.6 else-branch) | **Resolved** (K-07): spec §4.5 rule 3 and §4.6. Built in M1.6. |
+| F-18 | Location-scoped writes need a location on the record: TreatmentPlan has none, and it is optional on several models. Models with an optional `practiceId` are not classified as practice-owned or not. | **Scheduled** (K-08): M1.1 classifies and tests every Layer 1 model. Later models are classified in their layer; the plan location question stays with Layer 4. |
+| F-19 | Spec §4.6 audits `ACCESS_DENIED` on every denial; spec §7.3 says sensitive endpoints only | **Resolved** (K-10): denials on routes that touch patient data, with identical repeats collapsed (spec §4.6, §7.3). Built in M1.4. |
+| F-20 | `PatientUserLink` allows several patient records per login in one organization; spec §4.7 assumes one | **Deferred to Layer 5** (K-24), together with UD-08. |
+| F-21 | Admin SPA cookie contents and the "PKCE-style proof" are not defined against the direct `/auth/login` exchange | **Resolved** (K-11): no PKCE; refresh cookie and `Origin` check defined (spec §4.2). Built in M1.3. |
+| F-22 | MFA policy is per organization, but sign-in happens before an organization is chosen | **Resolved** (K-03): the strictest policy among active memberships applies (spec §4.2). |
+| F-23 | Session revocation is unscoped for users in several organizations | **Resolved** (K-12): spec §4.2 and §6.3. Built in M1.3 and M1.6. |
+| F-24 | `LOGIN_FAILURE` for an unknown identifier cannot satisfy the audit actor CHECK | **Resolved** (K-13): recorded in `LoginEvent` only (spec §4.2). |
+| F-25 | Staff invites and password reset need email in Layer 1; the notifications service arrives in Layer 5 | **Resolved** (K-14): the api sends templated transactional email (no PHI) through SES; Mailpit joins local compose. Built in M1.3. |
+| F-26 | RLS policy design is open: membership lookups before a tenant is chosen, tables with a nullable organization, platform access without `BYPASSRLS`, worker tenant context, `FORCE`, `SET LOCAL` through Prisma | **Scheduled** (K-16): design in spec §3.5; built and benchmarked against the ADR-0004 gate in M1.1. |
+| F-27 | Unspecified: account recovery, lockout thresholds, a password-change endpoint, audit events for MFA changes, password reset and organization switch, and the meaning of the `MFA_REQUIRED` login-failure reason | **Resolved** (K-04, K-15): spec §4.2 "Passwords and recovery", the new endpoints in §6.3, `SECURITY_CREDENTIAL_CHANGED` and `ORGANIZATION_SWITCHED` in §7.3, the `UserToken` table, and `MFA_CHALLENGE_ISSUED` as a sign-in step. Built in M1.3. |
+| F-28 | `UserRole.roleId` references `Role(id)` alone, so a custom role (UD-07) could be assigned across organizations | **Resolved for Layer 1** (K-02): system roles only. The composite key arrives when custom roles are enabled. |
+| F-29 | Spec §6.1.8 lists patient creation as offline-queueable; Bible §4.1 needs a server duplicate check, and Bible §23.1 does not list it | **Resolved** (K-17): patient creation is online-only (spec §6.1.8). |
+| F-30 | Layer 1 has no WORM audit copy until the outbox arrives in Layer 2 (spec §7.3) | **Accepted for Layer 1** (K-18): append-only triggers and insert/select-only grants; the WORM copy arrives with the Layer 2 outbox (spec §7.3). |
+| F-31 | The database behaviour suite is one file, but spec §9.1 expects per-layer fragments | **Scheduled** (K-19): split by layer in M1.1. |
+| F-32 | Platform prerequisites (see the list after this table) | **Partly resolved** (K-21, K-22). Each remaining item is scheduled in the list after this table. |
+| F-33 | Bible §1 names success criteria without measurable targets | **Open, owner input.** Needed before the pilot; does not block Layer 1. |
+| F-59 | Spec §7.1 delivers CloudTrail to a bucket in a separate security account; Layer 0 uses the environment's own account | **Open, owner input.** Decided with the AWS account structure before the first deployment; does not block Layer 1. |
+
+F-32 covers these platform prerequisites, each now resolved or scheduled:
+- **AWS account IDs, the BAA, domains and certificates:** owner input before the first deployment.
+- **CI-to-AWS authentication (GitHub OIDC proposed):** decided with the AWS accounts, before the first deployment.
+- **UD-34 (Apple team and bundle IDs):** owner input before the first TestFlight build.
+- **Pinning GitHub Actions to commit SHAs:** resolved (K-21); done in M1.2.
+- **The secret-scanning and SAST tools:** resolved (K-21): gitleaks and CodeQL, added in M1.2. Trivy arrives with the first container image.
+- **The design for human production access:** decided before the first deployment.
+- **The iOS Keychain accessibility class and biometric flags:** resolved (K-22, spec §4.2).
+- **App-switcher privacy and jailbreak signals:** decided in M1.9 with the iOS shell, with an ADR.
+- **The SwiftUI snapshot tool:** chosen in M1.9, with an ADR.
 
 ### 5.3 Carried to later layers
 
@@ -276,4 +279,4 @@ Each carried finding also appears in the relevant document's open items. The lay
 
 **Accepted by the owner on 2026-09-28.** Layer 0 is complete.
 
-Layer 1 starts only when the owner authorizes it (Bible Appendix B #38). Its kickoff first resolves the Layer 1 findings in §5.2 (F-13 to F-33, F-59) together with the decisions the roadmap lists for Layer 1.
+The owner authorized Layer 1 (Bible Appendix B #38). Its kickoff, confirmed on 2026-09-29 (ADR-0018), resolved or scheduled the Layer 1 findings in §5.2 (F-13 to F-33, F-59) together with the decisions the roadmap lists for Layer 1.

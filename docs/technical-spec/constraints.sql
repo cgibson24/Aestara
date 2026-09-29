@@ -119,6 +119,28 @@ CREATE TRIGGER "LoginEvent_no_truncate"
   BEFORE TRUNCATE ON "LoginEvent"
   FOR EACH STATEMENT EXECUTE FUNCTION app_reject_mutation();
 
+-- One-time tokens (ADR-0018 K-09, K-15). Each purpose carries exactly the
+-- context it needs: an invitation names its organization, a sign-in challenge
+-- names the client its session will be issued to.
+ALTER TABLE "UserToken" ADD CONSTRAINT "UserToken_shape_chk" CHECK (
+  ("purpose" = 'INVITATION'            AND "organizationId" IS NOT NULL AND "clientApp" IS NULL     AND "webauthnChallenge" IS NULL) OR
+  ("purpose" = 'PASSWORD_RESET'        AND "organizationId" IS NULL     AND "clientApp" IS NULL     AND "webauthnChallenge" IS NULL) OR
+  ("purpose" = 'MFA_CHALLENGE'         AND "organizationId" IS NULL     AND "clientApp" IS NOT NULL) OR
+  ("purpose" = 'WEBAUTHN_REGISTRATION' AND "organizationId" IS NULL     AND "clientApp" IS NULL     AND "webauthnChallenge" IS NOT NULL)
+);
+
+ALTER TABLE "UserToken" ADD CONSTRAINT "UserToken_expiry_chk"
+  CHECK ("expiresAt" > "createdAt" AND "attemptCount" >= 0);
+
+-- Only the attempt counter and the consumption stamp move, and a consumed
+-- token can never be used or reopened.
+CREATE TRIGGER "UserToken_frozen"
+  BEFORE UPDATE ON "UserToken"
+  FOR EACH ROW EXECUTE FUNCTION app_enforce_frozen_columns('attemptCount,consumedAt');
+CREATE TRIGGER "UserToken_consumed_final"
+  BEFORE UPDATE ON "UserToken"
+  FOR EACH ROW WHEN (OLD."consumedAt" IS NOT NULL) EXECUTE FUNCTION app_reject_mutation();
+
 -- Tenant-scoped fuzzy name search (Layer 1 patient search).
 CREATE INDEX "Patient_search_last_name_trgm"
   ON "Patient" USING gin ("organizationId", lower("lastName") gin_trgm_ops);

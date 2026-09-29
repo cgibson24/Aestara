@@ -2,6 +2,24 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-09-29: Layer 1 kickoff confirmed
+
+- The owner adopted every Layer 1 kickoff recommendation (K-01 to K-24) and included the admin web shell (M1.11). Recorded as ADR-0018; `LAYER_1_KICKOFF.md` is marked confirmed.
+- **Spec corrections under change control** (ADR-0018):
+  - §3.5: Row-Level Security design
+  - §4.2: client token handling without PKCE, Keychain settings without a passcode fallback, the MFA rule, passwords and recovery, scoped revocation, login audit
+  - §4.5 and §4.6: separation-of-duties rules 2 and 3, platform reach, `ACCESS_DENIED` collapsing
+  - §5.4.10: patient status rule
+  - §6.1.8: patient creation is online-only
+  - §6.1.10: no secrets in URLs
+  - §6.3 to §6.5: four new Layer 1 endpoints (password change, staff invitation acceptance, admin MFA reset, organization admin bootstrap); the patient invitation token moves into the body
+  - §7.3: `SECURITY_CREDENTIAL_CHANGED` and `ORGANIZATION_SWITCHED`, and the Layer 1 audit tamper-resistance
+- **Schema:**
+  - new supporting table `UserToken`, with its constraints (88 tables)
+  - `LoginEventType.MFA_CHALLENGE_ISSUED` replaces `LoginFailureReason.MFA_REQUIRED`
+  - two `AuditAction` values
+- **Findings:** F-13 to F-33 and F-59 are resolved, scheduled or deferred in `ACCEPTANCE_CRITERIA.md` §5.2. The roadmap marks Step 4 in progress.
+
 ## 2026-09-28: Layer 0 accepted
 
 - The owner accepted the Layer 0 acceptance review (`ACCEPTANCE_CRITERIA.md` §4) and read the findings register (§5). Layer 1 waits for the owner's go-ahead (Bible Appendix B #38).

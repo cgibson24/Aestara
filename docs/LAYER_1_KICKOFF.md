@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | **Proposed, 2026-09-28. Awaiting the owner's confirmation.** No Layer 1 code is written before it. |
+| Status | **Confirmed by the owner, 2026-09-29.** Every recommendation adopted; the admin web shell is included (K-23). Recorded as ADR-0018. |
 | Authority | Bible §32 (Layer 1 prompt), §0 (change control), §3, §21, §22; ADR-0001, ADR-0002, ADR-0004, ADR-0008 |
 | Normative sources | spec §4 (identity and authorization), §6.3 (Layer 1 endpoints), §7.3 (audit); [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) Step 4; [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §5.2 |
 
-Before any Layer 1 code, the roadmap requires confirming the decisions listed for the layer. It also requires resolving the Layer 0 findings carried to it (F-13 to F-33, F-59). This document gives one recommendation for each. Once the owner confirms, it becomes ADR-0018. Any spec text it changes is corrected under change control before implementation (Bible §0).
+Before any Layer 1 code, the roadmap requires confirming the decisions listed for the layer. It also requires resolving the Layer 0 findings carried to it (F-13 to F-33, F-59). This document gives one recommendation for each. The owner confirmed them all, and they are recorded as ADR-0018. The spec text they change was corrected under change control before implementation (Bible §0).
 
 ## 1. Scope (Bible §32)
 
@@ -42,7 +42,7 @@ Delivery follows micro-prompts M1.1–M1.12 in the roadmap, and each passes the 
 | K-08 | Practice-owned records (F-18) | M1.1 records, for every Layer 1 model, whether it is organization-owned or practice-owned, and tests it. Later models are classified in their layer; the location questions for plans stay with Layer 4. | spec §4.6; ADR-0001 |
 | K-09 | Tokens in URLs (F-16) | From Layer 1 on, every invitation, reset or verification token travels in a request body, never in a path or query string. The patient invitation endpoint follows this rule when it arrives in Layer 5. | spec §6.1.10 |
 | K-10 | `ACCESS_DENIED` audit (F-19) | Audit every denial on routes that touch patient data, collapsing identical repeats from the same actor into one event with a count. The 404 body stays identical to a missing record, so auditing never reveals existence. | spec §4.6, §7.3 |
-| K-11 | Client token handling (F-21) | No PKCE, which protects redirect-based code flows we do not use; this is a first-party direct login over TLS. **iOS:** access token in memory; refresh token in the Keychain (K-25). **Admin web:** access token in memory; refresh token only in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie scoped to the refresh path; an `Origin` check guards against CSRF. The spec §4.2 wording is corrected to match. | spec §4.2 |
+| K-11 | Client token handling (F-21) | No PKCE, which protects redirect-based code flows we do not use; this is a first-party direct login over TLS. **iOS:** access token in memory; refresh token in the Keychain (K-22). **Admin web:** access token in memory; refresh token only in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie scoped to the refresh path; an `Origin` check guards against CSRF. The spec §4.2 wording is corrected to match. | spec §4.2 |
 | K-12 | Session revocation scope (F-23) | An organization admin revokes only sessions bound to their organization. Disabling a user's membership in one organization ends only that organization's sessions. Platform security may revoke everything. | spec §4.2 |
 | K-13 | Login failure for an unknown identifier (F-24) | Recorded in `LoginEvent` only (hashed identifier, IP, reason). An `AuditEvent` `LOGIN_FAILURE` is written when the identifier matches a user. The response is identical either way (no account enumeration). | spec §4.2, §7.3 |
 | K-14 | Email in Layer 1 (F-25) | The api sends templated transactional email (invites, password reset; no PHI) through Amazon SES under the BAA. Mailpit joins local `docker compose` for development. The notifications service still arrives in Layer 5. | Bible §14.3; ADR-0010 |
@@ -55,7 +55,7 @@ Delivery follows micro-prompts M1.1–M1.12 in the roadmap, and each passes the 
 | K-21 | CI security tools (F-32 part) | GitHub CodeQL for SAST and gitleaks for secret scanning in CI (both free for this repository). Pin third-party GitHub Actions to commit SHAs in M1.2. Trivy container scanning with the first image (spec §7.1 threshold). | ADR-0016 |
 | K-22 | Keychain settings (F-32 part) | The refresh token is stored `WhenPasscodeSetThisDeviceOnly` with `.biometryCurrentSet`. If biometrics are unavailable or have changed, the user signs in again with password and MFA; there is no passcode fallback. The spec §4.2 wording ("plus device passcode fallback") is corrected to match. | spec §4.2 |
 | K-24 | Patient login linked to several patient records (F-20) | Not a Layer 1 question: patient identities arrive in Layer 5. Decide there, together with UD-08. | spec §4.7; ACCEPTANCE_CRITERIA.md F-20 |
-| K-23 | Admin web shell | **Owner's choice.** Recommended: include a minimal admin web in Layer 1 (M1.11) with sign-in, users and roles, and the audit viewer. It is only a client of the Layer 1 APIs, and without it user management is API-only. The alternative is to leave it out of Layer 1, which keeps strictly to the Bible §32 scope list. | Bible §17, §32; ADR-0003 |
+| K-23 | Admin web shell | **Included (owner's choice).** A minimal admin web in Layer 1 (M1.11) with sign-in, users and roles, and the audit viewer. It is only a client of the Layer 1 APIs; without it, user management would be API-only. | Bible §17, §32; ADR-0003 |
 
 **K-15, credentials and recovery:**
 - **Passwords:** follow NIST SP 800-63B. At least 12 characters, checked against a common and breached-password list, with no composition rules.
@@ -84,12 +84,15 @@ Layer 1 is built and proven locally and in CI; nothing is deployed. These are ne
 | Pilot success metrics | The pilot | F-33 |
 | Repository visibility (public, but the Bible is marked confidential) | As soon as possible | F-56 |
 
-## 4. After confirmation
+## 4. After confirmation (done 2026-09-29)
 
-1. Record the confirmed decisions as ADR-0018. Apply the spec corrections under change control:
-   - §4.2 (K-11, K-22)
-   - §4.5 (K-05)
-   - §6.1.8 (K-17)
-   - the audit additions (K-04)
-2. Mark F-13 to F-33 and F-59 as resolved or scheduled in ACCEPTANCE_CRITERIA.md §5.
-3. Start M1.1 (database foundation).
+1. The confirmed decisions are recorded as ADR-0018. The spec corrections were applied under change control; ADR-0018 lists each one:
+   - §3.5 (K-16)
+   - §4.2 (K-03, K-11, K-12, K-13, K-15, K-22)
+   - §4.5 and §4.6 (K-05, K-06, K-07, K-10)
+   - §5.4.10 (K-20)
+   - §6.1.8 (K-17) and §6.1.10 (K-09)
+   - §6.3 to §6.5, and the audit additions in §7.3 (K-04)
+   - the `UserToken` table (K-09, K-15)
+2. F-13 to F-33 and F-59 are marked resolved or scheduled in [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §5.2.
+3. M1.1 (database foundation) is under way.

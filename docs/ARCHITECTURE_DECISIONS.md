@@ -29,6 +29,7 @@ Status values:
 | [0015](#adr-0015) | iOS module architecture and project generation | Adopted (delegated) | 2026-09-28 |
 | [0016](#adr-0016) | CI supply-chain and security gates | Adopted (delegated) | 2026-09-28 |
 | [0017](#adr-0017) | Layer 0 errata to the locked specification | Accepted | 2026-09-28 |
+| [0018](#adr-0018) | Layer 1 kickoff decisions | Accepted | 2026-09-29 |
 
 ---
 
@@ -258,3 +259,68 @@ Status values:
   - **`DESIGN_SYSTEM.md` C13:** exiting signing mode is described as staff re-authentication (UD-31), with Face ID or Touch ID as the means, matching the spec.
   - **Roadmap M1.3** includes passkeys, matching spec §6.3.
 - **Consequences:** the locked baseline is internally consistent on these points. Every other Layer 0 finding is carried to the kickoff of the layer that needs it (`ACCEPTANCE_CRITERIA.md` §5).
+
+## ADR-0018
+
+**Layer 1 kickoff decisions**
+
+- **Status:** Accepted, 2026-09-29. The owner confirmed every recommendation in [`LAYER_1_KICKOFF.md`](LAYER_1_KICKOFF.md) ("adopt all") and chose to include the admin web shell in Layer 1. The spec is corrected to match before any Layer 1 code (Bible §0).
+- **Context:** the roadmap requires the Layer 1 decisions to be confirmed, and the Layer 0 findings carried to Layer 1 (F-13 to F-33, F-59) to be resolved, before implementation.
+- **Decision:** K-01 to K-24 as written in `LAYER_1_KICKOFF.md` §2:
+  - **Roles and permissions:**
+    - K-01: seed the complete permission catalog and role matrix in M1.1. Layer 1 enforces the 13 Bible §32 keys plus `organization.read`, `organization.manage`, `security.manage` and `configuration.manage`.
+    - K-02: system roles only.
+    - K-05: separation-of-duties rule 2 covers clinical consent actions only, and an audited platform bootstrap creates an organization's first admin.
+    - K-06: platform permissions reach organization metadata only, never patient data.
+    - K-07: a practice admin manages only users entirely inside its practice scope.
+    - K-08: every Layer 1 model is classified as organization-owned or practice-owned in M1.1.
+  - **Sessions and credentials:**
+    - K-03: MFA is always required for admin roles and the admin web; the strictest membership policy applies at sign-in.
+    - K-09: tokens travel in request bodies.
+    - K-11: no PKCE; the admin web keeps its refresh token in an `HttpOnly` `SameSite=Strict` cookie, with an `Origin` check.
+    - K-12: session revocation is scoped per organization.
+    - K-13: unknown-identifier failures are recorded in `LoginEvent` only.
+    - K-15: NIST SP 800-63B passwords, progressive lockout, a 30-minute single-use reset, a password-change endpoint, admin MFA reset, and `MFA_REQUIRED` recorded as a step.
+    - K-22: Keychain `WhenPasscodeSetThisDeviceOnly` with `.biometryCurrentSet` and no passcode fallback.
+  - **Audit:**
+    - K-04: two new actions, `SECURITY_CREDENTIAL_CHANGED` and `ORGANIZATION_SWITCHED`.
+    - K-10: `ACCESS_DENIED` on routes that touch patient data, with identical repeats collapsed.
+    - K-18: no WORM copy until the Layer 2 outbox.
+  - **Platform and data:**
+    - K-14: transactional email through Amazon SES, with Mailpit locally.
+    - K-16: the Row-Level Security design and its performance gate in M1.1.
+    - K-17: patient creation is online-only.
+    - K-19: the database suite is split per layer.
+    - K-20: patient status changes go through update, except archiving.
+    - K-21: CodeQL, gitleaks, SHA-pinned actions and Trivy.
+  - **Scope:**
+    - K-23: a minimal admin web shell (M1.11) is included in Layer 1.
+    - K-24: F-20 is deferred to Layer 5.
+  - **Delegated baselines re-confirmed unchanged:** UD-24 (no automated deletion without a customer policy; nothing is deleted automatically in Layer 1) and UD-27 (WAF plus database-backed lockout in Layer 1; a shared counter store only when more than one api task runs).
+- **Spec and schema changes made under this ADR:**
+  - **Spec §3.5** records the RLS design (K-06, K-16).
+  - **Spec §4.2** records:
+    - the client token handling (K-11) and the Keychain settings (K-22)
+    - the MFA rule (K-03) and a new "Passwords and recovery" row (K-15)
+    - scoped revocation (K-12), the organization-switch audit (K-04) and the login-audit rules (K-13, K-15)
+  - **Spec §4.5** rewrites separation-of-duties rules 2 and 3 (K-05, K-07).
+  - **Spec §4.6** records platform reach (K-06), user management scope (K-07) and `ACCESS_DENIED` collapsing (K-10).
+  - **Spec §5.4.10** adds the patient status rule (K-20).
+  - **Spec §6.1.8** makes patient creation online-only (K-17). **Spec §6.1.10** adds the no-secrets-in-URLs rule (K-09).
+  - **Spec §6.3** adds four endpoints that the confirmed decisions require:
+    - `POST /auth/password/change` (K-15)
+    - `POST /auth/invitations/accept`, the staff invitation that K-09 and K-14 imply
+    - `POST /users/{id}/mfa-reset` (K-15). An organization admin may reset only a user whose sole active membership is in that organization, because credentials are platform-level (K-06, K-12).
+    - `POST /organizations/{id}/admin-bootstrap` (K-05)
+
+    It also adds the new audit events to the existing rows.
+  - **Spec §6.4** lists the confirmed Layer 1 permissions and events. **Spec §6.5** moves the patient invitation token into the body (K-09).
+  - **Spec §7.3** adds the two actions and states the Layer 1 audit tamper-resistance (K-04, K-10, K-18).
+  - **Schema:**
+    - new supporting table `UserToken` (spec §5.2, §5.8), with its `constraints.sql` rules, holding hashed, single-use, expiring invitation, reset and sign-in challenge tokens (K-09, K-15)
+    - `LoginEventType` gains `MFA_CHALLENGE_ISSUED`, and `LoginFailureReason` loses `MFA_REQUIRED`, because K-15 makes the challenge a step, not a failure
+    - `AuditAction` gains the two K-04 actions
+- **Consequences:**
+  - The design schema has 88 tables. Layer 1 creates 21 of them.
+  - Findings F-13 to F-31 are resolved or scheduled into a Layer 1 micro-prompt, with F-20 deferred to Layer 5 (`ACCEPTANCE_CRITERIA.md` §5.2). F-32, F-33 and F-59 are owner inputs that do not block Layer 1; K-21 and K-22 resolve their repository-side parts.
+  - M1.1 can start.

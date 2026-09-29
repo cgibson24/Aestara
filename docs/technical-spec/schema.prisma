@@ -32,7 +32,8 @@ datasource db {
 // 1. IDENTITY & TENANCY
 //    Bible entities: User, Organization, Practice, Location, Membership, Role,
 //    Permission, RolePermission, UserRole, Device, Session
-//    Additions: UserCredential (first-party identity, D-02)
+//    Additions: UserCredential (first-party identity, D-02),
+//               UserToken (invitation, reset and sign-in step tokens, ADR-0018)
 // =============================================================================
 
 enum UserKind {
@@ -97,6 +98,9 @@ enum LoginEventType {
   LOGIN_SUCCESS
   LOGIN_FAILURE
   LOGOUT
+  /// Password accepted, second factor pending: a step, not a failure
+  /// (ADR-0018 K-15). The API answers 401 MFA_REQUIRED with a challenge.
+  MFA_CHALLENGE_ISSUED
 }
 
 enum LoginFailureReason {
@@ -104,7 +108,6 @@ enum LoginFailureReason {
   ACCOUNT_LOCKED
   ACCOUNT_DISABLED
   NO_ACTIVE_MEMBERSHIP
-  MFA_REQUIRED
   MFA_FAILED
   RATE_LIMITED
 }
@@ -140,6 +143,8 @@ model User {
   sessions                    Session[]               @relation("SessionUser")
   sessionsRevoked             Session[]               @relation("SessionRevokedBy")
   loginEvents                 LoginEvent[]
+  tokens                      UserToken[]             @relation("UserTokenUser")
+  tokensCreated               UserToken[]             @relation("UserTokenCreatedBy")
   patientsCreated             Patient[]               @relation("PatientCreatedBy")
   patientsUpdated             Patient[]               @relation("PatientUpdatedBy")
   patientsArchived            Patient[]               @relation("PatientArchivedBy")
@@ -232,6 +237,47 @@ model UserCredential {
   @@index([userId, type])
 }
 
+enum UserTokenPurpose {
+  /// Staff invitation sent by email; activates a membership (organizationId set).
+  INVITATION
+  /// Password reset sent by email; single use, 30 minutes (ADR-0018 K-15).
+  PASSWORD_RESET
+  /// Pending second factor after an accepted password (MFA_CHALLENGE_ISSUED).
+  MFA_CHALLENGE
+  /// Pending passkey registration for an authenticated user.
+  WEBAUTHN_REGISTRATION
+}
+
+/// Single-use secret for an emailed link or a sign-in step (ADR-0018 K-09,
+/// K-15). Only a SHA-256 hash of the random token is stored; the token itself
+/// travels in request bodies only, never in a URL, log or audit record.
+model UserToken {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  userId            String           @db.Uuid
+  purpose           UserTokenPurpose
+  /// Hex SHA-256 of the 256-bit random token.
+  tokenHash         String           @unique
+  /// INVITATION: the organization whose membership the token activates.
+  organizationId    String?          @db.Uuid
+  /// MFA_CHALLENGE: the client the resulting session is issued to.
+  clientApp         ClientApp?
+  /// WebAuthn challenge bytes (passkey assertion or registration).
+  webauthnChallenge Bytes?
+  /// Failed verification attempts; the token is consumed at the limit.
+  attemptCount      Int              @default(0)
+  createdById       String?          @db.Uuid
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  expiresAt         DateTime         @db.Timestamptz(3)
+  consumedAt        DateTime?        @db.Timestamptz(3)
+
+  user         User          @relation("UserTokenUser", fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User?         @relation("UserTokenCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
 model Organization {
   id        String             @id @default(uuid(7)) @db.Uuid
   name      String
@@ -247,6 +293,7 @@ model Organization {
   roles                Role[]
   sessions             Session[]
   loginEvents          LoginEvent[]
+  userTokens           UserToken[]
   patients             Patient[]
   appointmentTypes     AppointmentType[]
   treatmentCategories  TreatmentCategory[]
@@ -2846,6 +2893,9 @@ enum AuditAction {
   INTEGRATION_CONFIG_CHANGED
   DATA_EXPORT_DOWNLOADED
   CONFIGURATION_CHANGED
+  // ---- added at the Layer 1 kickoff (ADR-0018 K-04) ----
+  SECURITY_CREDENTIAL_CHANGED
+  ORGANIZATION_SWITCHED
 }
 
 model Integration {

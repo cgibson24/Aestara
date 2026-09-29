@@ -290,7 +290,7 @@ sequenceDiagram
 | 2. Guard | Membership must be `ACTIVE`; permission evaluated for that org only | [B §3.3] |
 | 3. Data access | Tenant-scoped repository layer: a Prisma client extension **requires** a tenant context and injects `organizationId` into every query on tenant-owned models. Unscoped access is only possible through an explicitly named platform repository (used by SUPER_ADMIN tooling and migrations). | [P] |
 | 4. Database | **Composite foreign keys** `(organizationId, …)` on every parent/child link, plus CHECKs wherever a nullable composite FK could otherwise be skipped by Postgres `MATCH SIMPLE`. An automated query confirms every such FK is covered (§11). The database rejects cross-tenant links even if application code has a bug (verified A1–A5, C5, D9, E6, F7, R1–R2, R18). A few links are application-enforced only (§5.1). | [P] |
-| 5. Database | PostgreSQL Row-Level Security on every tenant-owned table, keyed on `SET LOCAL app.organization_id` set per request transaction. The application DB role has no `BYPASSRLS`; migrations run as a separate owner role. **Performance gate:** the Layer 1 benchmark must show ≤ 10% added p95 latency and ≤ 5 ms absolute on core endpoints (login, patient search, patient open), otherwise the policy design is revised before Layer 1 ships | **D-04** |
+| 5. Database | PostgreSQL Row-Level Security on every tenant-owned table (`FORCE ROW LEVEL SECURITY`), keyed on `SET LOCAL app.organization_id` set from the verified token in each request transaction; an unset value matches no rows. The application DB role has no `BYPASSRLS`; migrations run as a separate owner role. The sign-in membership lookup, before any tenant is chosen, uses one narrow `SECURITY DEFINER` function. Platform operations use a separate role limited to platform tables, with no access to patient or clinical tables. Workers set the tenant for each job [ADR-0018 K-06, K-16]. **Performance gate:** the Layer 1 benchmark must show ≤ 10% added p95 latency and ≤ 5 ms absolute on core endpoints (login, patient search, patient open), otherwise the policy design is revised before Layer 1 ships | **D-04** |
 | 6. Tests | Every tenant-scoped endpoint is run by an automated cross-tenant test generator (tenant B credentials against tenant A IDs must return 404, with no timing or message difference) | [B §27.1, §36] |
 
 ---
@@ -309,15 +309,16 @@ sequenceDiagram
 
 | Concern | Design |
 |---|---|
-| Protocol | OAuth 2.1 / OIDC-compatible token semantics. First-party native apps use the token endpoint with PKCE-style proof. The admin SPA uses the same with a refresh token held in memory plus a `SameSite=Strict` HttpOnly cookie. Enterprise SSO (SAML/OIDC federation for large organizations) can be added later behind an identity-provider adapter. [P] |
-| Credentials | Argon2id password hashes; TOTP and WebAuthn/passkeys as second factors (`UserCredential`). **MFA required for admin web and any admin role** per deployment policy [B §21.1] (`OrganizationSetting security.mfaPolicy`). [P] |
+| Protocol | OAuth 2.1 / OIDC-compatible token semantics. First-party clients sign in directly over TLS (`POST /auth/login`). There is no redirect-based authorization-code flow, so PKCE does not apply. **iOS:** access token in memory, refresh token in the Keychain (see *Biometric re-auth*). **Admin web:** access token in memory; the refresh token only in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie whose path is limited to `/api/v1/auth/token/refresh`. Every cookie-authenticated request must carry an allow-listed `Origin` (CSRF defense). Enterprise SSO (SAML/OIDC federation for large organizations) can be added later behind an identity-provider adapter. [ADR-0018 K-11] |
+| Credentials | Argon2id password hashes; TOTP and WebAuthn/passkeys as second factors (`UserCredential`). **MFA is always required for the admin web and for any admin role.** An organization's policy (`OrganizationSetting security.mfaPolicy`) may require it for more users, never fewer [B §21.1]. At sign-in, before an organization is chosen, the strictest policy among the user's active memberships applies. [ADR-0018 K-03] |
+| Passwords and recovery | Passwords follow NIST SP 800-63B: at least 12 characters, checked against a common and breached-password list, no composition rules. **Lockout:** 5 consecutive failures lock the account for 15 min; each further lock within 24 h doubles the period, up to 24 h. The count comes from `LoginEvent` and restarts after a successful sign-in or a password reset; WAF rate rules also protect the endpoint. **Reset:** a single-use token sent by email, stored only as a hash (`UserToken`), valid 30 min; completing a reset revokes all the user's sessions. **Change:** `POST /auth/password/change` needs the current password and a recent MFA. **Lost factors:** a user who has lost every second factor needs an admin-initiated MFA reset (`security.manage`) and enrolls again at the next sign-in. [ADR-0018 K-15] |
 | Access token | Signed JWT (ES256, key in KMS). Claims: `sub` (user), `sid` (session), `org` (active organization), `app` (client), `amr`. **Lifetime 10 min.** Permissions are *not* embedded: they are evaluated per request so revocation takes effect immediately. [P] |
 | Refresh token | Opaque, stored only as a hash on `Session`, **rotated on every use**. Presenting an older generation is treated as theft: the whole session is revoked with reason `REFRESH_TOKEN_REUSE`. [P] |
 | Session policy defaults | Provider app: idle 8 h, absolute 7 d, Face ID/Touch ID re-auth after 5 min in background. Admin web: idle 30 min, absolute 12 h. Patient app: idle 30 d, absolute 90 d, biometrics optional. All configurable per organization. [P] · [UD-18] |
-| Biometric re-auth | Refresh token stored in Keychain with access control `.biometryCurrentSet` (plus device passcode fallback); LocalAuthentication gates the app unlock and step-up actions (signing, export) on-device [B §21.1]. The server additionally requires a recent `mfaVerifiedAt` for designated sensitive actions. [P] |
-| Revocation | Server-side: `Session.revokedAt`, device revocation cascades to its sessions, and user disable / membership disable revokes all sessions → audit `SECURITY_SESSION_REVOKED` [B §21.1, §22.1]. |
-| Organization switch | `PUT /auth/session/organization` re-checks membership and issues new tokens bound to the new org. |
-| Login audit | Each attempt writes a `LoginEvent` (security ledger) **and** an `AuditEvent` `LOGIN_SUCCESS`/`LOGIN_FAILURE`/`LOGOUT`. Identical client-facing error for unknown user versus bad password (no account enumeration). |
+| Biometric re-auth | Refresh token stored in the Keychain as `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` with access control `.biometryCurrentSet`. There is **no passcode fallback**: if biometrics are unavailable or the enrolled set changes, the item cannot be read and the user signs in again with password and MFA [ADR-0018 K-22]. LocalAuthentication gates the app unlock and step-up actions (signing, export) on-device [B §21.1]. The server additionally requires a recent `mfaVerifiedAt` for designated sensitive actions. [P] |
+| Revocation | Server-side: `Session.revokedAt`; device revocation cascades to its sessions → audit `SECURITY_SESSION_REVOKED` [B §21.1, §22.1]. **Scope:** an organization admin revokes only sessions bound to that organization, and disabling a membership ends only that organization's sessions. A password reset, an admin MFA reset and platform security (`security.manage` at platform scope) revoke all of the user's sessions. [ADR-0018 K-12] |
+| Organization switch | `PUT /auth/session/organization` re-checks membership and issues new tokens bound to the new org. Audited as `ORGANIZATION_SWITCHED` [ADR-0018 K-04]. |
+| Login audit | Each attempt writes a `LoginEvent` (security ledger). An `AuditEvent` `LOGIN_SUCCESS`/`LOGIN_FAILURE`/`LOGOUT` is also written when the identifier matches a user; an attempt for an unknown identifier is recorded in `LoginEvent` only (keyed hash of the identifier, IP, reason). A `MFA_REQUIRED` login response means "password accepted, second factor pending": it is recorded as the step `MFA_CHALLENGE_ISSUED`, not as a failure, and does not count toward lockout. Identical client-facing error for unknown user versus bad password (no account enumeration). [ADR-0018 K-13, K-15] |
 
 ### 4.3 Roles [B §3.2]
 
@@ -445,8 +446,8 @@ Legend: ● granted · ○ granted within the assignment's practice/location sco
 
 **Separation-of-duties rules [P]** (enforced by the authorization service, tested in §7.5; the first is also a DB CHECK, R4):
 1. Nobody can assign a role to themselves, or create a membership for themselves.
-2. Platform-scope `user.create` / `role.assign` exist only to **bootstrap** an organization's first ORGANIZATION_ADMIN. The platform actor cannot target its own account and can never grant a role carrying any `patient.*`, `photo.*`, `consultation.*`, `simulation.*`, `consent.*` or `document.*` permission. This closes the path by which a platform operator could reach patient records [B §17.2].
-3. A PRACTICE_ADMIN can grant only roles and scopes within its own practice scope.
+2. Platform-scope `user.create` / `role.assign` exist only to **bootstrap** an organization's first ORGANIZATION_ADMIN. The bootstrap is an audited platform action (`POST /organizations`, or `POST /organizations/{id}/admin-bootstrap`), allowed only while the organization has no active ORGANIZATION_ADMIN. The platform actor cannot target its own account and can never grant a role carrying any `patient.*`, `photo.*`, `consultation.*`, `simulation.*` or `document.*` permission, or a clinical consent permission (`consent.assign`, `consent.sign.provider`, `consent.void`). `consent.template.manage` is administrative, so the rule does not block the ORGANIZATION_ADMIN bootstrap. This closes the path by which a platform operator could reach patient records [B §17.2]. [ADR-0018 K-05]
+3. A PRACTICE_ADMIN can grant only roles and scopes within its own practice scope. It manages (updates, disables, assigns or revokes roles for, revokes sessions of) only users whose active role grants all lie within that scope; organization-wide users need an ORGANIZATION_ADMIN. [ADR-0018 K-07]
 4. Every grant and revocation is audited (`ROLE_ASSIGNED` / `ROLE_REVOKED`) and appears in a periodic access review export.
 
 ### 4.6 Authorization evaluation [B §3.3] [P]
@@ -457,7 +458,9 @@ authorize(request, requiredPermission, resource):
   if route is platform-scoped:                           // e.g. POST /organizations, platform audit
       grants = UserRole where user=session.userId, scope=PLATFORM, revokedAt IS NULL
       require requiredPermission ∈ permissions(grants)   // 403 otherwise
-      only platform resources are reachable here; no tenant data   // §4.5 rule 2
+      only platform resources and organization metadata  // §4.5 rule 2; ADR-0018 K-06
+      (organizations, practices, memberships, account status);
+      never patient or clinical data
       return
   org       = session.organizationId                     // never from client input
   member    = Membership(org, session.userId) ACTIVE     // 401 SESSION_INVALID if not
@@ -466,11 +469,16 @@ authorize(request, requiredPermission, resource):
       applicable = grants where scope = ORGANIZATION       // procedure, photo session, plan
                    or (scope = PRACTICE and practiceId = resource.practiceId)
                    or (scope = LOCATION and locationId = resource.locationId)
+  else if action manages another user (update, disable, roles, sessions)
+      applicable = grants where scope = ORGANIZATION
+                   or every active grant of the target user lies inside the grant's scope
+                                                        // §4.5 rule 3; ADR-0018 K-07
   else applicable = grants            // reads span the whole organization (D-01)
   if requiredPermission ∉ permissions(applicable.roles):
       if caller cannot even see the resource -> 404 <RESOURCE>_NOT_FOUND (generic)
       else                                    -> 403 PERMISSION_DENIED
-      audit ACCESS_DENIED [P]
+      audit ACCESS_DENIED on routes that touch patient data;   // ADR-0018 K-10
+      identical repeats from one actor collapse into one event with a count
   load resource WITH organizationId = org (and scope filter)  // 404 if absent
 ```
 
@@ -498,7 +506,7 @@ A `PATIENT`-kind user reaches data only through an `ACTIVE` `PatientUserLink` fo
 
 ## 5. Database schema
 
-The complete, validated draft lives in **[`technical-spec/schema.prisma`](technical-spec/schema.prisma)** (87 models, 82 enums). The rules Prisma cannot express are in **[`technical-spec/constraints.sql`](technical-spec/constraints.sql)**. This section explains the design. The files are the precise definition.
+The complete, validated draft lives in **[`technical-spec/schema.prisma`](technical-spec/schema.prisma)** (88 models, 83 enums). The rules Prisma cannot express are in **[`technical-spec/constraints.sql`](technical-spec/constraints.sql)**. This section explains the design. The files are the precise definition.
 
 ### 5.1 Conventions [B §19.1]
 
@@ -519,9 +527,9 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 
 ### 5.2 Entity catalog
 
-**87 tables:** all **70 entities named in Bible §19**, plus **17 supporting tables** that other Bible sections require (marked ✚; each cites its source). Bible §19: *"at minimum the following entities."*
+**88 tables:** all **70 entities named in Bible §19**, plus **18 supporting tables** that other Bible sections require (marked ✚; each cites its source). Bible §19: *"at minimum the following entities."*
 
-#### Identity & tenancy (11 + 1)
+#### Identity & tenancy (11 + 2)
 
 | Entity | Purpose | Key relations & rules | Layer |
 |---|---|---|---|
@@ -537,6 +545,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | Device | Registered app install, APNs token | Unique `(userId, installationIdHash)`; revocable | 1 |
 | Session | Server-side session, rotating refresh token | Revocation reason required when revoked | 1 |
 | ✚ UserCredential | Password / TOTP / passkey (first-party identity, D-02) | Shape CHECK per type; one active password | 1 |
+| ✚ UserToken | Single-use secret for an emailed link (staff invitation, password reset) or a sign-in step (MFA challenge, passkey registration) (§4.2; ADR-0018 K-09, K-15) | Stored only as a hash; expires; consumed once; an invitation names its organization | 1 |
 
 #### Provider & patient (6 + 1)
 
@@ -814,6 +823,7 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 
 | Object | States |
 |---|---|
+| Patient | `ACTIVE`, `INACTIVE` and `DECEASED` change into one another only through an update (`patient.update`, If-Match, audited `PATIENT_UPDATED`). `ACTIVE \| INACTIVE \| DECEASED → ARCHIVED` only through `/archive` (`patient.archive`). An update never sets or clears `ARCHIVED`, and nothing changes a patient's status automatically [ADR-0018 K-20] |
 | PatientPhoto | `UPLOAD_PENDING → ACCEPTED` (staff capture) · `UPLOAD_PENDING → QUARANTINED → PENDING_REVIEW → ACCEPTED \| RETAKE_REQUESTED \| REJECTED` (patient upload) · `ACCEPTED → ARCHIVED` |
 | AIJob | `QUEUED → RUNNING → SUCCEEDED \| FAILED \| TIMED_OUT`; `QUEUED \| RUNNING → CANCELLED` |
 | PhotoRequest | `OPEN → SUBMITTED → COMPLETED`; `OPEN → CANCELLED \| EXPIRED` |
@@ -865,7 +875,7 @@ The **whole** schema is designed now so later layers can't force a redesign. **T
 
 | Layer | Migration creates |
 |---|---|
-| 1 | Organization, Practice, Location, User, UserCredential, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, IdempotencyKey ⁱ, OrganizationSetting ⁱ |
+| 1 | Organization, Practice, Location, User, UserCredential, UserToken ⁱ, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, IdempotencyKey ⁱ, OrganizationSetting ⁱ |
 | 2 | StorageObject, PhotographyProtocol, PhotographyProtocolView, PhotoSession, PatientPhoto, PhotoDerivative, PhotoTag, PhotoPermission, MediaRelease, MediaReleasePermission, OutboxEvent, FeatureFlag, PracticeSetting, RetentionPolicy |
 | 3 | Consultation, ConsultationNote, ConsultationConcern, PatientConcern, PatientMedicalHistory, PhotoAnnotation, BeforeAfterSet, Document, DocumentVersion, AIJob ⁱⁱ |
 | 4 | TreatmentCategory, Treatment, TreatmentPlan, TreatmentPlanItem, Procedure, Estimate, Quote, InvoiceReference, ConsentTemplate, ConsentTemplateVersion, ConsentAssignment, ConsentSignature, EducationContent, EducationContentVersion, ContentAssignment, PatientInstruction, DataExportJob |
@@ -876,7 +886,7 @@ The **whole** schema is designed now so later layers can't force a redesign. **T
 | 9 | CaseLibraryEntry, SimilarCaseMatch, OutcomeMeasurement |
 | 10 | Integration, IntegrationMapping, EMRSyncEvent, IntegrationDeadLetter |
 
-ⁱ Beyond the literal Bible §32 scope, justified [P]: `IdempotencyKey` because patient creation must be retry-safe [B §20.3, §23.3]; `OrganizationSetting` because the MFA/session policy and the "primary practice optional/required by deployment policy" rule [B §4.2, §21.1] are Layer 1 behavior. ⁱⁱ `AIJob` is the generic job record; Layer 3 needs it for automatic before/after registration [B §34.1 #17] (image processing, no model), and Layer 7 adds the model FK.
+ⁱ Beyond the literal Bible §32 scope, justified [P]: `UserToken` because staff invitations, password reset and MFA challenges need single-use, hashed, expiring tokens [B §21.1] (ADR-0018 K-09, K-15); `IdempotencyKey` because patient creation must be retry-safe [B §20.3, §23.3]; `OrganizationSetting` because the MFA/session policy and the "primary practice optional/required by deployment policy" rule [B §4.2, §21.1] are Layer 1 behavior. ⁱⁱ `AIJob` is the generic job record; Layer 3 needs it for automatic before/after registration [B §34.1 #17] (image processing, no model), and Layer 7 adds the model FK.
 
 Some forward references are nullable (e.g. `Appointment.consultationId`, `PhotoSession.procedureId`, `PhotoDerivative.generatedByJobId`). They are added by the later layer's migration together with their FK, so no layer contains a dangling reference. The matching `constraints.sql` fragments are ordered by layer in the same way.
 
@@ -939,7 +949,7 @@ Concurrently editable resources (patient, consultation, note, treatment plan, te
 
 #### 6.1.8 Idempotency [B §20.3, §23.3]
 
-`Idempotency-Key: <UUID>` is **required** on: every upload intent and completion, consent signatures, AI job creation (`/generate`, `/regenerate`, registration, similar-case search), external sync triggers, export requests, message sends, and **every create that can be queued offline** (patient, photo session, photo, annotation, note). It is accepted on all other `POST`s.
+`Idempotency-Key: <UUID>` is **required** on: every upload intent and completion, consent signatures, AI job creation (`/generate`, `/regenerate`, registration, similar-case search), external sync triggers, export requests, message sends, **every create that can be queued offline** (photo session, photo, annotation, note), and patient creation. It is accepted on all other `POST`s. **Patient creation is online-only**, because the duplicate check needs the server [B §4.1, §23.1]; its key only makes a retried request safe [ADR-0018 K-17].
 
 | Situation | Response |
 |---|---|
@@ -961,6 +971,7 @@ Keys are scoped per actor and retained **7 days** [P], long enough to cover the 
 #### 6.1.10 Other rules
 
 - **No PHI in URLs:** search terms, names, DOB, email and phone always travel in request bodies (`POST /patients/search`), because URLs end up in load-balancer, WAF and proxy logs [P, from B §21.2 "no sensitive data in logs"].
+- **No secrets in URLs:** invitation, password-reset and verification tokens travel only in request bodies, never in a path or query string [ADR-0018 K-09].
 - **No enumeration** [B §20.3]: a resource that is nonexistent, in another tenant, or outside the caller's scope always gets the same `404 <RESOURCE>_NOT_FOUND` body. `403 PERMISSION_DENIED` is returned only when the caller can already see the resource but lacks the action permission.
 - **Rate limits** [B §20.3, §21.2]: WAF per-IP rate rules on public/auth endpoints; progressive lockout after repeated login failures (from `LoginEvent`); per-user limits on sensitive endpoints (exports, AI generation, search) with `429 RATE_LIMITED` + `Retry-After`. A shared counter store (ElastiCache for Valkey) arrives when horizontal scaling needs it [UD-27].
 - **Security headers:** HSTS, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` on all PHI responses, strict CORS (admin web origin only).
@@ -1006,13 +1017,15 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 |---|---|---|---|---|---|
 | `POST /auth/login` | Credentials → session (or `MFA_REQUIRED` challenge) | public | – | LOGIN_SUCCESS / LOGIN_FAILURE | 1 |
 | `POST /auth/mfa/verify` | Complete an MFA challenge | challenge | – | LOGIN_SUCCESS / LOGIN_FAILURE | 1 |
-| `POST /auth/token/refresh` | Rotate refresh token → new access token | refresh token | – | (SECURITY_SESSION_REVOKED on reuse) | 1 |
+| `POST /auth/token/refresh` | Rotate refresh token → new access token (admin web: refresh token from the cookie, `Origin` checked; §4.2) | refresh token | – | (SECURITY_SESSION_REVOKED on reuse) | 1 |
 | `POST /auth/logout` | Revoke current session | authenticated | – | LOGOUT | 1 |
 | `GET /auth/session` | Current user, active org, memberships, effective permissions (UI hints only) | authenticated | – | – | 1 |
-| `PUT /auth/session/organization` | Switch active organization → new tokens | authenticated + membership | – | – | 1 |
+| `PUT /auth/session/organization` | Switch active organization → new tokens | authenticated + membership | – | ORGANIZATION_SWITCHED* | 1 |
 | `GET /auth/sessions` · `DELETE /auth/sessions/{id}` | List/revoke own sessions & devices | authenticated | – | SECURITY_SESSION_REVOKED | 1 |
-| `POST /auth/password/forgot` · `POST /auth/password/reset` | Reset flow (identical response for unknown accounts) | public | – | – | 1 |
-| `POST /auth/mfa/enrollments` · `DELETE /auth/mfa/enrollments/{id}` | Enroll/remove TOTP or passkey | authenticated + step-up | R | – | 1 |
+| `POST /auth/password/forgot` · `POST /auth/password/reset` | Reset flow (identical response for unknown accounts; token in the body; a completed reset revokes all sessions) | public | – | SECURITY_CREDENTIAL_CHANGED*, SECURITY_SESSION_REVOKED | 1 |
+| `POST /auth/password/change` | Change password (current password and a recent MFA) | authenticated + step-up | – | SECURITY_CREDENTIAL_CHANGED* | 1 |
+| `POST /auth/invitations/accept` | Accept a staff invitation (token in the body): set the password, enroll a second factor where policy requires it, activate the membership | invitation token | – | SECURITY_CREDENTIAL_CHANGED* | 1 |
+| `POST /auth/mfa/enrollments` · `DELETE /auth/mfa/enrollments/{id}` | Enroll/remove TOTP or passkey | authenticated + step-up | R | SECURITY_CREDENTIAL_CHANGED* | 1 |
 | `GET /.well-known/jwks.json` | Public signing keys (OIDC-compatible) | public | – | – | 1 |
 
 #### Organizations, practices, locations (`/organizations`, `/practices`, `/locations`) [B §17.1, §20.2]
@@ -1020,6 +1033,7 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | Method & path | Purpose | Perm | Audit | L |
 |---|---|---|---|---|
 | `GET /organizations` · `POST /organizations` | List (platform) / create organization and bootstrap its first ORGANIZATION_ADMIN (§4.5 rule 2). System roles are platform-level (not copied); standard photo protocols are seeded from Layer 2 | organization.read* / organization.manage* (platform scope) | CONFIGURATION_CHANGED* | 1 |
+| `POST /organizations/{id}/admin-bootstrap` | Invite the first ORGANIZATION_ADMIN of an organization that has no active one (§4.5 rule 2) | organization.manage* (platform scope) | USER_CREATED, ROLE_ASSIGNED | 1 |
 | `GET /organizations/{id}` · `PATCH /organizations/{id}` | View/update own organization | organization.read* / organization.manage* | CONFIGURATION_CHANGED* | 1 |
 | `GET /practices` · `POST /practices` | List/create practices | practice.read / practice.manage | CONFIGURATION_CHANGED* | 1 |
 | `GET /practices/{id}` · `PATCH /practices/{id}` | View/update | practice.read / practice.manage | CONFIGURATION_CHANGED* | 1 |
@@ -1032,11 +1046,12 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `GET /users` · `GET /users/{id}` | List/view org users (filter by practice, role, status) | user.read | – | – | 1 |
 | `POST /users` | Invite/create user + membership (never for oneself; §4.5 rules) | user.create | R | USER_CREATED | 1 |
 | `PATCH /users/{id}` | Update profile/contact | user.update | – | USER_UPDATED | 1 |
-| `POST /users/{id}/disable` | Disable membership; revokes sessions | user.disable | – | USER_DISABLED, SECURITY_SESSION_REVOKED | 1 |
+| `POST /users/{id}/disable` | Disable membership; revokes that organization's sessions (§4.2) | user.disable | – | USER_DISABLED, SECURITY_SESSION_REVOKED | 1 |
 | `POST /users/{id}/role-assignments` | Assign role at scope (never to oneself; cannot exceed own scope; platform actors cannot grant clinical roles) | role.assign | – | ROLE_ASSIGNED | 1 |
 | `DELETE /users/{id}/role-assignments/{assignmentId}` | Revoke assignment | role.assign | – | ROLE_REVOKED* | 1 |
 | `GET/PUT /users/{id}/provider-profile` · `GET/PUT /users/{id}/staff-profile` | Provider/staff profile | user.read / user.update | – | USER_UPDATED | 1 |
-| `POST /users/{id}/sessions/revoke` | Admin revocation of a user's sessions/devices | security.manage* | – | SECURITY_SESSION_REVOKED | 1 |
+| `POST /users/{id}/sessions/revoke` | Admin revocation of a user's sessions/devices: those bound to the admin's organization; platform scope revokes all (§4.2) | security.manage* | – | SECURITY_SESSION_REVOKED | 1 |
+| `POST /users/{id}/mfa-reset` | Admin-initiated reset for a user who has lost every second factor: removes the factors and revokes all sessions. An organization admin may reset only a user whose sole active membership is in that organization; otherwise platform security does it (§4.2) | security.manage* | – | SECURITY_CREDENTIAL_CHANGED*, SECURITY_SESSION_REVOKED | 1 |
 | `GET /roles` · `GET /roles/{id}` | Roles + permission sets | role.read | – | – | 1 |
 | `GET /permissions` | Permission catalog | role.read | – | – | 1 |
 
@@ -1049,7 +1064,7 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `POST /patients/duplicate-check` | Probable-duplicate candidates before create [B §4.1] | patient.create | – | – | 1 |
 | `POST /patients` | Create; server assigns tenant; `confirmNoDuplicate` required if candidates exist | patient.create | R | PATIENT_CREATED | 1 |
 | `GET /patients/{pid}` | Profile (demographics; per-tab counts only for tabs the caller may read) | patient.read | – | PATIENT_VIEWED | 1 |
-| `PATCH /patients/{pid}` | Update demographics (If-Match) | patient.update | – | PATIENT_UPDATED | 1 |
+| `PATCH /patients/{pid}` | Update demographics, and status `INACTIVE` / `DECEASED` (If-Match; §5.4.10) | patient.update | – | PATIENT_UPDATED | 1 |
 | `POST /patients/{pid}/archive` | Archive (If-Match) | patient.archive | – | PATIENT_ARCHIVED | 1 |
 | `GET /patients/{pid}/timeline` | Chronological events (metadata only). **Each item is filtered by the caller's permission for its domain**, so demographics-only roles see only demographic/scheduling items | patient.read (+ per-item) | – | – | 3 |
 | `GET/POST /patients/{pid}/contacts` · `PATCH/DELETE …/{id}` | Contacts | patient.read / patient.update | – | PATIENT_UPDATED | 1 |
@@ -1212,7 +1227,7 @@ Integration **worker** activity writes INTEGRATION_SYNC_SUCCEEDED / INTEGRATION_
 
 ### 6.4 Layer 1 contract subset
 
-Bible §32 authorizes: `/auth/*`, `/organizations`, `/practices`, `/locations`, `/users` (+ role assignments, provider/staff profiles), `/roles`, `/permissions`, `/patients` (search, list, duplicate-check, create, view, update, archive, contacts) and `/audit/events`, plus health. **[P] addition:** `/settings/organization`, because the MFA/session policy and the primary-practice rule are Layer 1 behavior (§5.8 ⁱ). The permissions are the 13 listed in Bible §32, plus `organization.*`, `security.manage` and `configuration.manage` if approved (UD-16). The audit events are the 11 in Bible §32, plus `ROLE_REVOKED`, `ACCESS_DENIED` and `CONFIGURATION_CHANGED` if approved (UD-19).
+Bible §32 authorizes: `/auth/*`, `/organizations`, `/practices`, `/locations`, `/users` (+ role assignments, provider/staff profiles), `/roles`, `/permissions`, `/patients` (search, list, duplicate-check, create, view, update, archive, contacts) and `/audit/events`, plus health. **[P] addition:** `/settings/organization`, because the MFA/session policy and the primary-practice rule are Layer 1 behavior (§5.8 ⁱ). The permissions are the 13 listed in Bible §32, plus `organization.read`, `organization.manage`, `security.manage` and `configuration.manage` (UD-16, confirmed in ADR-0018 K-01). The audit events are the 11 in Bible §32, plus `ROLE_REVOKED`, `ACCESS_DENIED`, `CONFIGURATION_CHANGED`, `SECURITY_CREDENTIAL_CHANGED` and `ORGANIZATION_SWITCHED` (UD-19, confirmed in ADR-0018 K-04).
 
 ### 6.5 Patient portal API (`/api/v1/portal`) [B §13]
 
@@ -1220,7 +1235,7 @@ A **separate controller namespace with separate DTOs** [P]. Portal handlers can 
 
 | Method & path | Purpose | Idem | Audit | L |
 |---|---|---|---|---|
-| `POST /auth/patient-invitations/{token}/accept` | Accept invitation, set credentials, link account | R | PATIENT_ACCOUNT_LINKED* | 5 |
+| `POST /auth/patient-invitations/accept` | Accept invitation (token in the body, §6.1.10), set credentials, link account | R | PATIENT_ACCOUNT_LINKED* | 5 |
 | `GET /portal/home` | Counts + next actions (unsigned consents, unread messages, upcoming appointment) | – | – | 5 |
 | `GET /portal/consultations` · `GET …/{id}` | Released consultation summaries & education | – | – | 5 |
 | `GET /portal/simulations` · `POST …/{id}/access-urls` | **RELEASED_TO_PATIENT only**, with disclaimer | – | SIMULATION_VIEWED | 8 |
@@ -1424,7 +1439,7 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 | SIMULATION_CREATED · SIMULATION_STATUS_CHANGED | "All lifecycle events are audited" [B §34.2 #30]; system transitions use actor type `SERVICE` |
 | CONSENT_STATUS_CHANGED | Consent lifecycle steps not covered by a named event (draft, in-progress, superseded) [B §12.4] |
 | DOCUMENT_VIEWED | Parity with PHOTO_VIEWED for signed consents and summaries [B §14.4 "audit download/view events"] |
-| ACCESS_DENIED | Security event alerts [B §26]; authorization failures on sensitive endpoints |
+| ACCESS_DENIED | Security event alerts [B §26]; authorization failures on routes that touch patient data, with identical repeats from one actor collapsed into one event with a count [ADR-0018 K-10] |
 | ROLE_REVOKED | Counterpart of ROLE_ASSIGNED; access reviews |
 | PATIENT_ACCOUNT_LINKED | Patient app account creation [B §13] |
 | CONSULTATION_STATUS_CHANGED | "Audit lifecycle events" [B §5.1] |
@@ -1436,10 +1451,12 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 | CONSENT_TEMPLATE_PUBLISHED · DOCUMENT_RELEASED · CONTENT_ASSIGNED · INSTRUCTION_ASSIGNED · INSTRUCTION_ACKNOWLEDGED | Versioned documents and patient-facing release [B §12, §13.2] |
 | INTEGRATION_CONFIG_CHANGED · CONFIGURATION_CHANGED | Admin changes [B §17.2] |
 | DATA_EXPORT_DOWNLOADED | "Export generation **and download** are audited" [B §22.4] |
+| SECURITY_CREDENTIAL_CHANGED | Password changed or reset, second factor enrolled or removed, admin MFA reset. Details give the factor type and the action, never a secret [B §21.1, §22.1] [ADR-0018 K-04] |
+| ORGANIZATION_SWITCHED | The session's active organization changed; every later event carries the new tenant [B §22.2] [ADR-0018 K-04] |
 
 **Event contents [B §22.2]:** actor (type, user or service), organization, resource type and ID, action, outcome, timestamp, request ID, session and device, IP/user agent, `patientId` (identifier only, enabling per-patient access reports), and non-clinical metadata.
 
-**Tamper resistance [B §21.2]:** (1) DB triggers block UPDATE/DELETE/TRUNCATE; (2) the application DB role has only `INSERT, SELECT` on audit tables; (3) the outbox relay streams audit rows to an **S3 bucket with Object Lock (compliance mode)** as the long-term WORM copy; (4) a daily job reconciles DB against WORM counts and alerts on divergence.
+**Tamper resistance [B §21.2]:** (1) DB triggers block UPDATE/DELETE/TRUNCATE; (2) the application DB role has only `INSERT, SELECT` on audit tables; (3) the outbox relay streams audit rows to an **S3 bucket with Object Lock (compliance mode)** as the long-term WORM copy; (4) a daily job reconciles DB against WORM counts and alerts on divergence. Layer 1 relies on (1) and (2); (3) and (4) arrive with the outbox in Layer 2 [ADR-0018 K-18].
 
 ### 7.4 Media storage layout [B §6.6, §21.2]
 

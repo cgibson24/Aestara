@@ -213,7 +213,7 @@ for obj, enum_name in objects.items():
 all_enum_values = {v for vals in enums.values() for v in vals}
 sm = section(S, "### 5.4 State machines", "### 5.5")
 state_tokens = set(re.findall(r"\b([A-Z]{2,}(?:_[A-Z]+)*)\b", sm))
-ignore = {"B", "P", "UD", "DB", "PDF", "SHA", "ID", "IDs", "AI", "PATIENT_APP", "API", "UI", "Src", "UUID"}
+ignore = {"B", "P", "UD", "ADR", "DB", "PDF", "SHA", "ID", "IDs", "AI", "PATIENT_APP", "API", "UI", "Src", "UUID"}
 ignore |= set(enums["AuditAction"]) | {"POST", "GET", "PUT", "PATCH", "DELETE"}
 ignore |= set(re.findall(r"`([A-Z_]+)`", section(S, "### 6.2 Error code catalog", "### 6.3")))
 unknown = sorted(t for t in state_tokens - ignore if t not in all_enum_values and not t.startswith("UD"))
