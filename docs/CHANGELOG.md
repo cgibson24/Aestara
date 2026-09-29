@@ -2,6 +2,29 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-09-29: Layer 1 database foundation (M1.1)
+
+- **`packages/database`** (ADR-0019):
+  - the 21 Layer 1 tables, with `prisma/schema.prisma` generated from the design schema
+  - four migrations: tables, the Layer 1 `constraints.sql` fragment, security (roles, forced RLS, sign-in lookup, platform grant guard, grants) and the permission catalog (53 permissions, 10 system roles, 139 default grants)
+  - table ownership classification (K-08)
+  - Prisma client
+  - local synthetic seed
+- **Checks:**
+  - 45 unit tests, including the catalog proven equal to spec §4.4–§4.5
+  - `schema:check` drift gate
+  - `db:test`: migrations as a non-superuser, no Prisma drift, `check-rls.ts`, and 57 database checks (the Layer 1 fragment plus the new RLS suite)
+- **Behaviour suite split per layer** (K-19): `docs/technical-spec/verification/behavior/`. It holds 99 checks over the full design, 9 of them new: one-time tokens, the MFA sign-in step, archived patients.
+- **`packages/shared-types`:** enum values generated from the Prisma schema.
+- **CI:** a new `database` job on PostgreSQL 18; schema and enum drift checks in `workspace`.
+- **RLS performance (ADR-0004 gate), measured on the database work of each request:**
+  - login: passes
+  - patient open: +0.5 to 0.7 ms p95
+  - patient search as specified: fails (+3.5 to 3.7 ms), because its predicates are not leakproof
+  - Recorded as UD-35 (spec §10.2) for the owner.
+- **Spec count corrections:** 281 foreign keys; 18 supporting tables; §10.2 confirmation note; §10.4 SHA pinning and production-access timing; §11.2 results.
+- **Documentation pack aligned with ADR-0018** across 15 documents.
+
 ## 2026-09-29: Layer 1 kickoff confirmed
 
 - The owner adopted every Layer 1 kickoff recommendation (K-01 to K-24) and included the admin web shell (M1.11). Recorded as ADR-0018; `LAYER_1_KICKOFF.md` is marked confirmed.

@@ -1,0 +1,34 @@
+{
+  "name": "@aestara/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prisma schema, per-layer migrations, Row-Level Security, permission catalog and seeds (spec \u00a75, \u00a73.5; ADR-0004, ADR-0018).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "prisma generate",
+    "typecheck": "prisma generate > /dev/null && tsc --noEmit",
+    "test": "vitest run",
+    "schema:promote": "node scripts/promote-schema.ts",
+    "schema:check": "node scripts/promote-schema.ts --check && node scripts/generate-catalog-migration.ts --check && node scripts/check-migrations.ts",
+    "catalog:generate": "node scripts/generate-catalog-migration.ts",
+    "migrate:deploy": "prisma migrate deploy",
+    "db:test": "bash scripts/test-database.sh",
+    "db:seed:dev": "node scripts/seed-dev.ts",
+    "bench:rls": "node scripts/bench-rls.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "@types/pg": "8.23.1",
+    "prisma": "7.10.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.2"
+  }
+}

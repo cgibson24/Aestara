@@ -49,7 +49,8 @@ Placeholders say which layer builds them. Nothing is faked ahead of its layer.
 
 ```bash
 pnpm verify:spec                                   # Bible → spec traceability (pip install pypdf)
-DATABASE_URL=postgresql://…/empty_db pnpm verify:schema   # schema + 90 database behaviour checks
+DATABASE_URL=postgresql://…/empty_db pnpm verify:schema   # design schema + 99 database behaviour checks
+ADMIN_DATABASE_URL=postgresql://…/postgres pnpm --filter @aestara/database db:test   # Layer 1 migrations, RLS, 57 checks
 pnpm --filter @aestara/design-tokens test          # WCAG contrast gate for the palette
 python3 docs/technical-spec/verification/check_docs.py    # documentation pack and references
 python3 apps/ios-provider/scripts/check_module_graph.py   # iOS module architecture
@@ -57,4 +58,4 @@ python3 apps/ios-provider/scripts/check_module_graph.py   # iOS module architect
 
 iOS (macOS with Xcode 26.6): `mise install`, then `tuist generate` in `apps/ios-provider` or `apps/ios-patient`. Terraform: see `infrastructure/terraform/README.md`.
 
-CI (`.github/workflows/ci.yml`) runs all of these on every push, plus Terraform checks, a dependency vulnerability scan and the iOS build and tests.
+CI (`.github/workflows/ci.yml`) runs all of these on every push, plus the RLS benchmark report, Terraform checks, a dependency vulnerability scan and the iOS build and tests.

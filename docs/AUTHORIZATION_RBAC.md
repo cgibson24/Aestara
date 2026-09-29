@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §3.1 (tenancy), §3.3 (permission model), §13.2 (patient visibility), §17.2 (administrative safeguards), §20.3 (no enumeration), §21.2 (tenant isolation tested automatically), §36 (readiness). ADR-0001 (D-01), ADR-0004 (D-04, RLS), ADR-0008 (delegated baselines UD-16, UD-17, UD-30) |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §3.1 (tenancy), §3.3 (permission model), §13.2 (patient visibility), §17.2 (administrative safeguards), §20.3 (no enumeration), §21.2 (tenant isolation tested automatically), §36 (readiness). ADR-0001 (D-01), ADR-0004 (D-04, RLS), ADR-0008 (delegated baselines UD-16, UD-17, UD-30), ADR-0018 (Layer 1 kickoff decisions K-01, K-02, K-05 to K-08, K-10, K-16) |
 | Normative sources | [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md) spec §3.3 (request pipeline), spec §3.5 (isolation in depth), spec §4.1, spec §4.3–§4.7 (roles, catalog, matrix, algorithm, portal), spec §6.1.3, spec §6.1.10, spec §6.2, spec §6.5, spec §7.5. [`technical-spec/constraints.sql`](technical-spec/constraints.sql) and [`technical-spec/schema.prisma`](technical-spec/schema.prisma) |
 
 How the server decides whether an authenticated caller may perform an action on a resource, and the independent layers that keep one organization's data away from another's. Who holds which role, in plain language, is in [`USER_ROLES_AND_PERMISSIONS.md`](USER_ROLES_AND_PERMISSIONS.md); how the caller is authenticated is in [`AUTHENTICATION_ARCHITECTURE.md`](AUTHENTICATION_ARCHITECTURE.md).
@@ -42,8 +42,8 @@ erDiagram
 
 | Object | Level | Meaning |
 |---|---|---|
-| `Permission` | Platform | Catalog of keys: the 41 Bible keys [B §3.3] plus the adopted UD-16 keys (spec §4.4) |
-| `Role` | Platform (system, `organizationId` NULL) or organization (custom, UD-07) | A named set of permissions. The ten system keys are unique by partial index (B1) |
+| `Permission` | Platform | Catalog of keys: the 41 Bible keys [B §3.3] plus the adopted UD-16 keys (spec §4.4). The complete catalog and the spec §4.5 default matrix are seeded as data in M1.1, so later layers never rewrite role data (ADR-0018 K-01) |
+| `Role` | Platform (system, `organizationId` NULL) or organization (custom, UD-07) | A named set of permissions. The ten system keys are unique by partial index (B1). Layer 1 uses system roles only (ADR-0018 K-02) |
 | `RolePermission` | With the role | Role → permission grant |
 | `Membership` | Organization | A user's membership in one organization; must be ACTIVE for any tenant access |
 | `UserRole` | Organization or platform | One scoped assignment: role, scope, optional practice and location, who assigned it, when it was revoked |
@@ -64,6 +64,8 @@ A user may have at most one active assignment of the same role at the same scope
 The effective permission set for one request is the union of the permissions of the **applicable** grants: the caller's unrevoked `UserRole` rows in the session's organization, narrowed by scope for writes to practice-owned records (§4). `GET /auth/session` returns the caller's effective permissions as **UI hints only** (spec §6.3). Clients use them to hide or explain controls ([`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) rule C9), never to decide access.
 
 Where the Bible defines only write keys, reads are mapped onto existing keys (for example, reading consultations needs `consultation.create`; reading message threads needs `message.send` plus participation). The full mapping table is spec §4.4.
+
+Layer 1 endpoints enforce the 13 Bible §32 keys plus `organization.read`, `organization.manage`, `security.manage` and `configuration.manage` (spec §6.4; ADR-0018 K-01).
 
 ---
 
@@ -101,20 +103,23 @@ flowchart TD
   PLAT -- yes --> PG["grants = unrevoked PLATFORM-scope UserRole rows of the user"]
   PG --> PP{"Required permission in those grants?"}
   PP -- no --> E403P["403"]
-  PP -- yes --> PR["Proceed on platform resources only, no tenant data"]
+  PP -- yes --> PR["Proceed on platform resources and organization metadata only, never patient or clinical data"]
   PLAT -- no --> ORG["org = session.organizationId, never client input"]
   ORG --> MEM{"Membership of user in org is ACTIVE?"}
   MEM -- no --> E401S["401 SESSION_INVALID"]
   MEM -- yes --> GR["grants = unrevoked UserRole rows of the user in org"]
   GR --> WR{"Action creates or changes a practice-owned resource?"}
   WR -- yes --> AW["applicable = ORGANIZATION grants, plus PRACTICE grants for the resource's practice, plus LOCATION grants for the resource's location"]
-  WR -- no --> AR["applicable = all grants, reads span the organization"]
+  WR -- no --> MU{"Action manages another user?"}
+  MU -- yes --> AU["applicable = ORGANIZATION grants, plus grants whose scope contains every active grant of the target user"]
+  MU -- no --> AR["applicable = all grants, reads span the organization"]
   AW --> HAS{"Required permission in applicable grants?"}
+  AU --> HAS
   AR --> HAS
   HAS -- no --> SEE{"Can the caller see the resource at all?"}
   SEE -- no --> E404["404 RESOURCE_NOT_FOUND, generic"]
   SEE -- yes --> E403["403 PERMISSION_DENIED"]
-  E404 --> AUD["Audit ACCESS_DENIED"]
+  E404 --> AUD["Audit ACCESS_DENIED on routes that touch patient data, identical repeats collapsed"]
   E403 --> AUD
   HAS -- yes --> LOAD{"Resource found with organizationId = org and the scope filter?"}
   LOAD -- no --> E404B["404 RESOURCE_NOT_FOUND, generic"]
@@ -131,7 +136,9 @@ authorize(request, requiredPermission, resource):
   if route is platform-scoped:                           // e.g. POST /organizations, platform audit
       grants = UserRole where user=session.userId, scope=PLATFORM, revokedAt IS NULL
       require requiredPermission ∈ permissions(grants)   // 403 otherwise
-      only platform resources are reachable here; no tenant data   // §4.5 rule 2
+      only platform resources and organization metadata  // §4.5 rule 2; ADR-0018 K-06
+      (organizations, practices, memberships, account status);
+      never patient or clinical data
       return
   org       = session.organizationId                     // never from client input
   member    = Membership(org, session.userId) ACTIVE     // 401 SESSION_INVALID if not
@@ -140,11 +147,16 @@ authorize(request, requiredPermission, resource):
       applicable = grants where scope = ORGANIZATION       // procedure, photo session, plan
                    or (scope = PRACTICE and practiceId = resource.practiceId)
                    or (scope = LOCATION and locationId = resource.locationId)
+  else if action manages another user (update, disable, roles, sessions)
+      applicable = grants where scope = ORGANIZATION
+                   or every active grant of the target user lies inside the grant's scope
+                                                        // §4.5 rule 3; ADR-0018 K-07
   else applicable = grants            // reads span the whole organization (D-01)
   if requiredPermission ∉ permissions(applicable.roles):
       if caller cannot even see the resource -> 404 <RESOURCE>_NOT_FOUND (generic)
       else                                    -> 403 PERMISSION_DENIED
-      audit ACCESS_DENIED [P]
+      audit ACCESS_DENIED on routes that touch patient data;   // ADR-0018 K-10
+      identical repeats from one actor collapse into one event with a count
   load resource WITH organizationId = org (and scope filter)  // 404 if absent
 ```
 
@@ -153,13 +165,14 @@ authorize(request, requiredPermission, resource):
 | Line | Meaning for implementers |
 |---|---|
 | `verifyAccessToken` | Includes loading the session (spec §3.3 step 3): revoked, expired or idle means 401 |
-| `if route is platform-scoped` | Declared on the route, never inferred from the caller. Only PLATFORM-scope grants count. The branch reaches **platform resources only** (organizations, the permission catalog, system roles, the AI registry, platform audit); it can never reach tenant data (spec §4.5 rule 2) |
+| `if route is platform-scoped` | Declared on the route, never inferred from the caller. Only PLATFORM-scope grants count. The branch reaches **platform resources and organization metadata only**: the permission catalog, system roles, the AI registry, platform audit, and organizations, practices, memberships and account status. It never reaches patient or clinical data. The platform database role has no access to patient or clinical tables, so this holds even if a handler is wrong (spec §3.5, spec §4.6; ADR-0018 K-06) |
 | `org = session.organizationId` | From the token-bound session only. A platform operator's session has no organization, so tenant routes answer 401 for it |
 | `member = Membership(...) ACTIVE` | A disabled membership fails every tenant request at once |
 | `if action creates/changes a practice-owned resource` | Practice-owned means consultation, appointment, procedure, photo session, plan (ADR-0001). For a create, the resource's practice and location are the ones named in the request, which composite foreign keys tie to the organization |
-| `else applicable = grants` | Reads, and changes to records that are not practice-owned, consider every grant in the organization (D-01) |
+| `else if action manages another user` | Updating, disabling, assigning or revoking roles for, or revoking sessions of another user. An ORGANIZATION grant always applies; a PRACTICE or LOCATION grant applies only when every active grant of the target user lies inside it. Organization-wide users therefore need an ORGANIZATION_ADMIN (spec §4.5 rule 3; ADR-0018 K-07) |
+| `else applicable = grants` | Reads, and changes to other records that are not practice-owned, consider every grant in the organization (D-01) |
 | `if caller cannot even see the resource` | "See" means the caller could read it: they hold the domain's read permission (or mapped key) and, for messages, participate in the thread. Otherwise 404, identical to "does not exist" |
-| `audit ACCESS_DENIED` | In the pseudocode it follows both the 404 and the 403 outcome; spec §7.3 justifies the event for "authorization failures on sensitive endpoints". Which endpoints audit denials is confirmed with UD-19. The `AuditEvent` outcome is DENIED. Bursts raise a security alert (spec §7.6) |
+| `audit ACCESS_DENIED` | Follows both the 404 and the 403 outcome, on every route that touches patient data. Identical repeats from the same actor collapse into one event with a count. The 404 body stays identical to a missing record, so auditing never reveals existence (spec §4.6, spec §7.3; ADR-0018 K-10). The `AuditEvent` outcome is DENIED. Bursts raise a security alert (spec §7.6) |
 | `load resource WITH organizationId = org` | The tenant filter is part of the query itself, never a comparison after loading by ID, so "other tenant" and "does not exist" take the same path |
 
 ### 4.4 Worked examples
@@ -174,6 +187,8 @@ authorize(request, requiredPermission, resource):
 | Any user of organization B | `GET` a patient of organization A | 404 `PATIENT_NOT_FOUND` | Byte-for-byte the same body as a random ID, apart from `requestId` |
 | SUPER_ADMIN with only a platform grant | Call a tenant route | 401 `SESSION_INVALID` | No organization and no membership in the session |
 | PRACTICE_ADMIN, PRACTICE scope A1 | Assign SURGEON_PHYSICIAN at practice A2 | Rejected | Separation-of-duties rule 3 (§7) |
+| PRACTICE_ADMIN, PRACTICE scope A1 | Disable a nurse who also holds a grant at practice A2 | 403 `PERMISSION_DENIED` | The nurse is visible (`user.read`), but not every grant lies inside A1 (rule 3) |
+| SUPER_ADMIN | Bootstrap an admin for an organization that already has an active ORGANIZATION_ADMIN | Rejected | Rule 2: the bootstrap is allowed only while the organization has none |
 | ORGANIZATION_ADMIN | Assign a role to itself | Rejected | Rule 1; the DB CHECK is the backstop (R4) |
 
 ---
@@ -192,7 +207,7 @@ Owner decision D-01 (ADR-0001): patient data **may be shared across the practice
 Consequences worth knowing:
 
 - **The similar-case library is organization-wide** (ADR-0001). `CaseLibraryEntry.practiceId` records the originating practice for filtering only (spec §5.2).
-- **LOCATION scope needs a location on the record.** `TreatmentPlan` has no `locationId`, and `locationId` is optional on consultations, appointments and procedures. Under the algorithm, a LOCATION-scoped grant never covers writes to a plan or to a record without a location. `PhotoSession.practiceId` is optional too, so a session without a practice can be changed only through an ORGANIZATION-scoped grant. These are open items (§12).
+- **LOCATION scope needs a location on the record.** `TreatmentPlan` has no `locationId`, and `locationId` is optional on consultations, appointments and procedures. Under the algorithm, a LOCATION-scoped grant never covers writes to a plan or to a record without a location. `PhotoSession.practiceId` is optional too, so a session without a practice can be changed only through an ORGANIZATION-scoped grant. M1.1 records, for every Layer 1 model, whether it is organization-owned or practice-owned, and tests it. Later models are classified in their layer, and the plan location question stays with Layer 4 (ADR-0018 K-08; §12).
 
 ---
 
@@ -219,13 +234,13 @@ The four rules are stated in spec §4.5 and explained in [`USER_ROLES_AND_PERMIS
 | Rule | Enforced by | Test |
 |---|---|---|
 | 1 Nobody assigns a role to themselves or creates their own membership | Authorization service on `POST /users` and `POST /users/{id}/role-assignments`; DB CHECK `UserRole_no_self_assignment_chk` (`assignedById <> userId`) as a backstop for role assignment. Self-membership is service-enforced only | DB behavior R4; API separation-of-duties suite |
-| 2 Platform scope only bootstraps an organization's first ORGANIZATION_ADMIN; never targets its own account; never grants a role carrying `patient.*`, `photo.*`, `consultation.*`, `simulation.*`, `consent.*` or `document.*` | Authorization service, evaluated on the platform branch | API suite |
-| 3 A PRACTICE_ADMIN grants only roles and scopes within its own practice, never ORGANIZATION_ADMIN or SUPER_ADMIN | Authorization service: the target role's permissions and the target scope are compared with the granter's scope | API suite |
+| 2 Platform scope only bootstraps an organization's first ORGANIZATION_ADMIN, through an audited action (`POST /organizations` or `POST /organizations/{id}/admin-bootstrap`) allowed only while the organization has no active ORGANIZATION_ADMIN; never targets its own account; never grants a role carrying `patient.*`, `photo.*`, `consultation.*`, `simulation.*` or `document.*`, or a clinical consent permission (`consent.assign`, `consent.sign.provider`, `consent.void`) | Authorization service, evaluated on the platform branch | API suite |
+| 3 A PRACTICE_ADMIN grants only roles and scopes within its own practice, never ORGANIZATION_ADMIN or SUPER_ADMIN, and manages only users whose active grants all lie within its scope | Authorization service: the target role's permissions and the target scope are compared with the granter's scope; for user management, every active grant of the target user is compared (§4.2) | API suite |
 | 4 Every grant and revocation is audited and appears in a periodic access-review export | `ROLE_ASSIGNED`, `ROLE_REVOKED` [P] in the same transaction (spec §3.3 step 10) | Audit assertions in the API suite |
 
 Other database-level backstops on the same objects: the scope shape (B2), a location must belong to the named practice (B3), one active duplicate at most (B5), and a simulation reviewer must be a `ProviderProfile` of the same organization (R18).
 
-Rule 2 as written conflicts with the default matrix: ORGANIZATION_ADMIN holds `consent.template.manage`, a `consent.*` key, so a literal implementation would block the platform bootstrap. This must be resolved at Layer 1 kickoff before the seed is written (§12).
+Rule 2 covers clinical consent actions (signing, voiding, assigning), not `consent.template.manage`, which is administrative. The platform can therefore bootstrap an ORGANIZATION_ADMIN, whose default role holds `consent.template.manage` (spec §4.5; ADR-0018 K-05). The error code for a separation-of-duties rejection is not specified (§12).
 
 ---
 
@@ -285,20 +300,22 @@ flowchart TB
 | 2 Guard | ACTIVE membership; permission evaluated for that organization only | Missing or wrong permission | [B §3.3] |
 | 3 Data access | Prisma client extension requires a tenant context and injects `organizationId`; the platform repository is explicit and named | A handler that forgets a filter | [P], adopted |
 | 4 Composite foreign keys | Every child references its parent by `(organizationId, …)`; CHECKs close the `MATCH SIMPLE` gaps; verified A1–A5, C5, D9, E6, F7, R1–R2, R18 | Application bugs that would link records across tenants or patients | [P], adopted |
-| 5 Row-Level Security | Policies on every tenant-owned table keyed on `SET LOCAL app.organization_id` in the per-request transaction; the application role has no `BYPASSRLS`; migrations run as a separate owner role | A query that escapes layer 3 | D-04 |
+| 5 Row-Level Security | Policies on every tenant-owned table (`FORCE ROW LEVEL SECURITY`) keyed on `SET LOCAL app.organization_id`, set from the verified token in the per-request transaction; an unset value matches no rows. The application role has no `BYPASSRLS`; migrations run as a separate owner role; platform operations use a separate role limited to platform tables | A query that escapes layer 3 | D-04; spec §3.5 (ADR-0018 K-16) |
 | 6 Generated tests | Tenant B credentials against tenant A IDs return 404 on every tenant-scoped route | Regressions in layers 1–5 | [B §27.1], [B §36] |
 
 **Application-enforced links.** Three references cannot use composite keys and rely on layers 2, 3, 5 and 6: `ConsentSignature.signerUserId` and `ThreadParticipant.userId` (the signer or participant may be the patient's platform-level user) and the polymorphic `IntegrationMapping.localId` (spec §5.1).
 
 ### 9.1 RLS and its performance gate (ADR-0004)
 
-- **Gate.** The Layer 1 benchmark (roadmap M1.1) must show at most **10% added p95 latency and at most 5 ms absolute** on login, patient search and patient open. If it fails, the policy design is revised (simpler predicates, index changes) before Layer 1 ships. RLS is never silently dropped.
+- **Gate.** The Layer 1 benchmark (roadmap M1.1) must show at most **10% added p95 latency and at most 5 ms absolute** on login, patient search and patient open. If it fails, ADR-0004 is revisited and the policy design is revised (simpler predicates, index changes) before Layer 1 goes further. RLS is never silently dropped.
+- **Design** (spec §3.5; ADR-0018 K-16):
+  - The application database role has no `BYPASSRLS`, and tenant tables use `FORCE ROW LEVEL SECURITY`.
+  - Every request runs in a transaction that sets `app.organization_id` from the verified token with `SET LOCAL`. An unset value matches no rows.
+  - The sign-in membership lookup, before any tenant is chosen, uses one narrow `SECURITY DEFINER` function.
+  - Platform operations use a separate role limited to platform tables, with no access to patient or clinical tables (K-06).
+  - Workers (outbox relay, exports, retention, sync) set the tenant for each job.
 - **Where the policies live.** Not in `constraints.sql` today; they are written with the Layer 1 migrations (M1.1).
-- **Design questions M1.1 must answer** (not specified in the spec):
-  - Sign-in reads `Membership` rows across organizations before any tenant is selected.
-  - Tables whose `organizationId` is nullable by design need policies that handle platform or pre-tenant rows: `AuditEvent`, `LoginEvent`, `Session`, `UserRole`, `Role`, `FeatureFlag`, `AIModelRollout`, `AIValidationRecord`, `IdempotencyKey`, `OutboxEvent`, `Notification`.
-  - The explicitly named platform repository must coexist with an application role that lacks `BYPASSRLS`.
-  - Workers (outbox relay, exports, retention, sync) run outside a request and must set the tenant context per transaction.
+- **Still decided in M1.1:** the policy SQL itself; how tables whose `organizationId` is nullable by design handle platform or pre-tenant rows (`AuditEvent`, `LoginEvent`, `Session`, `UserRole`, `Role`, `FeatureFlag`, `AIModelRollout`, `AIValidationRecord`, `IdempotencyKey`, `OutboxEvent`, `Notification`, and `UserToken`, whose organization is set only for an invitation); and how `SET LOCAL` is issued through the Prisma driver adapter.
 
 ### 9.2 Generated cross-tenant tests
 
@@ -326,7 +343,7 @@ Every route states its access rule before it is merged. The API contract tests a
 4. **Use the scoped repository** for every read and write. The platform repository is for platform-scoped routes only.
 5. **Name the not-found code** (`<RESOURCE>_NOT_FOUND`) and make "not visible" and "not found" one code path.
 6. **Route state changes through the transition table,** which carries the permission per transition (spec §5.4).
-7. **Declare the audit event,** including `ACCESS_DENIED` behavior for sensitive endpoints.
+7. **Declare the audit event,** and whether the route touches patient data, which makes it audit `ACCESS_DENIED` (spec §4.6).
 8. **For a portal endpoint,** the visibility rule must already be in spec §4.7.
 9. **In the feature prompt** [B §33], AUTHORIZED USERS lists permissions, not roles.
 
@@ -340,11 +357,11 @@ Bible §36 requires automated cross-tenant tests for every sensitive domain and 
 |---|---|---|---|
 | Cross-tenant generator | Every tenant-scoped route returns an identical 404 for another tenant's IDs | spec §7.5 | L1 |
 | Role × endpoint matrix | Each cell of the spec §4.5 matrix allows or denies as specified, generated from the matrix | spec §7.5 | L1 |
-| 404 versus 403 | Invisible resources return 404; visible-but-forbidden return 403; `ACCESS_DENIED` is audited | spec §6.1.10 | L1 |
-| Separation of duties | Self-assignment, platform actor granting clinical roles, practice admin exceeding its scope: all rejected | spec §7.5 | L1 |
+| 404 versus 403 | Invisible resources return 404; visible-but-forbidden return 403; on routes that touch patient data `ACCESS_DENIED` is audited, and identical repeats collapse into one event with a count | spec §4.6, spec §6.1.10 | L1 |
+| Separation of duties | Self-assignment, a platform actor granting clinical roles or bootstrapping an organization that already has an active admin, a practice admin granting beyond its scope or managing a user with grants outside it: all rejected | spec §4.5, spec §7.5 | L1 |
 | D-01 scope | Reads across practices succeed; practice-owned writes outside scope fail | ADR-0001 | L1, then each layer that adds a practice-owned record |
 | Revocation takes effect | A revoked role, disabled membership or revoked session stops access on the next request | spec §4.2, spec §7.5 | L1 |
-| RLS | With the application role and a tenant context set, rows of another organization are invisible even to a query without an `organizationId` filter; the application role has no `BYPASSRLS` | ADR-0004 | L1 |
+| RLS | With the application role and a tenant context set, rows of another organization are invisible even to a query without an `organizationId` filter; an unset tenant sees no rows; the application role has no `BYPASSRLS`; the platform role cannot read patient or clinical tables | ADR-0004; spec §3.5 | L1 |
 | RLS benchmark | The ADR-0004 gate on login, patient search, patient open | ADR-0004 | L1 |
 | Database behavior | Scope shape, self-assignment, duplicate assignment, composite foreign keys (B1–B5, R4, A1–A5, R1–R2, R18) | `constraints.sql` | L1 onward |
 | Portal visibility | For every portal endpoint, drafts, rejected or failed simulations, unreleased documents, planned procedures and internal notes never appear | spec §7.5 | L5 |
@@ -355,20 +372,16 @@ Bible §36 requires automated cross-tenant tests for every sensitive domain and 
 
 ## 12. Open items
 
+The Layer 1 kickoff (ADR-0018) confirmed UD-16, UD-17 and UD-07 for Layer 1 (K-01, K-02), the `ACCESS_DENIED` and `ROLE_REVOKED` events (K-04, K-10), separation-of-duties rules 2 and 3 (K-05, K-07) and platform reach (K-06); §4 and §7 state them. What remains:
+
 | Item | Confirmed at |
 |---|---|
-| UD-16 proposed keys and endpoint mappings; UD-17 default matrix | L1 kickoff |
-| UD-07 custom roles | L1 kickoff |
-| UD-19 `ACCESS_DENIED` and `ROLE_REVOKED` events | L1 kickoff |
-| Separation-of-duties rule 2 versus ORGANIZATION_ADMIN holding `consent.template.manage` (§7) | L1 kickoff |
-| What SUPER_ADMIN's platform-scope `user.read`, `practice.read` and `integration.read` may reach, given "no tenant data" on the platform branch | L1 kickoff |
-| Whether a PRACTICE-scoped administrator may update or disable users outside its practice (only role grants are limited by rule 3) | L1 kickoff |
-| Error code returned for a separation-of-duties rejection | L1 kickoff |
-| LOCATION-scoped grants and records without a location; photo sessions without a practice (§5) | L1 kickoff, revisited at L2 and L4 |
-| Which other records count as practice-owned (the list names consultation, appointment, procedure, photo session, plan; message threads, consent templates, protocols, appointment types, feature flags and integrations also carry an optional `practiceId`) | Each layer's kickoff |
-| RLS design questions (§9.1) | L1 (M1.1) |
+| Error code returned for a separation-of-duties rejection | M1.6 |
+| LOCATION-scoped grants and records without a location; photo sessions without a practice (§5) | M1.1 for Layer 1 models (ADR-0018 K-08); L2 (photo sessions) and L4 (plans) |
+| Which other records count as practice-owned (the list names consultation, appointment, procedure, photo session, plan; message threads, consent templates, protocols, appointment types, feature flags and integrations also carry an optional `practiceId`) | M1.1 for Layer 1 models, then each layer for its own (ADR-0018 K-08) |
+| Remaining RLS questions (§9.1) | L1 (M1.1) |
 | UD-30 portal visibility of procedures, appointments, telehealth; UD-20 PATIENT_APP grant | L5 kickoff |
-| `PatientUserLink` allows several patient records per login in one organization, while spec §4.7 assumes a single `link.patientId` | L5 kickoff (UD-08) |
+| `PatientUserLink` allows several patient records per login in one organization, while spec §4.7 assumes a single `link.patientId` | L5 kickoff (UD-08; deferred there by ADR-0018 K-24) |
 | Spec §4.7 shows a released simulation without checking the current PATIENT_APP grant at read time, while Bible §7.3 and the UD-20 baseline require that check for patient-app media; the Bible wins ([`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md) F-44) | L5 and L8 kickoffs (UD-20) |
-| `UserRole.roleId` references `Role(id)` alone, so once custom roles exist another organization's custom role could be assigned (F-28) | With UD-07, before custom roles are enabled |
+| `UserRole.roleId` references `Role(id)` alone, so once custom roles exist another organization's custom role could be assigned (F-28). Layer 1 uses system roles only; `UserRole` gets a composite key when custom roles are enabled (ADR-0018 K-02) | With UD-07, before custom roles are enabled |
 | Support access to tenant data | Not in scope until specified [B §17.1] |

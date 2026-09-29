@@ -5,7 +5,7 @@ These checks back the verification report in `docs/TECHNICAL_SPECIFICATION.md` �
 | Script | What it proves |
 |---|---|
 | `check_traceability.py` | Every canonical list in the Bible is represented in the spec and schema (58 checks) |
-| `run_schema_checks.sh` | The schema validates, applies to an empty PostgreSQL, and the database rejects every forbidden operation (90 checks, including the V7 `MATCH SIMPLE` audit) |
+| `run_schema_checks.sh` | The schema validates, applies to an empty PostgreSQL, and the database rejects every forbidden operation: the per-layer fragments in `behavior/` (99 checks, including the V7 `MATCH SIMPLE` audit) |
 | `check_docs.py` | The Bible §31/§35 documentation pack is complete; every `spec §`/Bible `§` reference, relative link and anchor resolves; no placeholder markers |
 | `export_bible.py` | Generates `docs/SOFTWARE_PRODUCTION_BIBLE.md` verbatim from the PDF; `--check` fails on drift |
 
@@ -59,12 +59,13 @@ npx prisma migrate diff --from-empty --to-schema "$SCHEMA_PATH" --script > migra
 createdb -h localhost -U postgres aestara_verify
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f migration.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f <repo>/docs/technical-spec/constraints.sql
-psql "$DATABASE_URL" -q -f <repo>/docs/technical-spec/verification/schema_behavior_tests.sql
+B=<repo>/docs/technical-spec/verification/behavior
+psql "$DATABASE_URL" -q $(for f in "$B"/*.sql; do printf -- '-f %s ' "$f"; done)
 # every line prints PASS; the run aborts on the first FAIL; the final number is the pass count
 # the suite inserts fixtures, so drop and recreate the database before re-running it
 ```
 
-`schema_behavior_tests.sql` tries each violation the Bible forbids and asserts that the database itself rejects it:
+The behaviour suite in `behavior/` tries each violation the Bible forbids and asserts that the database itself rejects it. It is split into one fragment per layer (ADR-0018 K-19), run in one psql session in file-name order: `A00_harness.sql`, `L01_…` to `L08_…`, then `Z99_catalog_audits.sql` (the V7 audit and the summary). A fragment uses only tables of its layer and earlier ones, so `packages/database` runs just the fragments of the layers it has built against its real migrations (`pnpm --filter @aestara/database db:test`). It covers:
 
 - cross-tenant links
 - cross-patient before/after
@@ -77,7 +78,7 @@ psql "$DATABASE_URL" -q -f <repo>/docs/technical-spec/verification/schema_behavi
 
 It also confirms that the legitimate operations right next to each violation still succeed.
 
-The suite ends with the V7 audit. It reads the live catalog and fails if any composite foreign key with two or more nullable columns lacks a CHECK covering those columns: PostgreSQL skips such a key whenever one column is NULL (`MATCH SIMPLE`).
+The suite ends with the V7 audit in `Z99_catalog_audits.sql`. It reads the live catalog and fails if any composite foreign key with two or more nullable columns lacks a CHECK covering those columns: PostgreSQL skips such a key whenever one column is NULL (`MATCH SIMPLE`).
 
 ## 3. Documentation pack
 

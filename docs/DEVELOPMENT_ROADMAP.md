@@ -107,7 +107,7 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 
 | # | Micro-prompt | Proves |
 |---|---|---|
-| M1.1 | Database foundation: Layer 1 tables + constraint fragment + migrations, seed (permission catalog, role matrix, organization + admin), database roles, **RLS policies + performance benchmark** (ADR-0004 gate), per-layer split of the DB behaviour suite, model ownership classification (K-08, K-16, K-19) | Migrations run; seed works; RLS ≤ 10% / 5 ms |
+| M1.1 | Database foundation: Layer 1 tables + constraint fragment + migrations, seed (permission catalog, role matrix, organization + admin), database roles, **RLS policies + performance benchmark** (ADR-0004 gate), per-layer split of the DB behaviour suite, model ownership classification (K-08, K-16, K-19) | Migrations run; seed works; RLS ≤ 10% / 5 ms. **Built 2026-09-29; the RLS gate fails for patient search as specified (UD-35, owner decision pending)** |
 | M1.2 | API skeleton: NestJS/Fastify, config, request IDs, error envelope, PHI-safe logging, health endpoints, OpenAPI generation, contract-test harness; CodeQL, gitleaks and SHA-pinned actions in CI (K-21) | Error model and contract tests |
 | M1.3 | Authentication: login, TOTP and passkey MFA (spec §6.3), rotating refresh, logout, sessions/devices, LoginEvent + audit, lockout, password reset and change, transactional email (SES; Mailpit locally) (K-11 to K-15) | Session revocation is immediate |
 | M1.4 | Tenancy & authorization core: tenant context, permission guard, scoped repositories, `SET LOCAL`, cross-tenant test generator, ACCESS_DENIED | Cross-tenant access rejected |

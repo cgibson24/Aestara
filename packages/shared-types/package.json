@@ -1,0 +1,20 @@
+{
+  "name": "@aestara/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Enum values generated from the Prisma schema, shared by the api and its contracts (spec §6.8).",
+  "exports": {
+    ".": "./generated/enums.ts"
+  },
+  "scripts": {
+    "build": "node scripts/generate-enums.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "typescript": "6.0.3",
+    "vitest": "5.0.2"
+  }
+}

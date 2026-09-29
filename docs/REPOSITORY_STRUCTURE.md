@@ -26,10 +26,10 @@ This document explains where everything lives, what state each part is in, and t
 │   └── integration-service/ FHIR/vendor adapters                                      · from Layer 10
 ├── packages/
 │   ├── api-contracts/       Zod schemas → OpenAPI 3.1 (openapi.json)                  · Layer 0 primitives
-│   ├── database/            Prisma schema, migrations, constraint fragments           · from Layer 1
+│   ├── database/            Prisma schema, migrations, RLS, permission catalog, seeds · Layer 1 (M1.1)
 │   ├── security/            Shared authz/crypto helpers for services                  · from Layer 1
 │   ├── design-tokens/       tokens.json → CSS, TypeScript, Swift                      · Layer 0
-│   └── shared-types/        Enums/value types generated from Prisma enums             · from Layer 1
+│   └── shared-types/        Enum values generated from the Prisma schema              · Layer 1 (M1.1)
 ├── infrastructure/
 │   └── terraform/           AWS: bootstrap, environments/{dev,staging,production}, modules/
 ├── docs/                    Bible export, spec, ADRs, Layer 0 documentation pack
@@ -50,7 +50,9 @@ This document explains where everything lives, what state each part is in, and t
 | `apps/ios-provider`, `apps/ios-patient` | Skeleton. Tuist projects; 20 module packages with a checked tier graph; DesignSystem ships the tokens and has tests. The other modules hold their documented boundary only. | `check_module_graph.py`; CI `ios` job (generate, build both apps, test DesignSystem) |
 | `infrastructure/terraform` | Skeleton. Real, minimal modules (KMS, account baseline, network, storage, database, compute) and three environment roots. **Not applied** to any account yet. | CI `terraform` job: fmt, validate, tflint, checkov |
 | `apps/design-prototype` | Static mock-up of the core scenes | 173 scene × state tests |
-| `apps/admin-web`, `services/*`, `packages/{database,security,shared-types}` | Placeholder README only. Each names the layer that builds it. | Bible §31: "no fake business implementation" |
+| `packages/database` | Layer 1 tables (21), generated from the design schema; migrations for tables, constraints, security (roles, forced RLS, sign-in lookup) and the permission catalog; ownership classification; local seed; RLS benchmark | 45 unit tests; `schema:check` drift gate; CI `database` job: migrations as a non-superuser, drift, `check-rls.ts`, 57 database checks |
+| `packages/shared-types` | Enum values generated from `packages/database/prisma/schema.prisma` | 2 tests; CI drift check |
+| `apps/admin-web`, `services/*`, `packages/security` | Placeholder README only. Each names the layer that builds it. | Bible §31: "no fake business implementation" |
 | `docs/` | Layer 0 documentation pack | `check_docs.py`, `check_traceability.py` |
 
 ## 3. Toolchain
@@ -62,6 +64,7 @@ This document explains where everything lives, what state each part is in, and t
 | TypeScript | 6.0.3 | package manifests |
 | Turborepo, Biome, Vitest | 2.11.4, 2.5.14, 5.0.2 | package manifests |
 | Zod, zod-to-openapi | 4.6.5, 9.1.0 | `packages/api-contracts/package.json` |
+| Prisma ORM and Migrate, `@prisma/adapter-pg`, node-postgres | 7.10.0, 7.10.0, 8.23.0 | `packages/database/package.json`; `pnpm-workspace.yaml` `allowBuilds` lets Prisma's engine install script run |
 | oasdiff | v1.32.1 | `packages/api-contracts/scripts/check-breaking.sh`, CI |
 | Terraform, AWS provider | 1.16.4, 6.66.0 (exact) | environment roots, `.terraform.lock.hcl` |
 | tflint (+ AWS ruleset), checkov | 0.64.0 (0.49.0), 3.3.20 | `.tflint.hcl`, CI |
@@ -119,8 +122,9 @@ cd apps/ios-provider && tuist generate                      # Xcode workspace (m
 
 | Job | Runs on | Gates (Bible §28.2) |
 |---|---|---|
-| `workspace` | ubuntu | Biome lint/format, typecheck, unit tests, build, generated-file drift (tokens, OpenAPI), oasdiff breaking changes, iOS module rules |
-| `spec` | ubuntu + PostgreSQL 18 | Bible → spec traceability, Bible export drift, documentation pack and references, schema validity plus the database behaviour suite |
+| `workspace` | ubuntu | Biome lint/format, typecheck, unit tests, build, generated-file drift (tokens, OpenAPI, shared enums), database schema, catalog and constraint migrations match the design, oasdiff breaking changes, iOS module rules |
+| `spec` | ubuntu + PostgreSQL 18 | Bible → spec traceability, Bible export drift, documentation pack and references, design schema validity plus every behaviour fragment |
+| `database` | ubuntu + PostgreSQL 18 | Migrations applied as a non-superuser, no drift against the schema, ownership/RLS/grant check, the built layers' behaviour fragments plus the RLS suite; RLS benchmark report (ADR-0004) |
 | `terraform` | ubuntu | fmt, validate (all roots), tflint (Terraform + AWS), checkov |
 | `security` | ubuntu | OSV-Scanner on `pnpm-lock.yaml` |
 | `ios` | macOS 26, Xcode 26.6 | Tuist generate, build provider and patient apps, DesignSystem tests on the simulator |

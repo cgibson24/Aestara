@@ -306,7 +306,7 @@ Excerpt; the catalog is normative in spec §7.3. Metadata holds identifiers and 
 
 | Suite | Covers | When |
 |---|---|---|
-| SQL behaviour suite ([`schema_behavior_tests.sql`](technical-spec/verification/schema_behavior_tests.sql)) | F1–F6 (template versioning), F7–F12 (snapshot, hash, frozen execution, void), R5–R7 (no reopening; content forward-only) | Every CI run |
+| SQL behaviour suite ([`behavior/`](technical-spec/verification/behavior/), fragment `L04`) | F1–F6 (template versioning), F7–F12 (snapshot, hash, frozen execution, void), R5–R7 (no reopening; content forward-only) | Every CI run |
 | State-machine unit tests | Every allowed and forbidden edge of spec §5.4.4, including witness-only and pre-completion void | Layer 4 |
 | API integration tests | Signing refused without required acknowledgments; one signature per role; idempotent retries; provider signature needs `consent.sign.provider`; completion writes the snapshot and a hash that matches the stored bytes | Layer 4 |
 | Authorization and cross-tenant tests | Every consent, template and content route | Layer 4 |

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §4–§18 (workflows), §22 (audit), §23 (offline), Appendix A (canonical states). ADR-0001 (sharing within one organization), ADR-0008 (delegated proposals, including proposed transitions) |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §4–§18 (workflows), §22 (audit), §23 (offline), Appendix A (canonical states). ADR-0001 (sharing within one organization), ADR-0008 (delegated proposals, including proposed transitions), ADR-0018 (Layer 1 kickoff: K-17, K-20) |
 | Normative sources | Technical Specification §3.4 (key flows), §4.4–§4.7 (permissions, role defaults, patient visibility), §5.4 (state machines, including the §5.4.1 completion preconditions), §6.3 and §6.5 (endpoints), §7.3 (audit catalog), §8 (offline contract), §9.1 (layer mapping) |
 
 This document walks through Aestara's end-to-end workflows: who takes part, the steps in order, the states each object moves through, what must be true before a step, what is audited, what works offline, and which layer delivers it. It links to the spec's normative catalogs instead of copying them.
@@ -31,7 +31,7 @@ Tags: `[B §n]` Bible, `spec §n` Technical Specification, **P** a proposed tran
 
 | Section | Workflow | Bible | State machine | Layer |
 |---|---|---|---|---|
-| 4 | Patient intake and search | [B §4] | — (patient status only) | 1 |
+| 4 | Patient intake and search | [B §4] | Patient status (spec §5.4.10) | 1 |
 | 5 | Consultation lifecycle | [B §5] | Consultation | 3 |
 | 6 | Guided photo capture and upload | [B §6] | PatientPhoto (spec §5.4.10) | 2 |
 | 7 | Media permissions and purpose-specific release | [B §7] | Photo Permission | 2 |
@@ -65,9 +65,9 @@ Tags: `[B §n]` Bible, `spec §n` Technical Specification, **P** a proposed tran
 |---|---|
 | Actors | Create and update: FRONT_DESK, CONSULTANT, SURGEON_PHYSICIAN, NURSE_INJECTOR_AESTHETICIAN, PRACTICE_ADMIN within scope. Read also: PHOTOGRAPHER. Archive: SURGEON_PHYSICIAN, PRACTICE_ADMIN within scope (`patient.*`) |
 | Delivered in | Layer 1 (M1.8 API, M1.10 iOS) |
-| States | `Patient.status`: `ACTIVE`, `INACTIVE`, `ARCHIVED`, `DECEASED` [B §4.2]. Not an Appendix A machine; the spec defines only the archive action |
+| States | `Patient.status`: `ACTIVE`, `INACTIVE`, `ARCHIVED`, `DECEASED` [B §4.2]. Not an Appendix A machine; spec §5.4.10 gives the rule: `ACTIVE`, `INACTIVE` and `DECEASED` change into one another only through an update (`patient.update`, If-Match, audited `PATIENT_UPDATED`); any of them moves to `ARCHIVED` only through `/archive` (`patient.archive`); nothing changes status automatically (ADR-0018 K-20) |
 | Audit events | `PATIENT_CREATED`, `PATIENT_VIEWED`, `PATIENT_UPDATED`, `PATIENT_ARCHIVED` |
-| Offline | View explicitly cached recent patients per cache policy (UD-25 baseline: 25 recent patients, 7 days, purged on sign-out). Offline opens write an encrypted local audit record, replayed through `POST /audit/offline-events` on reconnect (spec §8 rule 8) |
+| Offline | View explicitly cached recent patients per cache policy (UD-25 baseline: 25 recent patients, 7 days, purged on sign-out). Offline opens write an encrypted local audit record, replayed through `POST /audit/offline-events` on reconnect (spec §8 rule 8). Patient creation is online-only, because the duplicate check needs the server (spec §6.1.8; ADR-0018 K-17) |
 
 Steps [B §4.1]:
 
@@ -80,7 +80,7 @@ Steps [B §4.1]:
 Search, update and archive:
 
 - `POST /patients/search` carries name, DOB, MRN, phone or email in the body, never the URL. Results span every practice of the organization (D-01).
-- `PATCH /patients/{pid}` and `POST /patients/{pid}/archive` require `If-Match`.
+- `PATCH /patients/{pid}` and `POST /patients/{pid}/archive` require `If-Match`. `PATCH` also sets the status `INACTIVE` or `DECEASED`; it never sets or clears `ARCHIVED` (spec §5.4.10).
 
 Rules:
 
@@ -655,8 +655,6 @@ stateDiagram-v2
 
 | Item | Detail | Confirmed at |
 |---|---|---|
-| Offline patient creation | Spec §6.1.8 lists patient create among offline-queueable creates, but `Patient` is not in its client-generated-ID list and the duplicate check needs the server [B §4.1] | Layer 2 (M2.9) |
-| Patient status changes | Moving to `INACTIVE` or `DECEASED` ("where policy supports" [B §4.2]) has no specified action | Layer 1 |
 | Consultation cancellation policy | "When allowed by policy" [B §5.2] is not defined | Layer 3 |
 | Offline consultation transitions | Spec §8 excludes sign-off and release offline, but does not say whether `/start`, `/request-information` and similar transitions may be queued | Layer 3 |
 | Release-decision precondition | Spec §5.4.1 requires a recorded release decision for `/complete`, but no column stores it, and the consultation release endpoint arrives in Layer 5 | Layer 3 (UD-33) |

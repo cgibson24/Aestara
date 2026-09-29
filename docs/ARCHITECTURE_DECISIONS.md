@@ -30,6 +30,7 @@ Status values:
 | [0016](#adr-0016) | CI supply-chain and security gates | Adopted (delegated) | 2026-09-28 |
 | [0017](#adr-0017) | Layer 0 errata to the locked specification | Accepted | 2026-09-28 |
 | [0018](#adr-0018) | Layer 1 kickoff decisions | Accepted | 2026-09-29 |
+| [0019](#adr-0019) | Layer 1 database foundation: generated schema, roles, Row-Level Security, catalog | Adopted (delegated) | 2026-09-29 |
 
 ---
 
@@ -324,3 +325,30 @@ Status values:
   - The design schema has 88 tables. Layer 1 creates 21 of them.
   - Findings F-13 to F-31 are resolved or scheduled into a Layer 1 micro-prompt, with F-20 deferred to Layer 5 (`ACCEPTANCE_CRITERIA.md` §5.2). F-32, F-33 and F-59 are owner inputs that do not block Layer 1; K-21 and K-22 resolve their repository-side parts.
   - M1.1 can start.
+
+## ADR-0019
+
+**Layer 1 database foundation: generated schema, roles, Row-Level Security, catalog**
+
+- **Status:** Adopted (delegated), 2026-09-29. Implementation choices inside ADR-0004 and ADR-0018 K-01, K-06, K-08, K-16, K-18 and K-19 (roadmap M1.1). The RLS performance result is not decided here; it is UD-35 and waits for the owner.
+- **Decision:**
+  - **One source for tables.** `packages/database/prisma/schema.prisma` is generated from `docs/technical-spec/schema.prisma` by `scripts/promote-schema.ts`. It copies the models of the built layers (spec §5.8) verbatim and drops only relations to later layers. Each layer's constraint migration carries that layer's `constraints.sql` fragment verbatim. CI fails on any difference, and on any Prisma drift between migrations and schema.
+  - **Migrations per layer:** tables, constraints, security, and for Layer 1 the catalog. They are applied by a migration user with `CREATEROLE`, never a superuser; CI proves this.
+  - **Database roles:** `aestara_app`, `aestara_platform` and `aestara_signin`. All three are `NOLOGIN`, not superusers, and not `BYPASSRLS`. Login users are per environment and outside migrations. The platform role has no grant on patient, profile or settings tables, and sees only status columns of credentials.
+  - **Tenant context:** `set_config('app.organization_id', …, true)` in every request or job transaction, read by `app_current_organization_id()`. Unset matches nothing; malformed fails.
+  - **Policies:**
+    - Tenant tables are forced and match `organizationId` to the tenant.
+    - Audit reads are tenant-only for the application and platform-level-only for the platform role.
+    - Idempotency keys are visible only under the tenant they were stored with.
+    - `Role` has RLS without `FORCE`.
+    - Identity and catalog tables are platform-level and have no RLS.
+  - **Sign-in lookup:** `auth_sign_in_memberships`, a plpgsql `SECURITY DEFINER` function owned by `aestara_signin` and executable only by the application role.
+  - **Rule 2 in the database:** a trigger rejects a platform-role grant of any role with clinical permissions (SQLSTATE `AE002`, spec §4.5 rule 2).
+  - **Catalog as data:** `src/catalog.ts` defines the 53 permissions, 10 system roles and 139 default grants. A test compares them cell by cell with spec §4.4–§4.5. Identifiers are deterministic UUIDv7 values.
+  - **Ownership classification:** `src/ownership.ts` classifies every table. `scripts/check-rls.ts` compares it with the live database's RLS, roles and grants.
+  - **Behaviour suite:** split into per-layer fragments. `packages/database` runs the built layers' fragments plus an RLS suite against its migrations.
+  - **Shared enums:** `packages/shared-types` generates enum values from the Prisma schema.
+  - **Local seed:** synthetic data only; refuses non-local databases.
+- **Consequences:**
+  - A later layer promotes its tables by raising one constant and adds its own constraints and security migrations. Tables without a classification, a policy or a matching fragment fail CI.
+  - The benchmark shows that non-leakproof search predicates cannot use indexes under RLS (UD-35). Layer 1 does not go past M1.1 until the owner decides.

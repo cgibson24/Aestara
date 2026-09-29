@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Bible §20 (API contract and service conventions), §13 (patient app), §21.2, §23.3; ADR-0001, ADR-0006, ADR-0008 |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Bible §20 (API contract and service conventions), §13 (patient app), §21.2, §23.3; ADR-0001, ADR-0006, ADR-0008, ADR-0018 (Layer 1 kickoff: K-09, K-11, K-17) |
 | Normative sources | spec §6 (conventions §6.1, error catalog §6.2, endpoint catalogs §6.3 and §6.5, DTOs §6.6, internal contracts §6.7, tooling §6.8); `packages/api-contracts` and its generated `openapi.json` |
 
 This document explains how the API is described, versioned, validated and checked. The endpoint catalogs stay in spec §6.3 (staff and admin) and spec §6.5 (patient portal), and are not repeated here. Code in `packages/api-contracts` is the executable form of this document.
@@ -13,7 +13,7 @@ This document explains how the API is described, versioned, validated and checke
 
 | Surface | Base path | Callers | Auth |
 |---|---|---|---|
-| Staff and admin API | `/api/v1/…` | Provider iOS app, admin web | Bearer access token; tenant context from the token only |
+| Staff and admin API | `/api/v1/…` | Provider iOS app, admin web | Bearer access token; tenant context from the token only. The admin web's refresh token travels only in an `HttpOnly` cookie limited to `/api/v1/auth/token/refresh`, with an `Origin` check (spec §4.2) |
 | Patient portal API | `/api/v1/portal/…` | Patient iOS app | Bearer token for a patient identity; deny-by-default visibility (spec §4.7) |
 | Internal service API | `/internal/v1/…` | api ↔ ai-gateway, api ↔ integration-service | Service-to-service auth inside the VPC; never internet-routable (spec §6.7) |
 | Vendor webhooks | `/webhooks/v1/{vendor}` | EMR and other vendors | Vendor signature (HMAC), replay-protected, then enqueued |
@@ -79,7 +79,7 @@ These rules are normative in spec §6.1; this is the checklist form.
 
 1. **JSON and camelCase** fields; `UPPER_SNAKE` enums; absent optional fields are omitted, not `null`.
 2. **Tenant context comes from the token only.** There is no organization header, and an `organizationId` in a path or body is never treated as entitlement.
-3. **No PHI in URLs.** Search terms, names, date of birth, email and phone travel in request bodies (`POST …/search`), because URLs end up in load balancer, WAF and proxy logs.
+3. **No PHI or secrets in URLs.** Search terms, names, date of birth, email and phone travel in request bodies (`POST …/search`), because URLs end up in load balancer, WAF and proxy logs. Invitation, password-reset and verification tokens also travel only in request bodies, never in a path or query string (spec §6.1.10; ADR-0018 K-09).
 4. **No enumeration.** A resource that does not exist, belongs to another tenant, or is outside the caller's scope gets the same `404 <RESOURCE>_NOT_FOUND` body; only the `requestId` differs. `403 PERMISSION_DENIED` is returned only when the caller can already see the resource.
 5. **Cursor pagination** with an allow-listed `sort`. Unknown query parameters return `400 VALIDATION_FAILED`.
 6. **Optimistic concurrency.** Stale `If-Match` returns `412 VERSION_CONFLICT`; a missing one returns `428 PRECONDITION_REQUIRED`. The server never merges silently.
@@ -90,7 +90,8 @@ These rules are normative in spec §6.1; this is the checklist form.
    - sync triggers
    - exports
    - message sends
-   - every create that can be queued offline
+   - every create that can be queued offline (photo session, photo, annotation, note)
+   - patient creation, which is online-only because the duplicate check needs the server; the key only makes a retried request safe (spec §6.1.8; ADR-0018 K-17)
 
    Same key with a different body returns `409 IDEMPOTENCY_KEY_REUSED`.
 8. **Media is always accessed through short-lived presigned URLs.**
@@ -126,6 +127,14 @@ Run the gate locally with `pnpm --filter @aestara/api-contracts openapi:breaking
    - idempotency
    - cross-tenant 404
 
+Layer 1 builds the spec §6.4 subset. The Layer 1 kickoff (ADR-0018) added four endpoints to spec §6.3:
+- `POST /auth/password/change`: change the password with the current password and a recent MFA
+- `POST /auth/invitations/accept`: accept a staff invitation, with the token in the request body
+- `POST /users/{id}/mfa-reset`: an administrator resets the second factors of a user who has lost them all
+- `POST /organizations/{id}/admin-bootstrap`: the platform invites the first ORGANIZATION_ADMIN of an organization that has none
+
+It also moved the patient invitation token into the request body: `POST /auth/patient-invitations/accept` (spec §6.5, Layer 5).
+
 ## 7. Internal and event contracts
 
 Service-to-service contracts (spec §6.7) carry opaque object references, never demographics:
@@ -140,6 +149,5 @@ Notification messages have **no content field**; the text is rendered from a tem
 
 | Item | Where decided |
 |---|---|
-| The patient invitation token travels in a URL path, which conflicts with the no-secrets-in-URLs rule. Move it into a request body. | Layer 1 kickoff (ACCEPTANCE_CRITERIA.md §5, finding F-16) |
 | Error-code clients: exact iOS fallback decoding pattern for unknown enum values | Layer 1, with the first generated Swift client |
 | Enum generation from Prisma enums into `packages/shared-types` | Layer 1 (M1.1) |

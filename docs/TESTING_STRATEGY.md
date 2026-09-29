@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §27 (testing and acceptance, definition of done), §28 (environments and CI gates; §28.1 no production data in lower environments), §31 (acceptance review format), §32 (Layer 1 acceptance), §34 (representative acceptance criteria), §36 (production readiness). ADR-0004 (RLS performance gate), ADR-0010 (tooling), ADR-0011 (contrast gate). |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §27 (testing and acceptance, definition of done), §28 (environments and CI gates; §28.1 no production data in lower environments), §31 (acceptance review format), §32 (Layer 1 acceptance), §34 (representative acceptance criteria), §36 (production readiness). ADR-0004 (RLS performance gate), ADR-0010 (tooling), ADR-0011 (contrast gate), ADR-0018 (Layer 1 kickoff: K-10, K-19, K-21). |
 | Normative sources | [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md) §2.3 (test tooling), §7.5 (security and isolation testing), §9.1 (per-layer must-pass tests), §11 (verification report); [`technical-spec/verification/`](technical-spec/verification/README.md); [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) §5 (accessibility) and §6 (view states) |
 
 This document says how Aestara proves that every Bible rule holds: which test levels exist and with what tools, what each micro-prompt must show before it is done, which CI gates block a merge, and how each layer's acceptance review traces back to tests. The security requirements it verifies are in [`SECURITY_REQUIREMENTS.md`](SECURITY_REQUIREMENTS.md) and the threats behind them in [`THREAT_MODEL.md`](THREAT_MODEL.md).
@@ -73,7 +73,7 @@ The summary also lists the SR IDs the micro-prompt satisfies and any threat-mode
 | `workspace` | Biome lint and format, typecheck, Vitest unit tests, build, generated-file drift (design tokens, OpenAPI), `oasdiff` breaking-change gate, iOS module architecture rules (`check_module_graph.py`) | Node 24, frozen lockfile |
 | `spec` | Bible → spec traceability, Bible export drift, documentation pack and reference check (`check_docs.py`), schema validity plus database behaviour suite on PostgreSQL 18 | `run_schema_checks.sh` on an empty database |
 | `terraform` | `fmt`, `validate`, `tflint` (Terraform and AWS rulesets), `checkov` | The bootstrap root and the dev, staging and production roots |
-| `security` | OSV-Scanner on `pnpm-lock.yaml` (ADR-0016) | Dependabot update pull requests run through the same jobs |
+| `security` | OSV-Scanner on `pnpm-lock.yaml` (ADR-0016) | Dependabot update pull requests run through the same jobs. GitHub CodeQL (SAST) and gitleaks (secret scanning) join in M1.2, when third-party actions are also pinned to commit SHAs (ADR-0018 K-21) |
 | `ios` | Module architecture rules, Tuist generate, build of both apps for the simulator, DesignSystem tests on an iPhone simulator | macOS 26 runner, Xcode 26.6; each layer adds its module tests |
 
 Every job must be green before the owner approves a merge to `main` (DEVELOPMENT_ROADMAP.md §2).
@@ -86,8 +86,8 @@ Every job must be green before the owner approves a merge to `main` (DEVELOPMENT
 | Type checking | `workspace` | In place |
 | Unit, API and database tests | `workspace` (unit), `spec` (database) | API tests arrive with the M1.2 contract-test harness; their job placement is decided then (open item 4) |
 | Migration validation | `spec` | Today the draft schema plus `constraints.sql`; real per-layer migrations from M1.1 (§6) |
-| Dependency and security scanning | `security` (OSV-Scanner); Dependabot weekly updates (`.github/dependabot.yml`) | In place (ADR-0016); SAST and a dedicated secret scanner are open item 3 |
-| Container scanning | None yet | Trivy from the first container image in Layer 1 (spec §2.3, §7.1) |
+| Dependency and security scanning | `security` (OSV-Scanner); Dependabot weekly updates (`.github/dependabot.yml`) | In place (ADR-0016); CodeQL and gitleaks from M1.2 (ADR-0018 K-21) |
+| Container scanning | None yet | Trivy from the first container image in Layer 1 (spec §2.3, §7.1; ADR-0018 K-21) |
 | Terraform validation and plan review | `terraform` (validation) | Plan review is a human step before apply ([`DEPLOYMENT.md`](DEPLOYMENT.md)) |
 | iOS build and tests | `ios` | In place |
 | No deployment when required gates fail | Deployment pipeline | Defined in [`DEPLOYMENT.md`](DEPLOYMENT.md); SR-SCI-01 |
@@ -106,7 +106,7 @@ Every job must be green before the owner approves a merge to `main` (DEVELOPMENT
   5. List and search routes never return B's rows to A or A's to B.
 - **Inside one organization (ADR-0001):** a user scoped to practice A1 can read A2's patient, and creating a practice-owned record at A2 returns `403 PERMISSION_DENIED` (spec §4.6).
 - **Portal routes:** patient 1 against patient 2's IDs in the same organization, and a patient of B against A, both return 404.
-- **RLS tests (ADR-0004):** the application role has no `BYPASSRLS`; a transaction without `app.organization_id` sees no tenant rows; with B's setting, direct SQL through the application role cannot read A's rows.
+- **RLS tests (ADR-0004; design in spec §3.5):** the application role has no `BYPASSRLS` and tenant tables use `FORCE ROW LEVEL SECURITY`; a transaction without `app.organization_id` sees no tenant rows; with B's setting, direct SQL through the application role cannot read A's rows; the platform role cannot read patient or clinical tables.
 - **When:** every pull request from Layer 1, against PostgreSQL 18 in Testcontainers with RLS enabled.
 
 ### 5.2 Other suites from spec §7.5
@@ -114,38 +114,44 @@ Every job must be green before the owner approves a merge to `main` (DEVELOPMENT
 | Suite | What it asserts | From |
 |---|---|---|
 | Authorization (role × endpoint) | Generated from spec §4.5: every role and route pair is allowed or denied as the matrix says | L1 |
-| Separation of duties | Self-assignment, a platform actor granting a clinical role, and a practice admin exceeding its scope are rejected (spec §4.5) | L1 |
-| Session revocation | A revoked session's access and refresh tokens fail on the next request; refresh-token reuse revokes the whole session | L1 |
+| Separation of duties | Self-assignment, a platform actor granting a clinical role or bootstrapping an organization that already has an active admin, and a practice admin granting beyond its scope or managing a user with grants outside it are rejected (spec §4.5) | L1 |
+| Session revocation | A revoked session's access and refresh tokens fail on the next request; refresh-token reuse revokes the whole session; an organization admin's revocation and a membership disable end only that organization's sessions (spec §4.2) | L1 |
+| Credentials and recovery | Lockout thresholds; password policy; single-use, hashed, expiring reset and invitation tokens, never accepted in a URL; password change and admin MFA reset; `MFA_CHALLENGE_ISSUED` written without an `AuditEvent` and not counted toward lockout (spec §4.2, §6.1.10) | L1 |
 | PHI log canary | Canary strings sent through every endpoint never appear in captured logs | L1, every layer |
 | Media permissions | Export and release with a missing, revoked or expired grant fail with `403 MEDIA_PERMISSION_NOT_GRANTED` | L2, L3 |
 | Portal visibility | For every portal endpoint, drafts, rejected or failed simulations, unreleased documents, planned procedures and internal notes never appear (spec §4.7) | L5, L8 |
 
 ## 6. Database behaviour suite
 
-`schema_behavior_tests.sql` holds 90 checks today: groups A–H and R, plus the automated V7 `MATCH SIMPLE` audit (spec §7.5, §11.2). Each labelled check attempts a forbidden operation or the legitimate operation next to it (spec §11.1). The `spec` job applies `schema.prisma` and all of `constraints.sql` to an empty PostgreSQL 18 database and runs the suite; the first failure aborts the run.
+The suite lives in `docs/technical-spec/verification/behavior/`, one fragment per layer (ADR-0018 K-19): `A00_harness.sql`, `L01_…` to `L08_…`, and `Z99_catalog_audits.sql` (the V7 `MATCH SIMPLE` audit and the summary). Each labelled check attempts a forbidden operation or the legitimate operation next to it (spec §11.1). A fragment uses only tables of its layer and earlier ones. The first failure aborts the run.
+
+| Run | CI job | Database | Checks |
+|---|---|---|---|
+| Design: every fragment against `schema.prisma` plus all of `constraints.sql` | `spec` | Empty PostgreSQL 18 | 99: groups A–H, T and R, and the V7 audit |
+| Built layers: the real migrations, applied as a non-superuser, then the built layers' fragments plus the RLS suite `packages/database/test/sql/rls.sql` | `database` | Empty PostgreSQL 18 | 57 in Layer 1: the Layer 1 fragment (25), RLS groups S, P and I (31), and V7 |
+
+The `database` job also fails on migration drift against `prisma/schema.prisma`, and on any difference between the live roles, grants and RLS and `packages/database/src/ownership.ts` (`scripts/check-rls.ts`).
 
 **How it grows with each layer:**
 
-1. The layer's migration creates its tables (spec §5.8) and carries its `constraints.sql` fragment.
-2. From M1.1 the suite runs against the real migrations up to the current layer, as the migration test stage (spec §7.5). A check runs once every table it touches exists.
+1. The layer's migrations create its tables (spec §5.8) and carry its `constraints.sql` fragment.
+2. The layer's fragment joins the built-layers run once the layer is promoted (`PROMOTED_THROUGH_LAYER`).
 3. Every new constraint or trigger gets a violation check and an adjacent legitimate check. A constraint that a later fragment drops and re-creates is re-tested.
 4. Regression checks (the R series) are never removed; a defect found later adds a new R check.
-5. Layer 1 adds RLS checks (§5.1).
-6. The spec §11.1 V7 audit (composite foreign keys with two or more nullable columns must be covered by a CHECK) is already automated in the suite; it reads the live catalog, so every new table is audited.
+5. Every new tenant table gets its RLS policy and ownership class; `check-rls.ts` fails until both exist, and the RLS suite gains its cross-tenant checks.
+6. The V7 audit reads the live catalog, so every new table is audited.
 
-**Where today's checks become live (by the tables they touch, spec §5.8):**
+**Where the checks live (by the tables they touch, spec §5.8):**
 
-| Layer | Checks |
-|---|---|
-| 1 | A2, A5, B1–B8, G1–G4, R4; the V7 audit from Layer 1 on |
-| 2 | C1–C4, C8–C10, D1–D10, H4–H6, R1–R3, R15–R17 |
-| 3 | A1, C5–C7, F11, H2, H3 |
-| 4 | F1–F10, F12, R5–R9 |
-| 6 | A3, A4, H1 |
-| 7 | E1–E5, R10–R13 |
-| 8 | E6–E15, R14, R18 |
-
-How the single file is split so each layer runs only its live checks is decided in M1.1 (open item 8).
+| Layer | Fragment | Checks |
+|---|---|---|
+| 1 | `L01_identity_patients_audit.sql` | A2, A5, B1–B10, T1–T7, G1–G4, R4 |
+| 2 | `L02_photography.sql` | C1–C4, C8–C10, D1–D9, H4–H6, R1–R3, R15–R17 |
+| 3 | `L03_consultations_before_after.sql` | A1, C5–C7, D10, H2, H3 |
+| 4 | `L04_documents_consent_plans.sql` | F1–F12, R5–R9 |
+| 6 | `L06_scheduling.sql` | A3, A4, H1 |
+| 7 | `L07_ai_registry.sql` | E1–E5, R10–R13 |
+| 8 | `L08_simulation.sql` | E6–E15, R14, R18 |
 
 ## 7. Contract tests
 
@@ -192,7 +198,7 @@ Every audited action has a test that asserts:
 2. The Bible §22.2 contents: actor, organization, resource type and ID, action, timestamp, request ID equal to the response's `X-Request-Id`, and session and device where applicable; `patientId` for patient-related events.
 3. **Same transaction:** when the request fails after the domain write (fault injection), neither the change nor the audit row persists (spec §3.3).
 4. **No clinical content:** canary values from the request never appear in `metadata` (spec §7.2 rule 7).
-5. Denied access writes `ACCESS_DENIED` with outcome `DENIED`, once UD-19 is approved.
+5. Denied access on a route that touches patient data writes `ACCESS_DENIED` with outcome `DENIED`; identical repeats from one actor collapse into one event with a count, and the 404 body stays identical to a missing record (spec §4.6; ADR-0018 K-10).
 6. View events are written on signed-URL issuance; offline replays carry their original timestamp and `metadata.offline = true` (spec §8).
 7. The application role cannot update or delete audit rows (grant test); the triggers are covered by DB G1–G4.
 8. From Layer 2, the WORM reconciliation job detects a planted divergence in a test environment (spec §7.3).
@@ -204,7 +210,7 @@ A coverage check lists every `AuditAction` value whose layer exists and fails if
 | Kind | Tool | What it covers |
 |---|---|---|
 | Unit and domain | Swift Testing | ViewModels, domain rules, the generated client against a stub transport, Keychain and session service, the offline queue |
-| Snapshot | Tool not yet chosen (open item 2) | Every data-backed view in all six states (DESIGN_SYSTEM.md §6), light and dark, iPad landscape and iPhone portrait, default and accessibility text sizes |
+| Snapshot | Tool chosen in M1.9, with an ADR (open item 2) | Every data-backed view in all six states (DESIGN_SYSTEM.md §6), light and dark, iPad landscape and iPhone portrait, default and accessibility text sizes |
 | UI | XCUITest | Critical flows per layer, deep-link re-authorization [B §24.5], the consent hand-off lock (DESIGN_SYSTEM.md §2, C13), offline banners and disabled actions |
 
 **Accessibility (DESIGN_SYSTEM.md §5):**
@@ -264,8 +270,8 @@ The benchmark dataset size and environment (open item 11) and the load-test targ
 | Infrastructure scanning | `checkov`, `tflint` | Every PR | In place (`terraform` job) |
 | Dependency scanning | OSV-Scanner (`security` job) and Dependabot (spec §2.3, ADR-0016) | Every push; weekly updates | In place |
 | Container scanning | Trivy; block high or critical findings without an approved exception (spec §7.1) | Every image build from L1 | Planned |
-| Static analysis (SAST) | Deferred by ADR-0016 | Every PR | Open item 3 |
-| Secret scanning | GitHub's native secret scanning (ADR-0016); a dedicated scanner is deferred | Every push | In place (native); open item 3 |
+| Static analysis (SAST) | GitHub CodeQL (ADR-0018 K-21) | Every PR | Planned (M1.2) |
+| Secret scanning | GitHub's native secret scanning (ADR-0016); gitleaks in CI (ADR-0018 K-21) | Every push | In place (native); gitleaks planned (M1.2) |
 | Penetration test | External, covering the identity module (ADR-0002) and every trust boundary in THREAT_MODEL.md | Before production | Planned; findings become regression tests |
 
 ## 15. Test data
@@ -310,14 +316,14 @@ Planned locations follow §2. Numbers are the Bible's own.
 |---|---|---|---|
 | 1 | Local database starts | `pnpm services:up` health check; Testcontainers starts PostgreSQL 18 | `docker-compose.yml`; CI |
 | 2 | Migrations execute | Layer 1 migrations on an empty database, then the Layer 1 behaviour checks | `packages/database`; `spec` job |
-| 3 | Seed creates an organization and admin | Seed test asserts the organization, the first ORGANIZATION_ADMIN and its audit rows | `packages/database` |
+| 3 | Seed creates an organization and admin | Seed test asserts the organization, the first ORGANIZATION_ADMIN and its audit rows, and the complete permission catalog and role matrix (ADR-0018 K-01) | `packages/database` |
 | 4 | Admin can authenticate | Login and MFA integration tests; Playwright login | `services/api/test/integration/auth/`; `apps/admin-web/e2e/` |
 | 5 | Authorized staff can create a patient | Duplicate check, idempotent create, `PATIENT_CREATED` | `services/api/test/integration/patients/` |
 | 6 | Authorized provider can open an allowed patient | Profile read writes `PATIENT_VIEWED`; demographics only | `services/api/test/integration/patients/` |
 | 7 | Cross-tenant access is rejected server-side | Generated cross-tenant suite; RLS tests | `services/api/test/cross-tenant/` |
-| 8 | Patient search works | `POST /patients/search`: tenant-scoped, trigram, no PHI in the URL | `services/api/test/integration/patients/` |
+| 8 | Patient search works | `POST /patients/search`: tenant-scoped, trigram, no PHI in the URL; its search path under RLS follows UD-35 | `services/api/test/integration/patients/` |
 | 9 | Patient profile shell opens | XCUITest: profile with all 12 tabs in empty state | Provider app UI test target |
-| 10 | Audit events are written | Audit assertions for the 11 Bible §32 events | `services/api/test/audit/` |
+| 10 | Audit events are written | Audit assertions for the 11 Bible §32 events and the Layer 1 additions (spec §6.4) | `services/api/test/audit/` |
 | 11 | Provider iOS app builds | `ios` job | CI |
 | 12 | Login UI works | XCUITest login, MFA and error states | Provider app UI test target |
 | 13 | Patient list, search and create work | XCUITest on iPad and iPhone | Provider app UI test target |
@@ -377,13 +383,13 @@ Planned locations follow §2. Numbers are the Bible's own.
 | # | Item | Decide at |
 |---|---|---|
 | 1 | Test runner for the Python services (`image-processing`, inference) | Layer 2 kickoff (UD-06) |
-| 2 | iOS snapshot-testing tool and automated accessibility audit | M1.9 |
-| 3 | Tools for SAST and a dedicated secret scanner (ADR-0016 defers both; dependency scanning is in place) | Layer 1 kickoff |
+| 2 | iOS snapshot-testing tool and automated accessibility audit | M1.9, with an ADR for the snapshot tool |
+| 3 | Closed by ADR-0018 K-21: GitHub CodeQL for SAST and gitleaks for secret scanning, added in M1.2 | Closed |
 | 4 | Which CI job runs the Testcontainers API suites | M1.2 |
-| 5 | Lint rules that reject focused or skipped tests | Layer 1 kickoff |
+| 5 | Lint rules that reject focused or skipped tests | M1.2 |
 | 6 | Closed by ADR-0017: spec §7.5 now excludes the per-request `requestId` from the 404 comparison | Closed |
 | 7 | How "no timing difference" for cross-tenant 404s is measured | M1.4 |
-| 8 | Splitting the behaviour suite so each layer runs only its live checks against real migrations | M1.1 |
+| 8 | Closed by M1.1 (ADR-0018 K-19): the behaviour suite is split per layer, and `packages/database` runs the built layers' fragments against its real migrations | Closed |
 | 9 | Closed by ADR-0017: the V7 `MATCH SIMPLE` audit is automated in the behaviour suite | Closed |
 | 10 | AI regression threshold values, and where governed evaluation sets are processed | Layer 7 kickoff (UD-04) |
 | 11 | RLS benchmark dataset size and environment | M1.1 |

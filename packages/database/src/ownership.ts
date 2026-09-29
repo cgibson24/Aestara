@@ -1,0 +1,166 @@
+// Ownership classification of every table in packages/database (ADR-0018 K-08,
+// K-16; spec §3.5, §4.1, §4.6).
+//
+// The class decides three things:
+//   - Row-Level Security: tenant classes are FORCE'd on organizationId; identity
+//     and catalog tables are platform-level (spec §4.1) and are not.
+//   - Which grants may change a row (spec §4.6): "practice" rows need an
+//     ORGANIZATION grant or a PRACTICE/LOCATION grant that covers the row's
+//     practice (and location); "organization" rows follow reads across the whole
+//     organization (D-01); "user-management" rows follow §4.5 rule 3 (K-07).
+//   - Which database role reaches the table (security migration grants).
+// scripts/check-rls.ts compares this file with the live database, and
+// test/ownership.test.ts compares it with prisma/schema.prisma.
+
+export type OwnershipClass =
+  /** Platform-level identity and its security ledger. No organization owns the row. */
+  | "identity"
+  /** Platform reference data: the permission catalog and system roles. */
+  | "catalog"
+  /** The organization row itself: the tenant boundary. */
+  | "tenant-root"
+  /** Owned by the organization as a whole; any in-scope grant in the organization applies. */
+  | "organization"
+  /** Owned by one practice (and possibly one location) of the organization. */
+  | "practice"
+  /** Describes another user's access; changes follow separation-of-duties rule 3. */
+  | "user-management"
+  /** Written by the system for the organization, or for the platform when organizationId is NULL. */
+  | "system";
+
+export interface TableOwnership {
+  readonly table: string;
+  readonly class: OwnershipClass;
+  /** Column naming the owning practice ("practice" class only). */
+  readonly practiceColumn?: string;
+  /** Column naming the owning location, when LOCATION grants can match it. */
+  readonly locationColumn?: string;
+  /**
+   * Whether the platform role (aestara_platform) may reach the table at all.
+   * Patient, profile and settings tables are "none" (ADR-0018 K-06).
+   */
+  readonly platform: "metadata" | "none";
+  readonly note: string;
+}
+
+export const TABLE_OWNERSHIP: readonly TableOwnership[] = [
+  {
+    table: "User",
+    class: "identity",
+    platform: "metadata",
+    note: "One person may work for several organizations (spec §4.1)",
+  },
+  {
+    table: "UserCredential",
+    class: "identity",
+    platform: "metadata",
+    note: "Belongs to the platform-level user",
+  },
+  {
+    table: "UserToken",
+    class: "identity",
+    platform: "metadata",
+    note: "Invitation, reset and sign-in step tokens",
+  },
+  { table: "Device", class: "identity", platform: "metadata", note: "An app install of a user" },
+  {
+    table: "Session",
+    class: "identity",
+    platform: "metadata",
+    note: "organizationId is the active tenant context, not ownership (spec §4.2)",
+  },
+  {
+    table: "LoginEvent",
+    class: "identity",
+    platform: "metadata",
+    note: "Security ledger; written before any tenant is chosen",
+  },
+  { table: "Permission", class: "catalog", platform: "metadata", note: "Spec §4.4 catalog" },
+  { table: "RolePermission", class: "catalog", platform: "metadata", note: "Spec §4.5 default matrix" },
+  {
+    table: "Role",
+    class: "catalog",
+    platform: "metadata",
+    note: "System roles only in Layer 1 (UD-07, ADR-0018 K-02)",
+  },
+  { table: "Organization", class: "tenant-root", platform: "metadata", note: "The tenant" },
+  {
+    table: "Practice",
+    class: "practice",
+    platform: "metadata",
+    practiceColumn: "id",
+    note: "A practice owns itself",
+  },
+  {
+    table: "Location",
+    class: "practice",
+    platform: "metadata",
+    practiceColumn: "practiceId",
+    locationColumn: "id",
+    note: "Owned by its practice; a LOCATION grant covers only that location",
+  },
+  {
+    table: "Membership",
+    class: "user-management",
+    platform: "metadata",
+    note: "A user's membership in the organization",
+  },
+  {
+    table: "UserRole",
+    class: "user-management",
+    platform: "metadata",
+    note: "Scoped grants; PLATFORM grants have no organization",
+  },
+  {
+    table: "ProviderProfile",
+    class: "user-management",
+    platform: "none",
+    note: "Clinical identity of a member",
+  },
+  {
+    table: "StaffProfile",
+    class: "user-management",
+    platform: "none",
+    note: "Profile of a non-clinical member",
+  },
+  {
+    table: "OrganizationSetting",
+    class: "organization",
+    platform: "none",
+    note: "Organization policy; practice settings arrive in Layer 2",
+  },
+  {
+    table: "Patient",
+    class: "organization",
+    platform: "none",
+    note: "Shared across the organization's practices (D-01); primaryPracticeId is not ownership",
+  },
+  { table: "PatientContact", class: "organization", platform: "none", note: "Follows its patient" },
+  {
+    table: "AuditEvent",
+    class: "system",
+    platform: "metadata",
+    note: "organizationId NULL for platform-level events",
+  },
+  {
+    table: "IdempotencyKey",
+    class: "system",
+    platform: "metadata",
+    note: "organizationId NULL for requests made before a tenant is chosen",
+  },
+];
+
+/** Classes whose tables carry a tenant and are protected by forced Row-Level Security. */
+export const TENANT_CLASSES: readonly OwnershipClass[] = [
+  "tenant-root",
+  "organization",
+  "practice",
+  "user-management",
+  "system",
+];
+
+export function ownershipOf(table: string): TableOwnership {
+  const entry = TABLE_OWNERSHIP.find((t) => t.table === table);
+  if (!entry) throw new Error(`table ${table} has no ownership classification`);
+  return entry;
+}

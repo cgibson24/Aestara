@@ -296,7 +296,7 @@ Failed and rejected outputs are never visible to patients ([AI_SIMULATION_RULES.
 
 | Suite | Covers | When |
 |---|---|---|
-| SQL behaviour suite ([`schema_behavior_tests.sql`](technical-spec/verification/schema_behavior_tests.sql)) | E1–E5 (registry, rollouts), E6–E15 (sources, provenance, approvals, release, parameters), R10–R14, R18 | Every CI run |
+| SQL behaviour suite ([`behavior/`](technical-spec/verification/behavior/), fragments `L07`, `L08`) | E1–E5 (registry, rollouts), E6–E15 (sources, provenance, approvals, release, parameters), R10–R14, R18 | Every CI run |
 | Internal contract tests | The job submission schema has no demographic or free-text fields; unauthenticated internal calls are rejected | Layer 7 |
 | Rollback test | Deactivate the current rollout and activate the previous version with a new rollout row; new jobs use it and history is unchanged (spec §9.1 Layer 7; R11–R13) | Layer 7 |
 | Idempotency tests | Repeated `/generate` or `/regenerate` with one key yields one `AIJob` | Layer 8 |

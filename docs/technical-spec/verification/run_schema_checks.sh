@@ -29,8 +29,10 @@ echo "==> apply schema + constraints"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f migration.sql 2>&1 | grep -v NOTICE || true
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -c 'SELECT 1' > /dev/null
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$SPEC_DIR/constraints.sql"
-echo "==> behaviour suite"
-if ! out="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$SPEC_DIR/verification/schema_behavior_tests.sql" 2>&1)"; then
+echo "==> behaviour suite (all layer fragments, in order)"
+fragments=()
+for f in "$SPEC_DIR"/verification/behavior/*.sql; do fragments+=(-f "$f"); done
+if ! out="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q "${fragments[@]}" 2>&1)"; then
   echo "$out" | grep -E "PASS|FAIL|ERROR" | sed 's/^psql:[^ ]* //'
   echo "Behaviour suite FAILED"
   exit 1

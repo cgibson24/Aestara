@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §3 (tenancy, roles, permission model), §13.2 (patient visibility), §17 (admin portal and safeguards). ADR-0001 (sharing within an organization only), ADR-0008 (delegated baselines UD-07, UD-16, UD-17) |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §3 (tenancy, roles, permission model), §13.2 (patient visibility), §17 (admin portal and safeguards). ADR-0001 (sharing within an organization only), ADR-0008 (delegated baselines UD-07, UD-16, UD-17), ADR-0018 (Layer 1 kickoff: K-01, K-02, K-05 to K-07) |
 | Normative sources | [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md) spec §4.1 (hierarchy), spec §4.3 (roles), spec §4.4 (permission catalog), spec §4.5 (default role matrix and separation of duties), spec §4.7 (patient access). `schema.prisma` models `Membership`, `Role`, `Permission`, `RolePermission`, `UserRole`, `PatientUserLink` |
 
 A plain-language guide to who can do what in Aestara, for the owner, practice administrators, support staff and engineers. The normative permission keys and the default role matrix are in spec §4.4 and spec §4.5; how the server enforces them is in [`AUTHORIZATION_RBAC.md`](AUTHORIZATION_RBAC.md).
@@ -69,7 +69,7 @@ Owner decision D-01 (ADR-0001): patient data **may be shared across the practice
 
 ## 3. Roles
 
-The ten system roles are defined once at platform level; every organization uses the same definitions (spec §4.3). Custom roles per organization are **not available in Layer 1** (UD-07); the schema is ready for them.
+The ten system roles are defined once at platform level; every organization uses the same definitions (spec §4.3). Custom roles per organization are **not available in Layer 1** (UD-07, confirmed in ADR-0018 K-02); the schema is ready for them. When custom roles are enabled, `UserRole` gets a composite key so a role can never be assigned outside its organization.
 
 A person may hold several assignments (for example SURGEON_PHYSICIAN at Practice A1 and at Practice A2). Their permissions are the union of the assignments that apply to the action (spec §4.6).
 
@@ -86,25 +86,25 @@ A person may hold several assignments (for example SURGEON_PHYSICIAN at Practice
 | MARKETING | Only media explicitly granted for approved marketing use | Not specified: Bible §2 names no surface for this role |
 | PATIENT | Own released patient-facing records only | Patient app |
 
-PLATFORM scope is for SUPER_ADMIN only (spec §4.3); every other staff role is assigned at organization, practice or location scope, and which scope a practice uses for whom is the administrator's choice. The duties below restate the default matrix (spec §4.5, adopted as UD-17). Keys marked \* are proposed additions (UD-16).
+PLATFORM scope is for SUPER_ADMIN only (spec §4.3); every other staff role is assigned at organization, practice or location scope, and which scope a practice uses for whom is the administrator's choice. The duties below restate the default matrix (spec §4.5, adopted as UD-17). Keys marked \* are proposed additions (UD-16). The Layer 1 kickoff confirmed both, and M1.1 seeds the complete catalog and matrix as data (ADR-0018 K-01).
 
 ### 3.1 SUPER_ADMIN
 
 - **Purpose:** run the platform, not the clinics.
-- **Typical duties:** create an organization and bootstrap its first ORGANIZATION_ADMIN (`organization.manage`\*, platform-scope `user.create` and `role.assign`); manage the AI model registry and rollouts (`ai.model.manage`\*); read platform-level audit (`audit.read`); platform security administration (`security.manage`\*). The default matrix also gives it platform-scope `user.read`, `user.update`, `user.disable`, `role.read`, `practice.read`, `integration.read`, `organization.read`\* and `ai.model.read`\*; what the tenant-related ones may reach is an open item (§9).
-- **Cannot:** read any patient record (it holds no `patient.*` permission); grant any role that carries patient, photo, consultation, simulation, consent or document permissions; assign a role to itself; impersonate a user or use break-glass access (not built, [B §17.1]). The platform branch of authorization reaches platform resources only (spec §4.6).
+- **Typical duties:** create an organization and bootstrap its first ORGANIZATION_ADMIN (`organization.manage`\*, platform-scope `user.create` and `role.assign`; `POST /organizations` or `POST /organizations/{id}/admin-bootstrap`, only while the organization has no active ORGANIZATION_ADMIN); manage the AI model registry and rollouts (`ai.model.manage`\*); read platform-level audit (`audit.read`); platform security administration (`security.manage`\*), including revoking all of a user's sessions and the MFA resets that no organization administrator may do (spec §4.2). The default matrix also gives it platform-scope `user.read`, `user.update`, `user.disable`, `role.read`, `practice.read`, `integration.read`, `organization.read`\* and `ai.model.read`\*. These reach organization metadata only: organizations, practices, memberships and account status (spec §4.6; ADR-0018 K-06).
+- **Cannot:** read any patient record or clinical data (it holds no `patient.*` permission, and the platform database role has no access to patient or clinical tables, spec §3.5); grant any role that carries patient, photo, consultation, simulation or document permissions, or a clinical consent permission (`consent.assign`, `consent.sign.provider`, `consent.void`); assign a role to itself; impersonate a user or use break-glass access (not built, [B §17.1]).
 
 ### 3.2 ORGANIZATION_ADMIN
 
 - **Purpose:** configure and govern one customer organization.
-- **Typical duties:** organization profile (`organization.read`\*, `organization.manage`\* for its own organization); practices and locations (`practice.manage`); users and role assignments across the organization (`user.*`, `role.read`, `role.assign`); consent templates (`consent.template.manage`); content library (`content.manage`); integrations (`integration.read`, `integration.manage`); organization audit (`audit.read`); session and device revocation (`security.manage`\*); organization settings and feature flags (`configuration.manage`\*); patient data export jobs (`data.export`\*); AI registry visibility (`ai.model.read`\*).
+- **Typical duties:** organization profile (`organization.read`\*, `organization.manage`\* for its own organization); practices and locations (`practice.manage`); users and role assignments across the organization (`user.*`, `role.read`, `role.assign`); consent templates (`consent.template.manage`); content library (`content.manage`); integrations (`integration.read`, `integration.manage`); organization audit (`audit.read`); session and device revocation for its organization, and MFA reset for a user whose only active membership is in its organization (`security.manage`\*); organization settings and feature flags (`configuration.manage`\*); patient data export jobs (`data.export`\*); AI registry visibility (`ai.model.read`\*).
 - **Cannot:** read patient records or clinical content (no `patient.read`); capture photos, run consultations or touch simulations; manage AI rollouts (platform only); assign a role to itself.
 
 ### 3.3 PRACTICE_ADMIN
 
 - **Purpose:** run one practice's operations and staff.
-- **Typical duties, within its practice scope:** patient demographics (`patient.read`, `create`, `update`, `archive`); scheduling (`appointment.manage`); users and role assignments for its practice (`user.*`, `role.read`, `role.assign`); practice configuration, protocols, treatment catalog and appointment types (`practice.manage`); consent templates and content (`consent.template.manage`, `content.read`, `content.manage`); audit (`audit.read`); session revocation and practice settings (`security.manage`\*, `configuration.manage`\*).
-- **Cannot:** clinical work (no photo, consultation, simulation, plan or consent-assignment permission); integrations; grant ORGANIZATION_ADMIN or SUPER_ADMIN, or any role or scope outside its own practice; assign a role to itself.
+- **Typical duties, within its practice scope:** patient demographics (`patient.read`, `create`, `update`, `archive`); scheduling (`appointment.manage`); users and role assignments for its practice (`user.*`, `role.read`, `role.assign`), limited to users whose active grants all lie within its scope (spec §4.5 rule 3; ADR-0018 K-07); practice configuration, protocols, treatment catalog and appointment types (`practice.manage`); consent templates and content (`consent.template.manage`, `content.read`, `content.manage`); audit (`audit.read`); session revocation and practice settings (`security.manage`\*, `configuration.manage`\*).
+- **Cannot:** clinical work (no photo, consultation, simulation, plan or consent-assignment permission); integrations; grant ORGANIZATION_ADMIN or SUPER_ADMIN, or any role or scope outside its own practice; update, disable or revoke the sessions of a user who holds any grant outside its scope (organization-wide users need an ORGANIZATION_ADMIN); assign a role to itself.
 
 ### 3.4 SURGEON_PHYSICIAN
 
@@ -170,7 +170,7 @@ The Bible defines 41 keys [B §3.3], seeded exactly. The normative list is spec 
 | `integration` | read, manage | EMR adapters, mappings, sync | |
 | `audit` | read | The audit viewer | SUPER_ADMIN sees platform-level audit only |
 
-**Proposed keys (UD-16, adopted baseline, confirmed at Layer 1 kickoff):** `organization.read`, `organization.manage`, `document.read`, `document.manage`, `procedure.manage`, `data.export`, `security.manage`, `ai.model.read`, `ai.model.manage`, `configuration.manage`, `similarcase.search`, `marketing.library.read`. Their purposes and default holders are in spec §4.4 and spec §4.5.
+**Proposed keys (UD-16, confirmed at the Layer 1 kickoff, ADR-0018 K-01):** `organization.read`, `organization.manage`, `document.read`, `document.manage`, `procedure.manage`, `data.export`, `security.manage`, `ai.model.read`, `ai.model.manage`, `configuration.manage`, `similarcase.search`, `marketing.library.read`. Their purposes and default holders are in spec §4.4 and spec §4.5. Layer 1 endpoints enforce the 13 Bible §32 keys plus `organization.read`, `organization.manage`, `security.manage` and `configuration.manage` (spec §6.4).
 
 **Read mappings (excerpt; normative list in spec §4.4).** Where the Bible defines only write keys, reading maps to an existing key rather than adding one: reading consultations, notes, history and concerns needs `consultation.create`; reading plans needs `treatmentplan.create`; reading message threads needs `message.send` plus participation; reading appointments needs `appointment.manage`.
 
@@ -178,9 +178,9 @@ The Bible defines 41 keys [B §3.3], seeded exactly. The normative list is spec 
 
 | Assignment scope | Who can hold it | Reads | Creates and changes of practice-owned records | Other changes |
 |---|---|---|---|---|
-| PLATFORM | SUPER_ADMIN only (spec §4.3; the database enforces the scope shape) | Platform resources only; no tenant data | None | Platform resources only |
+| PLATFORM | SUPER_ADMIN only (spec §4.3; the database enforces the scope shape) | Platform resources and organization metadata only; no patient or clinical data | None | Platform resources and organization metadata only |
 | ORGANIZATION | Any non-platform role | Whole organization | Any practice of the organization | Organization-wide |
-| PRACTICE | Any non-platform role | Whole organization (D-01) | That practice only | Organization-wide, except the separation-of-duties limits in §5 |
+| PRACTICE | Any non-platform role | Whole organization (D-01) | That practice only | Organization-wide, except the separation-of-duties limits in §5 (managing users included) |
 | LOCATION | Any non-platform role | Whole organization (D-01) | Records at that location only | Organization-wide, except the limits in §5 |
 
 "Practice-owned" means consultations, appointments, procedures, photo sessions and treatment plans (ADR-0001, spec §4.6). In the spec §4.5 matrix, a filled mark means granted and a hollow mark means granted within the assignment's practice/location scope; under D-01 that scope limits writes to practice-owned records, and reads still span the organization.
@@ -194,8 +194,8 @@ Four rules (spec §4.5, adopted with ADR-0008). How they are enforced and tested
 | # | Rule, in plain words | Why |
 |---|---|---|
 | 1 | Nobody can give themselves a role or create their own membership | Stops self-escalation; also a database CHECK |
-| 2 | Platform operators may only bootstrap an organization's first ORGANIZATION_ADMIN. They cannot target their own account, and can never grant a role carrying patient, photo, consultation, simulation, consent or document permissions | Platform operators must not browse patient records [B §17.2] |
-| 3 | A PRACTICE_ADMIN grants roles and scopes only within its own practice, never ORGANIZATION_ADMIN or SUPER_ADMIN | Keeps practice admins inside their practice |
+| 2 | Platform operators may only bootstrap an organization's first ORGANIZATION_ADMIN, through an audited action allowed only while the organization has no active one. They cannot target their own account, and can never grant a role carrying patient, photo, consultation, simulation or document permissions, or a clinical consent permission (assigning, provider signing, voiding). Managing consent templates is administrative, so the ORGANIZATION_ADMIN bootstrap is allowed | Platform operators must not browse patient records [B §17.2] (ADR-0018 K-05) |
+| 3 | A PRACTICE_ADMIN grants roles and scopes only within its own practice, never ORGANIZATION_ADMIN or SUPER_ADMIN. It manages only users whose grants all lie within its practice | Keeps practice admins inside their practice (ADR-0018 K-07) |
 | 4 | Every grant and revocation is audited (`ROLE_ASSIGNED`, `ROLE_REVOKED`) and appears in a periodic access-review export | Accountability |
 
 **Separate steps are not separate people.** Several actions are deliberately split into two explicit steps: approving versus releasing a simulation [B §34.2], choosing a plan versus consenting to treatment [B §11.1], capturing versus exporting a photo. The spec does not require two different people for these; one SURGEON_PHYSICIAN may approve and then, as a second explicit act, release. A two-person rule would need a new decision.
@@ -205,7 +205,7 @@ Four rules (spec §4.5, adopted with ADR-0008). How they are enforced and tested
 ## 6. Patient access
 
 - **Identity.** A patient signs in with a PATIENT-kind identity, separate from any staff identity, even when the email address is the same (`User` is unique per kind and email).
-- **Link.** Staff invite the patient, which the schema records as an INVITED `PatientUserLink` between the login and one patient record in one organization; accepting the invitation (spec §6.5) sets credentials and makes the link ACTIVE (Layer 5). The staff-side invitation endpoint and its permission are not in spec §6.3 (§9). One login may link to records in several organizations, but the app shows one organization at a time and never combines them (UD-08).
+- **Link.** Staff invite the patient, which the schema records as an INVITED `PatientUserLink` between the login and one patient record in one organization; accepting the invitation (`POST /auth/patient-invitations/accept`, token in the request body, spec §6.5) sets credentials and makes the link ACTIVE (Layer 5). The staff-side invitation endpoint and its permission are not in spec §6.3 (§9). One login may link to records in several organizations, but the app shows one organization at a time and never combines them (UD-08).
 - **What the patient sees.** Only their own records, and only items released or assigned to the patient surface [B §13.2]. Drafts, rejected or failed simulations, unreleased documents, planned procedures and internal notes never appear. Every item type needs an approved visibility rule; anything without one is hidden (deny by default, spec §4.7).
 - **What the patient can do.** The Bible §13.3 actions: view released items, upload requested photos into intake, review and sign consents, acknowledge instructions, view or propose appointments where enabled, message, join telehealth, manage their account and sessions.
 - **Revocation.** Revoking the link ends access on the next request, because access is evaluated per request.
@@ -220,7 +220,7 @@ Not specified. The UD-08 baseline defers proxy access. `PatientContact` can reco
 
 | Actor | Access | Source |
 |---|---|---|
-| SUPER_ADMIN | Platform scope only; bootstrap, AI registry, platform audit. No patient data | spec §4.5, spec §4.6 |
+| SUPER_ADMIN | Platform scope only; bootstrap, AI registry, platform audit, organization metadata. No patient or clinical data | spec §3.5, spec §4.5, spec §4.6 |
 | Support staff acting inside a customer tenant | **Not in scope.** Any future support access must be minimal, explicit, time-bound where possible and audited, and needs its own specification | [B §17.1], [B §17.2], spec §4.5 |
 | Impersonation or break-glass | Not built unless separately specified | [B §17.1], spec §1.5 |
 | Backend services (workers, AI gateway, image processing) | Not roles. They authenticate as services and are audited with actor type SERVICE | [`AUTHENTICATION_ARCHITECTURE.md`](AUTHENTICATION_ARCHITECTURE.md) |
@@ -244,14 +244,11 @@ Until custom roles exist (UD-07), every change to a system role applies to **eve
 
 ## 9. Open items
 
+The Layer 1 kickoff (ADR-0018) confirmed UD-16, UD-17 and UD-07 for Layer 1 (K-01, K-02), resolved separation-of-duties rule 2 (K-05), fixed SUPER_ADMIN's reach (K-06) and limited practice administrators to users inside their scope (K-07); §3 to §5 state them. What remains:
+
 | Item | Status | Confirmed at |
 |---|---|---|
-| UD-16 proposed permission keys and endpoint mappings | Adopted baseline | L1 kickoff |
-| UD-17 default role matrix | Adopted baseline | L1 kickoff |
-| UD-07 custom roles | Not in Layer 1; schema ready | L1 kickoff |
-| Separation-of-duties rule 2 forbids granting a role that carries any `consent.*` key, yet the default ORGANIZATION_ADMIN holds `consent.template.manage`, so the platform bootstrap of the first ORGANIZATION_ADMIN conflicts with rule 2 as written | Spec conflict; must be resolved before seeding | L1 kickoff (UD-16/17) |
-| What SUPER_ADMIN's platform-scope `user.read`, `practice.read` and `integration.read` reach, given that the platform branch reaches no tenant data | Not specified | L1 kickoff |
-| Whether a PRACTICE-scoped PRACTICE_ADMIN may update or disable users whose assignments are all in other practices (only role grants are limited by rule 3) | Not specified | L1 kickoff |
+| Custom roles (UD-07) | Not in Layer 1; `UserRole` gets a composite key first | When custom roles are enabled |
 | Patient proxy access | Deferred (UD-08) | L5 kickoff |
 | Minors and guardian signing | UD-23 baseline | L4 kickoff |
 | Support access to tenant data | Not in scope until specified | Separate specification |

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §21 (security and privacy), §23 (offline), §25 (backend and infrastructure), with §17.2 (administrative safeguards), §30 (constitution) and §36 (production readiness). ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006. |
+| Status | Layer 0 baseline, 2026-09-28; Layer 1 kickoff review (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §21 (security and privacy), §23 (offline), §25 (backend and infrastructure), with §17.2 (administrative safeguards), §30 (constitution) and §36 (production readiness). ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0018 (Layer 1 kickoff decisions). |
 | Normative sources | [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md) §1.4 (guardrails), §3 (architecture), §6.7 (internal contracts), §7 (security, privacy, audit), §8 (offline); [`technical-spec/schema.prisma`](technical-spec/schema.prisma); [`technical-spec/constraints.sql`](technical-spec/constraints.sql). Context: [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md). |
 
 This document models the threats to Aestara with STRIDE per trust boundary, names the mitigation for each and rates what remains. Mitigations are the numbered requirements in [`SECURITY_REQUIREMENTS.md`](SECURITY_REQUIREMENTS.md) (`SR-…`); how each is tested is in [`TESTING_STRATEGY.md`](TESTING_STRATEGY.md). Where no source specifies a control, the gap is recorded as an open item (§11), not filled with an invented control.
@@ -58,7 +58,7 @@ This document models the threats to Aestara with STRIDE per trust boundary, name
 | AS1 | Only HIPAA-eligible AWS services under a BAA handle PHI; AWS secures the physical and hypervisor layers. | B §21.3, §25.3; ADR-0006; spec §10.1 |
 | AS2 | One shared multi-tenant deployment serves all organizations. | spec §10.1 |
 | AS3 | Apple Keychain, Secure Enclave, Data Protection and LocalAuthentication behave as documented on iOS/iPadOS 26. | ADR-0005; spec §2.2 |
-| AS4 | Clinical devices have a device passcode. Nothing in the sources enforces this (open item 3). | Not specified |
+| AS4 | Clinical devices have a device passcode. The refresh token's Keychain class (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`) is available only while a passcode is set, but nothing in the sources enforces passcode strength or device management (open item 3). | spec §4.2 (Keychain class); otherwise not specified |
 | AS5 | The vetted libraries in ADR-0002 are sound; there is no custom cryptography. | ADR-0002 |
 | AS6 | Inference runs privately with no public egress (UD-04 baseline). | spec §2.1 |
 | AS7 | Customers meet their own obligations: BAAs, policies, training, incident response. | B §21.3 |
@@ -138,6 +138,7 @@ flowchart TB
   Q -->|"notification requests"| NOT
   NOT -->|"TB9 template text"| APNS
   NOT -->|"TB10 template text"| MSG
+  API -->|"TB10 invitation and reset email"| MSG
   APNS -.->|"TB9 generic push"| PI
   APNS -.->|"TB9 generic push"| PA
   Q -->|"sync requests"| INT
@@ -162,7 +163,7 @@ flowchart TB
 | TB7 | Patient iOS app | Released content, consents, messages, patient uploads | B §13; spec §4.7, §6.5 |
 | TB8 | Admin SPA in a browser | Admin sessions and configuration | ADR-0003; spec §4.2 |
 | TB9 | `notifications` → APNs → devices | Generic push text and opaque deep links | B §14.3; spec §7.2 |
-| TB10 | `notifications` → email and SMS | Generic template text, reset and invitation messages | B §14.3; spec §2.1 |
+| TB10 | `notifications` → email and SMS; from Layer 1 the api sends transactional email through SES (ADR-0018 K-14) | Generic template text, reset and invitation messages | B §14.3; spec §2.1 |
 | TB11 | `integration-service` ↔ EMR vendor | Canonical resources, webhooks, credentials | B §18; spec §3.4, §6.7 |
 | TB12 | Telehealth vendor | Session setup, join tokens, video | B §16; spec §4.7; UD-05 |
 | TB13 | CI/CD and supply chain | Dependencies, actions, base images, Terraform, deployments | B §28; spec §2.3, §6.8 |
@@ -190,7 +191,7 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 
 | ID | S | Threat | Mitigation | Spec | Res. | Verified by |
 |---|---|---|---|---|---|---|
-| T1.1 | S | Credential stuffing or brute force on `/auth/login` | SR-IDN-11, SR-IDN-12, SR-IDN-03 | spec §4.2, §6.1.10 | M: MFA is mandatory only for admin roles (open item 20) | Lockout tests; WAF config review; pen test |
+| T1.1 | S | Credential stuffing or brute force on `/auth/login` | SR-IDN-11, SR-IDN-12, SR-IDN-03, SR-IDN-02 | spec §4.2, §6.1.10 | M: MFA is mandatory for admin roles; for clinical roles it depends on the organization's policy (ADR-0018 K-03) | Lockout tests; WAF config review; pen test |
 | T1.2 | T | TLS downgrade or interception | SR-DPR-01 | spec §7.1 | L | checkov; pen test |
 | T1.3 | I | PHI in URLs captured by ALB, WAF or proxy logs | SR-PHI-03 | spec §6.1.10 | L | Contract test: no PHI-bearing path or query parameters |
 | T1.4 | I | Account or patient enumeration through error or count differences | SR-IDN-11, SR-TEN-08 | spec §6.1.6, §6.1.10 | L | Login tests; cross-tenant suite |
@@ -261,14 +262,14 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 | ID | S | Threat | Mitigation | Spec | Res. | Verified by |
 |---|---|---|---|---|---|---|
 | T6.1 | I | Lost or stolen device exposes cached PHI and photos | SR-DPR-08, SR-DEV-05, SR-DEV-06, SR-IDN-13 | B §23.3; spec §7.1, §8 | M: see abuse case AC-03 | iOS encryption and purge tests |
-| T6.2 | S | Refresh token extracted from the device | SR-IDN-06, SR-IDN-08, SR-IDN-13 | spec §4.2 | L; the Keychain accessibility class (this-device-only or not) is open in AUTHENTICATION_ARCHITECTURE.md §14 | Reuse-detection test |
+| T6.2 | S | Refresh token extracted from the device | SR-IDN-06, SR-IDN-08, SR-IDN-13 | spec §4.2 | L: this-device-only Keychain class with `.biometryCurrentSet` and no fallback to the device passcode (ADR-0018 K-22) | Reuse-detection test; iOS Keychain tests |
 | T6.3 | T | Queued mutation or photo altered before upload | SR-DEV-02, SR-DEV-04, SR-MED-05 | spec §6.1.9, §8 | L: server re-authorizes and re-verifies checksums | Replay tests |
 | T6.4 | R | Offline views never reach the audit trail | SR-DEV-07, SR-AUD-10, SR-MON-06 | spec §8 | M: a device that never reconnects keeps its records | Offline audit replay test |
 | T6.5 | E | Patient escapes the staff-assisted signing hand-off | SR-DEV-08 | spec §6.3; UD-31 | L | XCUITest hand-off test |
 | T6.6 | E | Deep link opens a record without authorization | SR-AUZ-13 | B §24.5 | L | XCUITest deep-link tests |
-| T6.7 | I | PHI visible in the app-switcher snapshot or screenshots | Not specified (open item 4) | — | M | — |
+| T6.7 | I | PHI visible in the app-switcher snapshot or screenshots | Not specified; decided in M1.9 with an ADR (open item 4) | — | M | — |
 | T6.8 | I | PHI in crash reports or analytics | SR-PHI-05, SR-PHI-06 | spec §2.4, §7.2 | L | Dependency review |
-| T6.9 | T | App tampering on a jailbroken device | Not specified (open item 5) | — | M | — |
+| T6.9 | T | App tampering on a jailbroken device | Not specified; decided in M1.9 with an ADR (open item 5) | — | M | — |
 | T6.10 | D | Sync conflict silently discards clinical data | SR-DEV-03 | B §23.3; spec §8 | L | Conflict tests |
 
 ### TB7 Patient iOS app
@@ -279,9 +280,9 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 | T7.2 | I | Patient sees drafts, rejected or failed simulations, internal notes | SR-AUZ-10, SR-AUZ-11, SR-AI-10 | B §13.2; spec §4.7 | L | Portal visibility suite; B §34.2 #26 test |
 | T7.3 | S | Patient account takeover | SR-IDN-11, SR-IDN-12 | spec §4.2 | M: patient MFA and biometrics are optional (open item 21) | Lockout tests |
 | T7.4 | T | Malicious file in a patient upload | SR-MED-08, SR-MED-09 | B §13.4; UD-22 | L | Quarantine and scan tests |
-| T7.5 | I | Long-lived session on a shared or lost phone | SR-IDN-07, SR-IDN-08 | spec §4.2; UD-18 | M: absolute lifetime 90 days by default | Session policy tests |
+| T7.5 | I | Long-lived session on a shared or lost phone | SR-IDN-07, SR-IDN-08 | spec §4.2; UD-18 (ADR-0018 K-03) | M: absolute lifetime 90 days by default | Session policy tests |
 | T7.6 | R | Patient disputes a signature | SR-INT-03, SR-INT-04, SR-AUD-03 | B §12.3; spec §5.4.4 | L | Consent tests; DB F8 |
-| T7.7 | S | Invitation token leaked or reused | Not specified (open item 2) | — | M | — |
+| T7.7 | S | Invitation token leaked or reused | SR-IDN-21: the token travels in the request body, never the URL | spec §6.1.10, §6.5 | M: the patient invitation's lifetime, single use and storage are decided in Layer 5 (open item 2) | Contract test: no token in a path or query string |
 | T7.8 | S | Telehealth join token used by someone else | Join token only while `SCHEDULED`/`WAITING` in the join window | spec §4.7 | L | Telehealth tests |
 | T7.9 | I | Patient identity links two organizations' records | SR-IDN-17 | spec §4.7; UD-08 | L | Portal tests with two organizations |
 
@@ -289,12 +290,12 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 
 | ID | S | Threat | Mitigation | Spec | Res. | Verified by |
 |---|---|---|---|---|---|---|
-| T8.1 | E | Cross-site scripting steals the in-memory token or acts as the admin | SR-IDN-15; React output escaping | spec §4.2, §6.1.10 | M: Content Security Policy is not specified (open item 1) | Playwright tests; pen test |
-| T8.2 | S | Cross-site request forgery | SR-IDN-15 | spec §4.2, §6.1.10 | L | Playwright; pen test |
+| T8.1 | E | Cross-site scripting steals the in-memory access token or acts as the admin | SR-IDN-15 (the refresh token is only in an `HttpOnly` cookie); React output escaping | spec §4.2, §6.1.10 | M: Content Security Policy is not specified (open item 1) | Playwright tests; pen test |
+| T8.2 | S | Cross-site request forgery | SR-IDN-15: `SameSite=Strict` cookie limited to the refresh path, `Origin` allow-list, strict CORS | spec §4.2, §6.1.10 | L | Playwright; pen test |
 | T8.3 | S | Admin account takeover | SR-IDN-03, SR-IDN-07 | ADR-0002; spec §4.2 | L | MFA and session tests |
 | T8.4 | E | Admin grants itself or others beyond its scope | SR-AUZ-04 | spec §4.5 | L | Separation-of-duties tests; DB R4 |
 | T8.5 | I | Audit viewer exposes clinical content | SR-PHI-08 | B §22.2; DESIGN_SYSTEM.md §9 | L | Audit metadata tests |
-| T8.6 | R | Configuration change cannot be traced | SR-AUD-02, SR-AUZ-08 | spec §7.3; UD-19 | L | Audit assertions |
+| T8.6 | R | Configuration change cannot be traced | SR-AUD-02, SR-AUZ-08 | spec §7.3; UD-19 (ADR-0018 K-04) | L | Audit assertions |
 | T8.7 | T | Static assets tampered at the origin | TB13 controls; CloudFront + WAF | B §25.3; ADR-0003 | L | Deployment review |
 
 ### TB9 Push notifications (APNs)
@@ -312,8 +313,8 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 |---|---|---|---|---|---|---|
 | T10.1 | I | PHI in email or SMS | SR-PHI-04, SR-VEN-04 | B §14.3; spec §7.2 | L | Template tests |
 | T10.2 | S | Lookalike phishing messages to patients | Generic text; no PHI | spec §7.2 | M: sender authentication is not specified (open item 10) | — |
-| T10.3 | S | Password-reset link intercepted or reused | Identical responses (SR-IDN-11) | spec §6.3 | M: reset-token lifetime and single use are not specified (open item 2) | Reset tests once specified |
-| T10.4 | S | Account recovery after a lost second factor abused to take over an account | Not specified (open item 22) | — | M | — |
+| T10.3 | S | Password-reset or staff-invitation link intercepted or reused | Identical responses (SR-IDN-11); hashed, single-use tokens in the request body, reset valid 30 minutes, a completed reset revokes all sessions (SR-IDN-19, SR-IDN-21) | spec §4.2, §6.3 | M: the staff-invitation lifetime is not specified (open item 2) | Reset and invitation token tests |
+| T10.4 | S | Account recovery after a lost second factor abused to take over an account | SR-IDN-20: admin-initiated MFA reset only, scoped to the admin's organization, audited, all sessions revoked | spec §4.2, §6.3 | M: how the admin verifies the requester's identity is not specified (open item 22) | MFA reset tests |
 
 ### TB11 EMR vendor
 
@@ -341,23 +342,23 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 | ID | S | Threat | Mitigation | Spec | Res. | Verified by |
 |---|---|---|---|---|---|---|
 | T13.1 | T | Malicious or vulnerable dependency | SR-SCI-06, SR-SCI-02, SR-IDN-02 | spec §2.3; ADR-0016 | M: OSV-Scanner and Dependabot find known vulnerabilities only, not a malicious new release | CI scan output (`security` job) |
-| T13.2 | T | Compromised GitHub Action (tag moved) | Not specified: `ci.yml` references actions by version tag; pinning to commit SHAs is deferred by ADR-0016 (open item 11) | — | M | — |
+| T13.2 | T | Compromised GitHub Action (tag moved) | SR-SCI-15: third-party actions pinned to commit SHAs in M1.2 (ADR-0018 K-21); until then `ci.yml` references them by version tag | ADR-0018 K-21 | L once pinned (M until M1.2) | Workflow review |
 | T13.3 | E | Workflow token with write access abused | SR-SCI-07 | `ci.yml` | L | Workflow review |
-| T13.4 | I | Secrets committed to the repository | SR-SCI-10 (GitHub's native secret scanning, ADR-0016) | ADR-0016 | M until a dedicated scanner is chosen | Secret-scan output |
+| T13.4 | I | Secrets committed to the repository | SR-SCI-10 (GitHub's native secret scanning, ADR-0016; gitleaks in CI from M1.2, ADR-0018 K-21) | ADR-0016; ADR-0018 K-21 | L once gitleaks runs (M until M1.2) | Secret-scan output |
 | T13.5 | T | Vulnerable base image deployed | SR-SCI-03 | spec §7.1 | L | Trivy gate |
 | T13.6 | T | Terraform change opens public access | SR-SCI-04, SR-SCI-05 | spec §2.3 | L | checkov; plan review |
 | T13.7 | T | Unreviewed change reaches `main` | SR-SCI-12 | CLAUDE.md | L | Branch protection |
-| T13.8 | E | Deployment credentials in CI are stolen | Not specified (open item 12) | — | M | — |
+| T13.8 | E | Deployment credentials in CI are stolen | Not specified; decided with the AWS accounts before the first deployment (open item 12) | — | M | — |
 | T13.9 | I | Production data used in tests | SR-PHI-09 | B §28.1 | L | Review; synthetic fixtures |
 
 ### TB14 Operator, support and engineering access
 
 | ID | S | Threat | Mitigation | Spec | Res. | Verified by |
 |---|---|---|---|---|---|---|
-| T14.1 | I | Platform operator browses patient records | SR-AUZ-05 | B §17.2; spec §4.5 | L | Authorization suite |
+| T14.1 | I | Platform operator browses patient records | SR-AUZ-05 (platform reach limited to organization metadata; platform database role without patient or clinical tables) | B §17.2; spec §3.5, §4.5, §4.6 | L | Authorization suite; RLS role tests |
 | T14.2 | E | Operator grants itself a clinical role | SR-AUZ-04 | spec §4.5 | L | Separation-of-duties tests; DB R4 |
 | T14.3 | I | Engineer reads PHI directly through the console or the database owner role | SR-SEC-06, SR-AUD-13 | spec §7.1, §10.4 | H: spec §10.4 sets only the direction (no standing access; a break-glass role with approval, session recording and audit); the design does not exist yet (open item 13) | — |
-| T14.4 | T | Owner role disables audit triggers and edits history | SR-AUD-08 (WORM copy and reconciliation) | spec §7.3 | M: exposure window until reconciliation; no WORM copy in Layer 1 | Reconciliation test; alert-fire test |
+| T14.4 | T | Owner role disables audit triggers and edits history | SR-AUD-08 (WORM copy and reconciliation) | spec §7.3 | M: exposure window until reconciliation; no WORM copy in Layer 1 (accepted, ADR-0018 K-18) | Reconciliation test; alert-fire test |
 | T14.5 | R | Operator activity cannot be traced | SR-AUD-12, SR-AUD-13 | spec §7.1 | L | CloudTrail review |
 | T14.6 | E | Support impersonation of a user | SR-AUZ-05: not built until specified | B §17.1 | L | Review |
 
@@ -387,7 +388,7 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 ### AC-04 Refresh-token theft
 
 - **Scenario:** an attacker copies a refresh token from a compromised workstation, browser or device (A1, A5).
-- **Controls:** rotation on every use with reuse detection that revokes the whole session (SR-IDN-06); refresh tokens stored as hashes (SR-SEC-05); Keychain with biometric access control (SR-IDN-13); in-memory storage plus `SameSite=Strict` HttpOnly cookie in the SPA (SR-IDN-15); 10-minute access tokens and per-request session checks (SR-IDN-04, SR-IDN-05); alert on reuse (SR-MON-03).
+- **Controls:** rotation on every use with reuse detection that revokes the whole session (SR-IDN-06); refresh tokens stored as hashes (SR-SEC-05); this-device-only Keychain storage with biometric access control and no fallback to the device passcode (SR-IDN-13); in the SPA, the access token in memory and the refresh token only in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie limited to the refresh path (SR-IDN-15); 10-minute access tokens and per-request session checks (SR-IDN-04, SR-IDN-05); alert on reuse (SR-MON-03).
 - **Residual:** Medium. If the attacker refreshes first, they hold the session until the legitimate client refreshes and triggers reuse detection; an idle legitimate client extends that window up to the idle limit.
 - **Verified by:** reuse-detection test; revocation immediacy test; alert-fire exercise.
 
@@ -416,7 +417,7 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 
 - **Scenario:** an insider deletes `PATIENT_VIEWED` rows to hide browsing (A3, A7).
 - **Controls:** append-only triggers (SR-AUD-06); `INSERT`/`SELECT` grants only (SR-AUD-07); Object Lock WORM copy with daily reconciliation and alert (SR-AUD-08); CloudTrail in a separate account (SR-AUD-13).
-- **Residual:** Medium in Layer 1, which has no WORM copy yet (SECURITY_REQUIREMENTS.md open item 3); Low once the relay runs.
+- **Residual:** Medium in Layer 1, which has no WORM copy yet (accepted for Layer 1, ADR-0018 K-18); Low once the relay runs in Layer 2.
 - **Verified by:** DB G1–G4; grant test; reconciliation test; alert-fire exercise.
 
 ### AC-09 An AI output misrepresented as a guarantee
@@ -442,12 +443,12 @@ These are the Medium and High residuals that matter most, linked to the risk reg
 | 1 | Human production access (console, database owner role) can reach PHI or alter audit | High | T14.3, T14.4 | "Human production access to PHI (operators, support) is not yet specified" (added by ADR-0017) | Design the spec §10.4 controls (no standing access; break-glass with approval, session recording and audit) before the first environment that holds PHI (open item 13) |
 | 2 | A defect in the in-house authentication module | Medium | T2.1, AC-04 | "In-house authentication (D-02) has a security defect" | Vetted libraries, reuse detection, pen test before production (SR-IDN-18) |
 | 3 | Offline devices hold PHI | Medium | T6.1, AC-03 | "Offline devices hold PHI" | Cache limits (UD-25); device-management decision (open item 3) |
-| 4 | Supply-chain compromise | Medium | T13.1, T13.2, T13.4, T13.8 | "Supply-chain compromise (dependencies, CI actions, container images)" (added by ADR-0017) | Dependency scanning is in place; a dedicated secret scanner, action pinning and deploy credentials remain (open items 11, 12; SECURITY_REQUIREMENTS.md open item 2) |
+| 4 | Supply-chain compromise | Medium | T13.1, T13.2, T13.4, T13.8 | "Supply-chain compromise (dependencies, CI actions, container images)" (added by ADR-0017) | Dependency scanning is in place; gitleaks, CodeQL and SHA-pinned actions arrive in M1.2 (ADR-0018 K-21); deploy credentials remain (open item 12) |
 | 5 | Vendors handling PHI without BAAs | Medium | T12.1, T12.4 | "Vendor dependencies without BAAs" | Each vendor through a UD or ADR (SR-VEN-07) |
 | 6 | AI output misread as a prediction, or identity drift | Medium | AC-09 | "AI visualization quality or identity drift"; "Regulatory scope creep" | Harness thresholds, disclaimer by construction, intended-use review (SR-AI-06, SR-AI-11, SR-AI-15) |
 | 7 | Within-organization browsing enabled by organization-wide reads | Medium (accepted, ADR-0001) | AC-06 | "Cross-organization data exposure" (the cross-organization part is Low) | Detective controls: `PATIENT_VIEWED`, access reports, alerts |
 | 8 | Decoder exploit through a crafted image | Medium | T5.2, AC-05 | "Malicious image files (crafted HEIC/JPEG/PNG)" (added by ADR-0017) | Sandboxing decision (open item 6); scanning; patching |
-| 9 | Account takeover for roles without mandatory MFA | Medium | T1.1, T7.3 | Related to "In-house authentication" | Revisit MFA scope at UD-18 (open items 20–21) |
+| 9 | Account takeover for roles without mandatory MFA | Medium | T1.1, T7.3 | Related to "In-house authentication" | Organizations may require MFA for clinical roles (ADR-0018 K-03); patient MFA is decided in Layer 5 (open item 21) |
 
 ## 10. Review cadence
 
@@ -461,32 +462,33 @@ These are the Medium and High residuals that matter most, linked to the risk reg
 | Review | Date | Scope | Outcome |
 |---|---|---|---|
 | Layer 0 baseline | 2026-09-28 | All boundaries, design level | This document: 105 threats (1 High, 25 Medium residuals), 10 abuse cases, 22 open items |
+| Layer 1 kickoff | 2026-09-29 | TB1, TB6, TB7, TB8, TB10, TB13, TB14 against the ADR-0018 decisions | Mitigations added to T1.1, T6.2, T7.7, T8.1, T8.2, T10.3, T10.4, T13.2, T13.4 and T14.1. T13.2 and T13.4 become Low once M1.2 lands. Open items 11 and 20 closed; the others touched are rescheduled |
 
 ## 11. Open items
 
-Each is a gap in the sources, not a decided control.
+Each is a gap in the sources, not a decided control. Closed items keep their row so the numbering stays stable.
 
 | # | Gap | Threats | Decide at |
 |---|---|---|---|
-| 1 | Content Security Policy for the admin SPA | T8.1 | Layer 1 kickoff (admin web shell) |
-| 2 | Lifetime and single use of password-reset and patient-invitation tokens; the invitation token also travels in the URL path (spec §6.5) | T7.7, T10.3 | Layer 1 kickoff (reset tokens; moving the invitation token into the request body, [`API_CONTRACTS.md`](API_CONTRACTS.md) open items); Layer 5 (invitation lifetime) |
+| 1 | Content Security Policy for the admin SPA | T8.1 | M1.11 (admin web shell) |
+| 2 | Lifetime of staff and patient invitation tokens. Reset tokens are single use and valid 30 minutes, and every token travels in the request body (ADR-0018 K-09, K-15) | T7.7, T10.3 | M1.6 (staff invitations); Layer 5 (patient invitations) |
 | 3 | Device passcode enforcement, device management and remote wipe for clinical devices | AS4, T6.1, AC-03 | Layer 2 kickoff, with UD-25 |
-| 4 | Hiding PHI in the iOS app-switcher snapshot and screenshots | T6.7 | Layer 1 (provider iOS shell) |
-| 5 | Jailbreak detection or app attestation | T6.9 | Layer 1 kickoff |
+| 4 | Hiding PHI in the iOS app-switcher snapshot and screenshots | T6.7 | M1.9 (provider iOS shell), with an ADR |
+| 5 | Jailbreak detection or app attestation | T6.9 | M1.9 (provider iOS shell), with an ADR |
 | 6 | Runtime sandboxing of image decoding and inference | T5.2, AC-05 | Layer 2 (UD-06), Layer 7 (UD-04) |
 | 7 | Dead-letter and poison-message handling for imaging and AI queues | T5.8 | Layer 2, Layer 7 |
 | 8 | Egress allow-list for `integration-service` (SSRF) | T11.6 | Layer 10 kickoff |
 | 9 | What session metadata is sent to the telehealth vendor | T12.4 | Layer 6, with UD-05 |
 | 10 | Email sender authentication for patient messages | T10.2 | Layer 5 kickoff |
-| 11 | Pinning GitHub Actions to commit SHAs | T13.2 | Layer 1 kickoff (ADR-0016; [`DEPLOYMENT.md`](DEPLOYMENT.md) open items) |
-| 12 | How CI authenticates to AWS for deployments (GitHub OIDC with per-environment roles is the proposed baseline) | T13.8 | Layer 1 kickoff ([`DEPLOYMENT.md`](DEPLOYMENT.md), [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
-| 13 | Human access to production AWS and the database owner role: the break-glass design that spec §10.4 requires (approval, session recording, audit; no standing access) | T14.3, T14.4 | Before the first environment that holds PHI (production; [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
+| 11 | Closed at the Layer 1 kickoff: third-party GitHub Actions are pinned to commit SHAs in M1.2 (SR-SCI-15; ADR-0018 K-21) | T13.2 | Closed (ADR-0018 K-21) |
+| 12 | How CI authenticates to AWS for deployments (GitHub OIDC with per-environment roles is the proposed baseline) | T13.8 | Before the first deployment, with the AWS accounts ([`DEPLOYMENT.md`](DEPLOYMENT.md), [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
+| 13 | Human access to production AWS and the database owner role: the break-glass design that spec §10.4 requires (approval, session recording, audit; no standing access) | T14.3, T14.4 | Before the first deployment ([`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
 | 14 | Anchoring consent snapshot hashes in the WORM audit copy | AC-07 | Layer 4 kickoff |
 | 15 | Burned-in AI label on patient-visible simulation images | AC-09 | Layer 8 kickoff |
 | 16 | Denial-of-service protection beyond AWS WAF (AWS Shield Advanced is the named candidate) | T1.5 | Production readiness ([`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
 | 17 | Rules for raw SQL in application code | T3.2 | Layer 1 (M1.1) |
 | 18 | How "no timing difference" for cross-tenant 404s is measured | AC-01 | Layer 1 (M1.4) |
 | 19 | Malware scanning of staff-uploaded documents | AC-05 | Layer 2 kickoff, with UD-22 |
-| 20 | MFA for clinical roles (mandatory only for admin roles today) | T1.1 | Layer 1 kickoff (UD-18) |
+| 20 | Closed at the Layer 1 kickoff: MFA is always required for admin roles and the admin web, and an organization may require it for clinical roles too, never fewer (SR-IDN-03; ADR-0018 K-03) | T1.1 | Closed (ADR-0018 K-03) |
 | 21 | MFA or biometrics for patients (optional today) | T7.3 | Layer 5 kickoff (UD-18) |
-| 22 | Account recovery for a lost second factor (see [`AUTHENTICATION_ARCHITECTURE.md`](AUTHENTICATION_ARCHITECTURE.md) §14) | T10.4 | Layer 1 kickoff (M1.3) |
+| 22 | Identity verification before an admin-initiated MFA reset; the reset itself is decided (SR-IDN-20; ADR-0018 K-15; see [`AUTHENTICATION_ARCHITECTURE.md`](AUTHENTICATION_ARCHITECTURE.md) §14) | T10.4 | M1.6 |

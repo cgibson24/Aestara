@@ -3,6 +3,7 @@ node_modules/
 .pnpm-store/
 
 # builds & caches
+packages/database/generated/
 dist/
 dist-artifact/
 build/

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §0–§18, §23, §27, §29, §30, §32, §34, §36. ADR-0001 (tenancy boundary), ADR-0006 (United States only), ADR-0008 (delegated proposals) |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §0–§18, §23, §27, §29, §30, §32, §34, §36. ADR-0001 (tenancy boundary), ADR-0006 (United States only), ADR-0008 (delegated proposals), ADR-0018 (Layer 1 kickoff decisions) |
 | Normative sources | [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md) spec §1 (§1.1–§1.6), spec §5.8 and spec §9.1 (layer mapping), spec §10.2 (decision register). Catalogs stay in the spec: entities (spec §5.2), state machines (spec §5.4), permissions (spec §4.4), endpoints (spec §6.3, spec §6.5), audit events (spec §7.3), offline contract (spec §8) |
 
 This document states what Aestara must do and must never do, as a register of traceable requirements. Each requirement has a stable ID, its Bible source and the build layer that delivers it. It organizes the Bible; it does not replace the Bible, the spec's catalogs or [`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md).
@@ -75,7 +75,7 @@ flowchart LR
 |---|---|---|---|---|
 | Provider iOS/iPadOS app (iPad landscape first, iPhone supported) | Surgeons/physicians, nurses/injectors/aestheticians, photographers, consultants, front desk | Patient care workflow, capture, consultation, planning, consent management, secure communication | [B §2], [B §24] | L1 shell |
 | Patient iOS app | Patients | Released consultations, simulations, documents, instructions, appointments, messages, telehealth | [B §2], [B §13] | L5 |
-| Admin web portal | Organization and practice administrators; platform operations | Users, roles, practices, locations, content, integrations, audit, configuration, support | [B §2], [B §17] | L1 API; web shell confirmed at L1 kickoff (roadmap M1.11) |
+| Admin web portal | Organization and practice administrators; platform operations | Users, roles, practices, locations, content, integrations, audit, configuration, support | [B §2], [B §17] | L1 API; a minimal web shell (sign-in, users and roles, audit viewer) in L1 (roadmap M1.11; ADR-0018 K-23) |
 | Application API | All first-party clients | Authentication, authorization, domain logic, versioned contracts, audit | [B §2] | L1 |
 | Media module | Via the API only | Upload, derivatives, signed access, retention, checksum, storage isolation | [B §2], [B §25.2] | L2 |
 | AI platform | Provider workflow through an internal API | Quality checks, landmarks, segmentation, simulation, validation, provenance | [B §2] | L7 (infrastructure), L8 (simulation) |
@@ -136,16 +136,16 @@ Columns: **ID** · **Requirement** (one line; the Bible and spec hold the detail
 | PR-ACCESS-03 | The ten Bible roles exist and grant the 41 Bible permission keys | [B §3.2], [B §3.3] | L1 | spec §4.3–§4.5 |
 | PR-ACCESS-04 | Patient data is readable across the practices of one organization and never across organizations; practice/location scope limits writes to practice-owned records | [B §1.2] (ADR-0001) | L1 | spec §4.6 |
 | PR-ACCESS-05 | Error responses never allow patient enumeration or reveal cross-tenant existence | [B §20.3], [B §20.4] | L1 | spec §6.1.10 |
-| PR-ACCESS-06 | Authentication is OIDC/OAuth-compatible with short-lived access tokens, server-side session and device revocation, Face ID/Touch ID re-authentication, Keychain secrets and administrative MFA | [B §21.1] | L1 | spec §4.2 |
-| PR-ACCESS-07 | Platform operators have no casual browsing access to patient records | [B §17.2] | L1 | spec §4.5 |
+| PR-ACCESS-06 | Authentication is OIDC/OAuth-compatible with short-lived access tokens, server-side session and device revocation, Face ID/Touch ID re-authentication, Keychain secrets and administrative MFA (always required for admin roles and the admin web) | [B §21.1] | L1 | spec §4.2 (ADR-0018 K-03) |
+| PR-ACCESS-07 | Platform operators have no casual browsing access to patient records | [B §17.2] | L1 | spec §3.5, spec §4.5, spec §4.6 (ADR-0018 K-06) |
 
 ### 6.2 Patient record and intake (PATIENT)
 
 | ID | Requirement | Bible | Layer | Spec detail |
 |---|---|---|---|---|
-| PR-PATIENT-01 | Staff create a patient by entering demographics, validating fields, searching for probable duplicates, confirming creation and opening the profile | [B §4.1] | L1 | spec §6.3 (Patients), spec §6.2 `DUPLICATE_PATIENT_SUSPECTED` |
+| PR-PATIENT-01 | Staff create a patient by entering demographics, validating fields, searching for probable duplicates, confirming creation and opening the profile. Creation is online-only, because the duplicate check needs the server | [B §4.1] | L1 | spec §6.3 (Patients), spec §6.2 `DUPLICATE_PATIENT_SUSPECTED`, spec §6.1.8 (ADR-0018 K-17) |
 | PR-PATIENT-02 | The server assigns tenant ownership; `organizationId` is never accepted from the client | [B §4.1], [B §4.2] | L1 | spec §6.6.1 |
-| PR-PATIENT-03 | The patient record holds at least the Bible §4.2 fields, including status ACTIVE, INACTIVE, ARCHIVED or DECEASED where policy supports it | [B §4.2] | L1 | spec §5.2, `schema.prisma` `Patient` |
+| PR-PATIENT-03 | The patient record holds at least the Bible §4.2 fields, including status ACTIVE, INACTIVE, ARCHIVED or DECEASED where policy supports it. INACTIVE and DECEASED are set through an update, ARCHIVED only through the archive action, and nothing changes status automatically | [B §4.2] | L1 | spec §5.2, spec §5.4.10 (ADR-0018 K-20), `schema.prisma` `Patient` |
 | PR-PATIENT-04 | A primary practice is optional or required according to deployment policy | [B §4.2] | L1 | spec §5.8 (OrganizationSetting) |
 | PR-PATIENT-05 | Staff with `patient.read` search the organization's patients; search terms never travel in URLs | [B §32], [B §21.2] | L1 | spec §5.6, spec §6.1.10 |
 | PR-PATIENT-06 | The profile shows twelve tabs: Overview, Timeline, Consultations, Photos, Before / After, AI Simulations, Treatment Plans, Procedures, Documents, Instructions, Appointments, Messages | [B §4.3] | L1 shell; each tab filled by its domain's layer | spec §6.3 |
@@ -396,9 +396,8 @@ Every layer ends with a PASS / FAIL / DEFERRED BY SPECIFICATION table and a stop
 
 | Item | Status | Confirmed at |
 |---|---|---|
-| Quantitative product success metrics | Not specified by the Bible; none adopted | Owner decision if wanted |
+| Quantitative product success metrics | Not specified by the Bible; none adopted ([`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md) F-33) | Owner input before the pilot; does not block Layer 1 |
 | Bible §10 says "the practice's" case library; ADR-0001 makes the library organization-wide | ADR-0001 governs as the owner's interpretation; recorded as a conflict for the owner to confirm | L9 kickoff (with UD-10) |
-| Admin web shell in Layer 1 (Bible §32 names only the iOS shell) | Proposed in roadmap M1.11 | L1 kickoff |
 | UD-15 final notes; UD-28 consultation transitions; UD-33 completion preconditions | Adopted baseline (spec §10.2) | L3 kickoff |
 | UD-11 estimate vs quote; UD-14 in-clinic plan acceptance; UD-23 pre-completion void and minors; UD-31 staff-assisted signing | Adopted baseline | L4 kickoff |
 | UD-08 patient identity across organizations; UD-20 PATIENT_APP grant for own media; UD-30 portal visibility of procedures, appointments and telehealth | Adopted baseline | L5 kickoff |
@@ -407,5 +406,4 @@ Every layer ends with a PASS / FAIL / DEFERRED BY SPECIFICATION table and a stop
 | UD-32 media grant for simulation sources; UD-29 simulation transitions | Adopted baseline | L8 kickoff |
 | UD-10 case-library permission and de-identification | Adopted baseline | L9 kickoff |
 | UD-25 offline cache policy | Adopted baseline | L2 kickoff |
-| Spec §6.1.8 lists patient creation as offline-queueable, but Bible §4.1 puts a search for probable duplicates before creation (served by `POST /patients/duplicate-check`, spec §6.3) and Bible §23.1 does not list patient creation as an offline operation (PR-PATIENT-01, PR-OFFLINE-01; [`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md) F-29) | Source conflict; recommended resolution (online-only creation) not yet adopted | L1 kickoff |
-| Patient INACTIVE and DECEASED transitions (PR-PATIENT-03), the consultation cancellation policy (PR-CONSULT-01) and patient-app offline caching (F-55) | Not specified | L1, L3 and L5 kickoffs |
+| The consultation cancellation policy (PR-CONSULT-01) and patient-app offline caching (F-55) | Not specified | L3 and L5 kickoffs |

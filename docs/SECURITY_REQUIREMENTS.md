@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §21 (authentication, security, privacy), §22 (audit, retention), §26 (observability), §28 (environments, CI/CD), §30 (constitution), §36 (production readiness). ADR-0001 (organization boundary), ADR-0002 (first-party identity), ADR-0004 (Row-Level Security), ADR-0006 (United States, HIPAA). |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §21 (authentication, security, privacy), §22 (audit, retention), §26 (observability), §28 (environments, CI/CD), §30 (constitution), §36 (production readiness). ADR-0001 (organization boundary), ADR-0002 (first-party identity), ADR-0004 (Row-Level Security), ADR-0006 (United States, HIPAA), ADR-0018 (Layer 1 kickoff decisions). |
 | Normative sources | [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md) §7 (security, privacy, audit), §3.5 (tenant isolation), §4.2 (authentication), §8 (offline contract); [`technical-spec/schema.prisma`](technical-spec/schema.prisma); [`technical-spec/constraints.sql`](technical-spec/constraints.sql) |
 
 This is the register of numbered, testable security requirements for Aestara. Every requirement names its source, how it is verified and the layer that implements it, so each layer's acceptance review can cite the IDs it satisfies. The threats these requirements answer are in [`THREAT_MODEL.md`](THREAT_MODEL.md); how each one is tested is in [`TESTING_STRATEGY.md`](TESTING_STRATEGY.md).
@@ -27,7 +27,7 @@ This is the register of numbered, testable security requirements for Aestara. Ev
 | Code | Method |
 |---|---|
 | AT | Automated test: unit, integration against real PostgreSQL (Testcontainers), API contract, end-to-end (Playwright) or iOS (Swift Testing, XCUITest) |
-| DB | Database behaviour suite (`technical-spec/verification/schema_behavior_tests.sql`); check IDs such as `C1` refer to its labels |
+| DB | Database behaviour suite (`technical-spec/verification/behavior/`, one fragment per layer, plus `packages/database/test/sql/rls.sql`); check IDs such as `C1` refer to its labels |
 | CI | CI gate: a static check or scan that blocks the merge or the deployment |
 | RV | Review: design, code, configuration or document review, recorded in the layer acceptance review |
 | PT | External penetration test before production (ADR-0002) |
@@ -68,12 +68,12 @@ The INT area is added to the areas the pack names because Bible §36 has a "Cons
 | SR-TEN-03 | Each request requires an `ACTIVE` membership in the token's organization, and permissions are evaluated for that organization only. | spec §3.5, §4.6 | AT | L1 |
 | SR-TEN-04 | The data layer requires a tenant context and injects `organizationId` into every query on a tenant-owned model. Unscoped access exists only through the explicitly named platform repository used by SUPER_ADMIN tooling and migrations. | spec §3.5 | AT, RV | L1 |
 | SR-TEN-05 | Every parent/child link uses a composite foreign key `(organizationId, …)`, and CHECKs close every `MATCH SIMPLE` gap on nullable composite keys. | spec §3.5, §5.1, §5.5 | DB (A1–A5, C5, D9, E6, F7, R1–R2, R18, and the automated V7 `MATCH SIMPLE` audit, spec §11.2) | Every |
-| SR-TEN-06 | Row-Level Security is enabled on every tenant-owned table, keyed on `SET LOCAL app.organization_id` inside the per-request transaction. The application database role has no `BYPASSRLS`; migrations run as a separate owner role. | ADR-0004; spec §3.5 | AT, DB, RV | L1, Every |
+| SR-TEN-06 | Row-Level Security is enabled and forced (`FORCE ROW LEVEL SECURITY`) on every tenant-owned table, keyed on `SET LOCAL app.organization_id` set from the verified token inside the per-request transaction; an unset value matches no rows. The application database role has no `BYPASSRLS`; migrations run as a separate owner role. The sign-in membership lookup uses one narrow `SECURITY DEFINER` function; platform operations use a separate role limited to platform tables; workers set the tenant for each job. | ADR-0004; spec §3.5; ADR-0018 K-16 | AT, DB, RV | L1, Every |
 | SR-TEN-07 | RLS meets the performance gate on login, patient search and patient open: at most 10% added p95 latency and at most 5 ms absolute. A miss means the policy design is revised before Layer 1 ships; RLS is never silently dropped. | ADR-0004 | AT (benchmark) | L1 |
 | SR-TEN-08 | A resource that does not exist, belongs to another tenant or is outside the caller's scope returns the same `404 <RESOURCE>_NOT_FOUND` body. `403 PERMISSION_DENIED` is returned only when the caller can already see the resource. | B §20.3, §20.4; spec §3.3, §6.1.10 | AT | L1 |
 | SR-TEN-09 | A cross-tenant suite generated from the route table runs in CI against real PostgreSQL for every tenant-scoped route: tenant B's credentials against tenant A's IDs return 404 with a body identical to a random-UUID request (apart from its per-request `requestId`, spec §7.5), and no timing difference. | B §21.2, §27.1, §36; spec §3.5, §7.5 | AT, CI | L1, Every |
 | SR-TEN-10 | Patient records are readable across all practices of the owning organization by staff holding the read permission. Practice/location role scope limits who may create or change practice-owned records. Nothing is readable across organizations. | ADR-0001; spec §4.6 | AT | L1, Every |
-| SR-TEN-11 | Switching organization re-checks membership and issues new tokens bound to the new organization. | spec §4.2 | AT | L1 |
+| SR-TEN-11 | Switching organization re-checks membership, issues new tokens bound to the new organization and writes `ORGANIZATION_SWITCHED`. | spec §4.2, §7.3; ADR-0018 K-04 | AT | L1 |
 | SR-TEN-12 | The application-enforced links (`ConsentSignature.signerUserId`, `ThreadParticipant.userId`, `IntegrationMapping.localId`) are covered by the authorization and cross-tenant suites, because the database cannot enforce them. | spec §5.1 | AT | L4, L5, L10 |
 | SR-TEN-13 | The similar-case library is organization-wide and never crosses organizations; a cross-organization dataset needs a separately approved governance model. | B §10; ADR-0001; spec §5.2 | AT | L9 |
 
@@ -81,38 +81,41 @@ The INT area is added to the areas the pack names because Bible §36 has a "Cons
 
 | ID | Requirement | Source | Verify | Layer |
 |---|---|---|---|---|
-| SR-IDN-01 | Identity is first-party in the API with OIDC/OAuth-compatible token semantics; native apps use PKCE-style proof at the token endpoint. | B §21.1; ADR-0002; spec §4.2 | RV, PT | L1 |
-| SR-IDN-02 | Passwords are stored as Argon2id hashes. Only the vetted libraries named in ADR-0002 are used, and there is no custom cryptography. | ADR-0002; spec §2.1 | AT, RV | L1 |
-| SR-IDN-03 | TOTP and passkeys (WebAuthn) are the second factors. MFA is required for the admin web and every admin role. | B §21.1; ADR-0002; spec §4.2 | AT | L1 |
+| SR-IDN-01 | Identity is first-party in the API with OIDC/OAuth-compatible token semantics. Clients sign in directly over TLS (`POST /auth/login`); there is no redirect-based code flow, so PKCE does not apply. | B §21.1; ADR-0002; spec §4.2; ADR-0018 K-11 | RV, PT | L1 |
+| SR-IDN-02 | Passwords are stored as Argon2id hashes and follow NIST SP 800-63B: at least 12 characters, checked against a common and breached-password list, no composition rules. Only the vetted libraries named in ADR-0002 are used, and there is no custom cryptography. | ADR-0002; spec §2.1, §4.2; ADR-0018 K-15 | AT, RV | L1 |
+| SR-IDN-03 | TOTP and passkeys (WebAuthn) are the second factors. MFA is always required for the admin web and every admin role; an organization's policy may require it for more users, never fewer. At sign-in, the strictest policy among the user's active memberships applies. | B §21.1; ADR-0002; spec §4.2; ADR-0018 K-03 | AT | L1 |
 | SR-IDN-04 | Access tokens are ES256 JWTs signed with a KMS-held key, valid 10 minutes, bound to the session and the active organization (`sub`, `sid`, `org`, `app`, `amr`). Permissions are not embedded in the token. | ADR-0002; spec §4.2 | AT | L1 |
 | SR-IDN-05 | Every authenticated request verifies signature, expiry and audience and loads the `Session`; a revoked, expired or idle session returns 401. | B §21.1; spec §3.3 | AT | L1 |
 | SR-IDN-06 | Refresh tokens are opaque, stored only as a hash and rotated on every use. Presenting an older generation revokes the whole session with reason `REFRESH_TOKEN_REUSE` and writes `SECURITY_SESSION_REVOKED`. | ADR-0002; spec §4.2, §6.3 | AT | L1 |
-| SR-IDN-07 | Session idle and absolute lifetimes follow the spec §4.2 defaults per client and are configurable per organization. | spec §4.2; UD-18 | AT | L1 |
-| SR-IDN-08 | Revocation is server-side: logout, own-session revoke, admin revoke, device revoke (cascades to its sessions), and user or membership disable (revokes all sessions). Each writes `SECURITY_SESSION_REVOKED`. | B §21.1, §22.1; spec §4.2 | AT | L1 |
+| SR-IDN-07 | Session idle and absolute lifetimes follow the spec §4.2 defaults per client and are configurable per organization. | spec §4.2; UD-18 (confirmed in ADR-0018 K-03) | AT | L1 |
+| SR-IDN-08 | Revocation is server-side: logout, own-session revoke, admin revoke, device revoke (cascades to its sessions), and membership disable. An organization admin revokes only sessions bound to its organization, and disabling a membership ends only that organization's sessions; a password reset, an admin MFA reset and platform security revoke all of the user's sessions. Each writes `SECURITY_SESSION_REVOKED`. | B §21.1, §22.1; spec §4.2; ADR-0018 K-12 | AT | L1 |
 | SR-IDN-09 | A revoked session's access and refresh tokens are both rejected on the next request, not at token expiry. | spec §7.5 | AT | L1 |
-| SR-IDN-10 | Every login attempt writes a `LoginEvent` and an `AuditEvent` (`LOGIN_SUCCESS`, `LOGIN_FAILURE`, `LOGOUT`); a failure carries a failure reason. | B §22.1, §32; spec §4.2 | AT, DB (B7–B8) | L1 |
+| SR-IDN-10 | Every login attempt writes a `LoginEvent`; a failure carries a failure reason. An `AuditEvent` (`LOGIN_SUCCESS`, `LOGIN_FAILURE`, `LOGOUT`) is also written when the identifier matches a user; an unknown identifier is recorded in `LoginEvent` only. A password accepted with a second factor pending is the `LoginEvent` step `MFA_CHALLENGE_ISSUED` (the API answers `401 MFA_REQUIRED`): not a failure, no `AuditEvent`, and it does not count toward lockout. | B §22.1, §32; spec §4.2; ADR-0018 K-13, K-15 | AT, DB (B7–B8) | L1 |
 | SR-IDN-11 | Unknown account and wrong password produce identical client responses; password reset responds identically for unknown accounts. | B §20.3; spec §4.2, §6.3 | AT | L1 |
-| SR-IDN-12 | Repeated login failures trigger progressive lockout (from `LoginEvent`), and WAF per-IP rate rules protect public and auth endpoints. | B §20.3, §21.2; spec §6.1.10; UD-27 | AT, CI (Terraform) | L1, Infra |
-| SR-IDN-13 | The provider app keeps the refresh token in the Keychain with `.biometryCurrentSet` access control and passcode fallback; LocalAuthentication gates app unlock after 5 minutes in background and step-up actions (signing, export). | B §21.1; spec §4.2 | AT (iOS), RV | L1 |
+| SR-IDN-12 | Repeated login failures trigger progressive lockout computed from `LoginEvent`: 5 consecutive failures lock the account for 15 minutes, and each further lock within 24 hours doubles the period, up to 24 hours. WAF per-IP rate rules protect public and auth endpoints. | B §20.3, §21.2; spec §4.2, §6.1.10; UD-27; ADR-0018 K-15 | AT, CI (Terraform) | L1, Infra |
+| SR-IDN-13 | The provider app keeps the access token in memory and the refresh token in the Keychain as `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` with `.biometryCurrentSet` access control. There is no fallback to the device passcode: if biometrics are unavailable or changed, the user signs in again with password and MFA. LocalAuthentication gates app unlock after 5 minutes in background and step-up actions (signing, export). | B §21.1; spec §4.2; ADR-0018 K-22 | AT (iOS), RV | L1 |
 | SR-IDN-14 | Designated sensitive actions require a recent `mfaVerifiedAt`; otherwise the API returns `403 REAUTHENTICATION_REQUIRED`. | spec §4.2, §6.2 | AT | L1, Every |
-| SR-IDN-15 | The admin SPA holds its refresh token in memory plus a `SameSite=Strict` HttpOnly cookie; CORS allows only the admin web origin. | ADR-0003; spec §4.2, §6.1.10 | AT (Playwright), RV | L1 |
-| SR-IDN-16 | Enrolling or removing an MFA factor requires authentication plus step-up and an `Idempotency-Key`. | spec §6.3 | AT | L1 |
+| SR-IDN-15 | The admin SPA keeps its access token in memory and its refresh token only in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie whose path is `/api/v1/auth/token/refresh`. Every cookie-authenticated request must carry an allow-listed `Origin`; CORS allows only the admin web origin. | ADR-0003; spec §4.2, §6.1.10; ADR-0018 K-11 | AT (Playwright), RV | L1 |
+| SR-IDN-16 | Enrolling or removing an MFA factor requires authentication plus step-up and an `Idempotency-Key`, and writes `SECURITY_CREDENTIAL_CHANGED`. | spec §6.3, §7.3 | AT | L1 |
 | SR-IDN-17 | A patient has one identity with per-organization `PatientUserLink`s and no cross-organization view; proxy access is deferred. | spec §4.7; UD-08 | AT | L5 |
 | SR-IDN-18 | The identity module is covered by the external penetration test before production. | ADR-0002; spec §10.4 | PT | Pre-prod |
+| SR-IDN-19 | A password reset uses a single-use token sent by email, stored only as a hash (`UserToken`) and valid 30 minutes; completing a reset revokes all the user's sessions. A signed-in password change (`POST /auth/password/change`) needs the current password and a recent MFA. Both write `SECURITY_CREDENTIAL_CHANGED`. | B §21.1; spec §4.2, §6.3; ADR-0018 K-15 | AT | L1 |
+| SR-IDN-20 | A user who has lost every second factor is recovered only by an admin-initiated MFA reset (`POST /users/{id}/mfa-reset`, `security.manage`), which removes the factors, revokes all sessions and writes `SECURITY_CREDENTIAL_CHANGED`. An organization admin may reset only a user whose sole active membership is in that organization; otherwise platform security does it. | B §21.1; spec §4.2, §6.3; ADR-0018 K-15 | AT | L1 |
+| SR-IDN-21 | Invitation, password-reset and verification tokens travel only in request bodies, never in a path or query string. The Layer 1 one-time tokens (staff invitation, password reset, MFA challenge, passkey registration) are random, stored only as a hash in `UserToken`, expire and are consumed once; a consumed token can never change again. | spec §5.2, §6.1.10, §6.5; ADR-0018 K-09, K-15 | AT, RV | L1, L5 |
 
 ## 5. Authorization (SR-AUZ)
 
 | ID | Requirement | Source | Verify | Layer |
 |---|---|---|---|---|
 | SR-AUZ-01 | Every route declares its required permission, and effective permissions are computed server-side on every request from scoped `UserRole` grants. UI hiding is convenience only. | B §3.3; spec §3.3, §4.6 | AT (contract) | L1, Every |
-| SR-AUZ-02 | The permission catalog is seeded exactly as spec §4.4 lists it, plus only the proposed keys approved under UD-16. | B §3.3; spec §4.4 | AT, CI (traceability) | L1 |
-| SR-AUZ-03 | Default roles follow the least-privilege matrix in spec §4.5 (UD-17). A role × endpoint suite generated from that matrix asserts allow or deny for every cell. | B §3.2; spec §4.5, §7.5 | AT, CI | L1, Every |
-| SR-AUZ-04 | Separation of duties: nobody assigns a role to themselves or creates their own membership; platform-scope grants only bootstrap an organization's first ORGANIZATION_ADMIN and never carry clinical permissions; a PRACTICE_ADMIN grants only within its own scope. | B §17.2; spec §4.5 | AT, DB (R4) | L1 |
-| SR-AUZ-05 | Platform operators hold no `patient.*` permission and cannot browse patient records. Support access to a tenant is not built until it is specified as a time-bound, audited grant. | B §17.1, §17.2; spec §4.5 | AT, RV | L1 |
+| SR-AUZ-02 | The complete permission catalog, exactly as spec §4.4 lists it with the UD-16 proposed keys, and the spec §4.5 default matrix are seeded as data in Layer 1. | B §3.3; spec §4.4, §4.5; ADR-0018 K-01 | AT, CI (traceability) | L1 |
+| SR-AUZ-03 | Default roles follow the least-privilege matrix in spec §4.5 (UD-17, confirmed in ADR-0018 K-01). A role × endpoint suite generated from that matrix asserts allow or deny for every cell. | B §3.2; spec §4.5, §7.5 | AT, CI | L1, Every |
+| SR-AUZ-04 | Separation of duties: nobody assigns a role to themselves or creates their own membership; platform-scope grants only bootstrap an organization's first ORGANIZATION_ADMIN, through an audited action allowed only while the organization has no active one, and never carry clinical permissions; a PRACTICE_ADMIN grants only within its own scope and manages only users whose grants all lie within it. | B §17.2; spec §4.5, §4.6; ADR-0018 K-05, K-07 | AT, DB (R4) | L1 |
+| SR-AUZ-05 | Platform operators hold no `patient.*` permission and cannot browse patient records. Platform permissions reach organization metadata only (organizations, practices, memberships, account status), and the platform database role has no access to patient or clinical tables. Support access to a tenant is not built until it is specified as a time-bound, audited grant. | B §17.1, §17.2; spec §3.5, §4.5, §4.6; ADR-0018 K-06 | AT, RV | L1 |
 | SR-AUZ-06 | `patient.read` unlocks demographics and profile only; clinical content needs the clinical keys mapped in spec §4.4, and the timeline filters each item by the caller's permission for its domain. | B §3.2; spec §4.4, §6.3 | AT | L1, L3 |
 | SR-AUZ-07 | Access to the ORIGINAL photo variant requires `photo.export` (a permission, never a role check) and is always audited. | B §3.3; spec §6.3 | AT | L2 |
 | SR-AUZ-08 | Every grant and revocation is audited (`ROLE_ASSIGNED`, `ROLE_REVOKED`) and appears in a periodic access-review export. | spec §4.5 | AT | L1 |
-| SR-AUZ-09 | Authorization failures on sensitive endpoints write `ACCESS_DENIED` (subject to UD-19 approval). | B §26; spec §4.6, §7.3 | AT | L1 |
+| SR-AUZ-09 | Authorization failures on routes that touch patient data write `ACCESS_DENIED`; identical repeats from the same actor collapse into one event with a count. The 404 body stays identical to a missing record. | B §26; spec §4.6, §7.3; ADR-0018 K-10 | AT | L1 |
 | SR-AUZ-10 | Patient-app access requires an `ACTIVE` `PatientUserLink` for the token's organization. `patientId` comes from the token and link, never the path, and every portal query applies the spec §4.7 release predicate. Entities without an approved rule are not visible. | B §13.2; spec §4.7, §6.5 | AT (portal visibility suite) | L5, L8 |
 | SR-AUZ-11 | Portal handlers use a separate controller namespace, separate DTOs and release-filtered repositories only; a staff DTO cannot be serialized to a patient. | spec §6.5 | AT, RV | L5 |
 | SR-AUZ-12 | Message threads require participation plus `message.send` (staff) or an active link plus participation (patient), including attachment download. | B §14.1; spec §6.3, §6.5 | AT | L5 |
@@ -197,13 +200,13 @@ Spec §7.2 is the normative list; each rule below carries its number there.
 | ID | Requirement | Source | Verify | Layer |
 |---|---|---|---|---|
 | SR-AUD-01 | Every Bible minimum audit event is emitted by the layer that owns its action (catalog: spec §7.3). | B §22.1; spec §7.3 | AT, CI (traceability) | Every |
-| SR-AUD-02 | Proposed additional events are emitted once approved under UD-19. | spec §7.3 | AT | L1, Every |
+| SR-AUD-02 | The spec §7.3 proposed events are emitted, including `SECURITY_CREDENTIAL_CHANGED` and `ORGANIZATION_SWITCHED` from Layer 1 (UD-19, confirmed in ADR-0018 K-04). | spec §6.4, §7.3; ADR-0018 K-04 | AT | L1, Every |
 | SR-AUD-03 | Each event records actor type and identity, organization, resource type and ID, action, outcome, timestamp, request ID, session and device, IP and user agent, and `patientId` as an identifier. | B §22.2; spec §7.3 | AT | L1 |
 | SR-AUD-04 | The state change, its audit row and any outbox rows commit in one transaction or not at all. | spec §3.3 | AT | L1 |
 | SR-AUD-05 | Every state-machine transition writes an audit event; system transitions use actor type `SERVICE`. | B §5.1, §34.2; spec §5.4 | AT | Every |
 | SR-AUD-06 | Audit and login ledgers are append-only: triggers reject UPDATE, DELETE and TRUNCATE. | B §21.2; spec §5.5, §7.3 | DB (G1–G3, B8) | L1 |
 | SR-AUD-07 | The application database role holds only `INSERT` and `SELECT` on audit tables. | spec §7.3 | AT, RV | L1 |
-| SR-AUD-08 | Audit rows stream to an S3 bucket with Object Lock in compliance mode, and a daily job reconciles database and WORM counts and alerts on divergence. | B §21.2; spec §7.3 | AT, EX | L2 (see open item 3) |
+| SR-AUD-08 | Audit rows stream to an S3 bucket with Object Lock in compliance mode, and a daily job reconciles database and WORM counts and alerts on divergence. | B §21.2; spec §7.3 | AT, EX | L2 (Layer 1 relies on SR-AUD-06 and SR-AUD-07, ADR-0018 K-18) |
 | SR-AUD-09 | Opening a patient writes `PATIENT_VIEWED`; every signed-URL issuance writes its view or download event. | B §4.3, §14.4, §22.4; spec §6.3 | AT | L1, L2, L3, L5, L8 |
 | SR-AUD-10 | Views made offline are recorded locally and replayed through `POST /audit/offline-events` with original timestamps; replay accepts only the caller's own actions on resources it may read. | B §4.3, §22.1; spec §6.3, §8 | AT | L2 |
 | SR-AUD-11 | Audit is queryable in the tenant by actor, patient, action, resource and time, including a per-patient access report. | B §36; spec §6.3 | AT | L1 |
@@ -231,8 +234,8 @@ Spec §7.6 assigns the security-alert commitment to this document.
 | SR-SEC-01 | Backend secrets live in AWS Secrets Manager (database credentials through RDS-managed rotation, APNs keys, vendor keys); none are in environment files, images or the repository. | B §21.2; spec §2.3, §7.1 | RV, CI (see SR-SCI-10) | L1 |
 | SR-SEC-02 | The token-signing key is held in KMS. | spec §4.2 | RV | L1 |
 | SR-SEC-03 | Integration records store a Secrets Manager reference, never secret material. | spec §5.2 | AT, RV | L10 |
-| SR-SEC-04 | On iOS, tokens and keys are stored in the Keychain. | B §21.1; spec §2.2 | AT (iOS), RV | L1 |
-| SR-SEC-05 | Refresh tokens and device installation identifiers are stored only as hashes. | spec §4.2; schema `Session`, `Device` | AT | L1 |
+| SR-SEC-04 | On iOS, the refresh token and keys are stored in the Keychain; the short-lived access token stays in memory. | B §21.1; spec §2.2, §4.2 | AT (iOS), RV | L1 |
+| SR-SEC-05 | Refresh tokens, one-time tokens and device installation identifiers are stored only as hashes. | spec §4.2; schema `Session`, `UserToken`, `Device` | AT | L1 |
 | SR-SEC-06 | IAM is least privilege: one role per service, S3 access scoped per object class, queue policies per producer and consumer. | B §21.2; spec §7.1 | CI (checkov), RV | L1 (first service role), L2 (object classes, queues) |
 
 ## 13. Device and offline (SR-DEV)
@@ -276,18 +279,19 @@ The offline contract is spec §8; these requirements cite its rules.
 |---|---|---|---|---|
 | SR-SCI-01 | No deployment happens when a required gate fails. The gates are those of Bible §28.2 (mapped to CI jobs in TESTING_STRATEGY.md §4). | B §28.2 | CI | L0 (merge), Infra (deploy) |
 | SR-SCI-02 | Dependency scanning runs in CI: OSV-Scanner on `pnpm-lock.yaml` in the `security` job, plus weekly Dependabot update pull requests for npm, GitHub Actions and Terraform (`.github/dependabot.yml`). | B §21.2, §28.2; spec §2.3, §7.1; ADR-0016 | CI | L0 |
-| SR-SCI-03 | Container images are scanned (Trivy); deployment is blocked on high or critical findings without an approved exception. | B §21.2, §28.2; spec §2.3, §7.1 | CI | L1 |
+| SR-SCI-03 | Container images are scanned (Trivy); deployment is blocked on high or critical findings without an approved exception. | B §21.2, §28.2; spec §2.3, §7.1; ADR-0018 K-21 | CI | L1 (with the first image) |
 | SR-SCI-04 | Terraform is checked with `fmt`, `validate`, `tflint` and `checkov`. | B §28.2; spec §2.3 | CI | L0 |
 | SR-SCI-05 | A Terraform plan is reviewed before every apply. | B §28.2 | RV | Infra |
 | SR-SCI-06 | Installs are reproducible: frozen lockfile, pinned pnpm (`packageManager`) and pinned Node (`.nvmrc`). | ADR-0010 | CI | L0 |
 | SR-SCI-07 | Workflows default to read-only repository permissions (`permissions: contents: read`, as in the current `ci.yml`); a job that needs more declares it. | B §21.2 (least privilege) | RV | L0 |
 | SR-SCI-08 | The committed OpenAPI document is regenerated and diffed in CI, and breaking changes fail unless the path version is bumped (`oasdiff`). | spec §6.1.1, §6.8 | CI | L0, L1 |
 | SR-SCI-09 | API clients (Swift and TypeScript) are generated from the contract, never hand-written. | spec §2.2, §6.8 | CI, RV | L1 |
-| SR-SCI-10 | Secret scanning blocks committed credentials. | B §21.2, §28.2; ADR-0016 | CI | L0 (GitHub's native secret scanning, ADR-0016); dedicated scanner: open item 2 |
-| SR-SCI-11 | Static application security testing runs in CI. | B §28.2 ("dependency/security scanning"); ADR-0016 | CI | See open item 2 |
+| SR-SCI-10 | Secret scanning blocks committed credentials. | B §21.2, §28.2; ADR-0016; ADR-0018 K-21 | CI | L0 (GitHub's native secret scanning, ADR-0016); gitleaks in CI from L1 (M1.2) |
+| SR-SCI-11 | Static application security testing runs in CI (GitHub CodeQL). | B §28.2 ("dependency/security scanning"); ADR-0016; ADR-0018 K-21 | CI | L1 (M1.2) |
 | SR-SCI-12 | Work happens on a feature branch, CI must be green, and the owner approves every merge to `main`. | CLAUDE.md; DEVELOPMENT_ROADMAP.md §2 | RV | L0 |
 | SR-SCI-13 | The design prototype is excluded from production builds and never receives real data. | ADR-0009 | RV | L0 |
 | SR-SCI-14 | Deployments are versioned and repeatable; migrations follow expand, migrate, contract with a documented rollback; AI model deployments are independent and reversible. | B §28.3; spec §7.6 | RV, CI | L1, L7 |
+| SR-SCI-15 | Third-party GitHub Actions are pinned to commit SHAs. | B §21.2; ADR-0016; ADR-0018 K-21 | CI, RV | L1 (M1.2) |
 
 ## 16. Backups and recovery (SR-BCR)
 
@@ -307,7 +311,7 @@ The offline contract is spec §8; these requirements cite its rules.
 | SR-VEN-01 | Only HIPAA-eligible AWS services, configured appropriately and covered by the applicable BAA, handle PHI. | B §21.3, §25.3; ADR-0006; spec §2.3 | RV | Infra, Pre-prod |
 | SR-VEN-02 | The telehealth vendor is BAA-capable (UD-05); calls are not recorded, and the schema has no recording field. Recording would need separate consent, retention, encryption and jurisdiction review. | B §16.2; spec §2.1, §5.2 | RV | L6 |
 | SR-VEN-03 | Malware scanning is a managed service inside BAA scope or a self-hosted worker (UD-22). | spec §2.1; UD-22 | RV | L2 |
-| SR-VEN-04 | Email (SES) and SMS (AWS End User Messaging) are HIPAA-eligible services and still receive generic template text only. | B §14.3; spec §2.1 | RV, AT | L5 |
+| SR-VEN-04 | Email (SES) and SMS (AWS End User Messaging) are HIPAA-eligible services and still receive generic template text only. From Layer 1 the api sends templated transactional email (invitations, password reset; no PHI) through SES under the BAA. | B §14.3; spec §2.1; ADR-0018 K-14 | RV, AT | L1 (transactional email), L5 |
 | SR-VEN-05 | APNs payloads carry no PHI, only template text and opaque identifiers. Whether APNs needs any further agreement is part of the pre-production legal review. | B §14.3, §36 | AT, RV | L5, Pre-prod |
 | SR-VEN-06 | EMR integrations run under the customer's agreements with each vendor; vendor-specific code stays inside adapters, and webhooks are signature-verified and replay-protected. | B §18.1; spec §6.7 | AT, RV | L10 |
 | SR-VEN-07 | Every new vendor that could receive PHI (video, SMS, crash reporting, AI, scanning) is decided through a UD or ADR before integration. | spec §10.4 | RV | Every |
@@ -322,7 +326,7 @@ Every row must be true before production [B §36]. The last column names the evi
 | §36 area | Must be true | Covered by | Evidence |
 |---|---|---|---|
 | Tenancy | Automated cross-tenant tests pass for every sensitive domain | SR-TEN-01 to SR-TEN-13 (SR-TEN-09 is the gate) | Cross-tenant suite green for every tenant-scoped route; RLS benchmark result |
-| Authentication | Session expiration and revocation tested; secrets stored securely | SR-IDN-04 to SR-IDN-09, SR-IDN-13, SR-IDN-18, SR-SEC-01 to SR-SEC-06 | Session and revocation tests; penetration test report |
+| Authentication | Session expiration and revocation tested; secrets stored securely | SR-IDN-04 to SR-IDN-09, SR-IDN-13, SR-IDN-18 to SR-IDN-21, SR-SEC-01 to SR-SEC-06 | Session and revocation tests; penetration test report |
 | Authorization | Server-side permission checks cover sensitive endpoints | SR-AUZ-01 to SR-AUZ-15 | Role × endpoint suite; contract test asserting a declared permission on every route |
 | Photos | Originals immutable; permissions enforced; private storage only | SR-MED-01 to SR-MED-16, SR-DPR-05, SR-DPR-07 | DB checks C1–C10 and D1–D10; media permission tests; checkov |
 | AI | Versioned provenance; provider review and release; regression validation | SR-AI-03 to SR-AI-11 | DB checks E1–E15 and R10–R14; Layer 7 harness results; Bible §34.2 acceptance |
@@ -331,23 +335,25 @@ Every row must be true before production [B §36]. The last column names the evi
 | Audit | Critical events captured and queryable | SR-AUD-01 to SR-AUD-13 | Audit assertions per event; WORM reconciliation run |
 | Logging | PHI filtering verified | SR-PHI-01 to SR-PHI-03, SR-PHI-10 | PHI canary test in CI |
 | Backups | Encrypted backup and tested restore | SR-BCR-01 to SR-BCR-03 | Restore drill record |
-| CI/CD | Security and test gates mandatory | SR-SCI-01 to SR-SCI-14 | Branch protection settings; CI run showing every gate |
+| CI/CD | Security and test gates mandatory | SR-SCI-01 to SR-SCI-15 | Branch protection settings; CI run showing every gate |
 | Monitoring | Operational and security alerting configured | SR-MON-02 to SR-MON-06 | Alert-fire exercise record; dashboards per environment |
 | Legal/compliance | BAAs, contracts, policies, retention and intended use reviewed for the actual deployment | SR-VEN-01 to SR-VEN-08, SR-AI-15, SR-BCR-05 | Signed legal review; retention policies configured per customer |
 
 ## 19. Open items
 
+Closed items keep their row so the numbering stays stable.
+
 | # | Item | Why it is open | Confirmed at |
 |---|---|---|---|
 | 1 | Closed in Layer 0: dependency scanning (SR-SCI-02) runs in the `security` CI job (OSV-Scanner) with Dependabot updates (ADR-0016). Kept so the numbering stays stable. | Closed | Layer 0 (ADR-0016) |
-| 2 | A dedicated secret scanner (SR-SCI-10) and SAST (SR-SCI-11): ADR-0016 relies on GitHub's native secret scanning for now and defers both tool choices. | Tool choice deferred by ADR-0016 | Layer 1 kickoff |
-| 3 | Audit WORM streaming (SR-AUD-08) uses the outbox relay, whose table arrives in Layer 2 (spec §5.8). In Layer 1 audit is protected by triggers and grants only. | Layer 1 has no WORM copy | Layer 1 kickoff |
-| 4 | MFA policy: ADR-0002 requires MFA for admin roles, while spec §4.2 says "per deployment policy" (`security.mfaPolicy`). Whether an organization can relax the admin requirement is not stated. SR-IDN-03 follows ADR-0002. | UD-18 | Layer 1 kickoff |
+| 2 | Closed at the Layer 1 kickoff: gitleaks is the dedicated secret scanner (SR-SCI-10) and GitHub CodeQL the SAST tool (SR-SCI-11), both added to CI in M1.2 (ADR-0018 K-21). Kept so the numbering stays stable. | Closed | Layer 1 kickoff (ADR-0018 K-21) |
+| 3 | Closed at the Layer 1 kickoff: Layer 1 relies on append-only triggers and insert/select-only grants (SR-AUD-06, SR-AUD-07); the WORM copy (SR-AUD-08) arrives with the outbox in Layer 2 (spec §7.3; ADR-0018 K-18). Kept so the numbering stays stable. | Closed | Layer 1 kickoff (ADR-0018 K-18) |
+| 4 | Closed at the Layer 1 kickoff: MFA is always required for admin roles and the admin web; an organization may only strengthen the policy (SR-IDN-03; spec §4.2; ADR-0018 K-03). Kept so the numbering stays stable. | Closed | Layer 1 kickoff (ADR-0018 K-03) |
 | 5 | The second region for snapshot copies (SR-BCR-02) is not named. ADR-0006 requires United States only. | Not specified | Production readiness (roadmap step 14; [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
-| 6 | The actions that require a recent MFA (SR-IDN-14) are listed only as examples (signing, export). | Designated per layer | Each layer kickoff |
+| 6 | The actions that require a recent MFA (SR-IDN-14) are listed only as examples (signing, export). Layer 1 names MFA enrollment and removal and password change (spec §6.3). | Designated per layer | Each layer kickoff; the Layer 1 recency window in M1.3 |
 | 7 | Recovery point and recovery time objectives are not specified. | Not specified | Pre-prod |
 | 8 | Time-bound, audited support access to a tenant (Bible §17.1) is not specified; nothing is built until it is. | B §17.1 | Separate specification |
-| 9 | Content Security Policy for the admin SPA is not specified (spec §6.1.10 lists the other headers). | Not specified | Layer 1 kickoff (admin web shell) |
-| 10 | Lifetime and single-use rules for password-reset and patient-invitation tokens are not specified, and the invitation token travels in the URL path (spec §6.5), which the no-secrets-in-URLs rationale of spec §6.1.10 argues against. | Not specified | Layer 1 kickoff (reset tokens; moving the invitation token into the request body, [`API_CONTRACTS.md`](API_CONTRACTS.md) open items); Layer 5 (invitation lifetime) |
-| 11 | Password policy (length, breached-password checks) and Argon2id cost parameters for SR-IDN-02; account recovery for a lost second factor. Recorded here once decided ([`AUTHENTICATION_ARCHITECTURE.md`](AUTHENTICATION_ARCHITECTURE.md) §14). | Not specified | Layer 1 kickoff (M1.3) |
-| 12 | The Layer 0 Terraform (`modules/account-baseline`) delivers CloudTrail to an Object Lock bucket (compliance mode in staging and production) in the same account; spec §7.1 also requires that bucket to be in a separate security account (SR-AUD-13, F-59). | Depends on the AWS Organizations structure | Before the first `apply` (Layer 1, [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
+| 9 | Content Security Policy for the admin SPA is not specified (spec §6.1.10 lists the other headers). | Not specified | M1.11 (admin web shell) |
+| 10 | Lifetime of staff and patient invitation tokens. Reset tokens are decided (single use, 30 minutes, SR-IDN-19), and every token travels in the request body, including the patient invitation (spec §6.5; SR-IDN-21). | Not specified | M1.6 (staff invitations); Layer 5 (patient invitations) |
+| 11 | Argon2id cost parameters for SR-IDN-02. Recorded here once decided ([`AUTHENTICATION_ARCHITECTURE.md`](AUTHENTICATION_ARCHITECTURE.md) §14). The password policy (SR-IDN-02) and lost-factor recovery (SR-IDN-20) are decided (ADR-0018 K-15). | Not specified | M1.3 |
+| 12 | The Layer 0 Terraform (`modules/account-baseline`) delivers CloudTrail to an Object Lock bucket (compliance mode in staging and production) in the same account; spec §7.1 also requires that bucket to be in a separate security account (SR-AUD-13, F-59). | Depends on the AWS Organizations structure (owner input) | Before the first deployment, with the AWS account structure ([`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |

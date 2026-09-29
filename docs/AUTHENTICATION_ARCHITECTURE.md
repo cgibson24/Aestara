@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §21.1 (authentication), §22.1 (audit), §23 (offline), §24.5 (deep links), §36 (readiness). ADR-0002 (first-party identity, D-02), ADR-0003 (admin SPA), ADR-0005 (iOS 26), ADR-0008 (delegated baselines UD-18, UD-27) |
-| Normative sources | [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md) spec §4.2 (authentication), spec §3.3 (request pipeline), spec §6.1.3 (tenant context), spec §6.3 (auth endpoints), spec §6.5 (patient invitation), spec §6.7 (service auth), spec §7.3 (audit), spec §7.5 (tests), spec §8 (offline). `schema.prisma` models `User`, `UserCredential`, `Session`, `Device`, `LoginEvent`; `constraints.sql` Layer 1 fragment |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §21.1 (authentication), §22.1 (audit), §23 (offline), §24.5 (deep links), §36 (readiness). ADR-0002 (first-party identity, D-02), ADR-0003 (admin SPA), ADR-0005 (iOS 26), ADR-0008 (delegated baselines UD-18, UD-27), ADR-0018 (Layer 1 kickoff decisions K-03, K-09 to K-15, K-22) |
+| Normative sources | [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md) spec §4.2 (authentication), spec §3.3 (request pipeline), spec §6.1.3 (tenant context), spec §6.1.10 (no secrets in URLs), spec §6.3 (auth endpoints), spec §6.5 (patient invitation), spec §6.7 (service auth), spec §7.3 (audit), spec §7.5 (tests), spec §8 (offline). `schema.prisma` models `User`, `UserCredential`, `UserToken`, `Session`, `Device`, `LoginEvent`; `constraints.sql` Layer 1 fragment |
 
 How Aestara proves who is calling: people on three client surfaces, and backend services. It covers identities, credentials, sessions and tokens, client handling, the sign-in, MFA, refresh and revocation flows, lockout, recovery, offline re-authentication, audit and tests. What an authenticated caller may do is in [`AUTHORIZATION_RBAC.md`](AUTHORIZATION_RBAC.md).
 
@@ -17,9 +17,10 @@ Owner decision D-02 (ADR-0002): identity lives in the API as a **first-party, OI
 
 | Property | Design | Source |
 |---|---|---|
-| Protocol | OAuth 2.1 / OIDC-compatible token semantics; public keys at `GET /.well-known/jwks.json` | spec §4.2, spec §6.3 |
-| Passwords | Argon2id | spec §4.2 |
-| Second factors | TOTP and WebAuthn passkeys | spec §4.2 |
+| Protocol | OAuth 2.1 / OIDC-compatible token semantics; public keys at `GET /.well-known/jwks.json`. First-party clients sign in directly over TLS (`POST /auth/login`); there is no redirect-based code flow, so **no PKCE** | spec §4.2, spec §6.3; ADR-0018 K-11 |
+| Passwords | Argon2id; NIST SP 800-63B policy: at least 12 characters, checked against a common and breached-password list, no composition rules | spec §4.2; ADR-0018 K-15 |
+| Second factors | TOTP and WebAuthn passkeys. **Always required for the admin web and any admin role** | spec §4.2; ADR-0018 K-03 |
+| One-time tokens | Invitation, password-reset and sign-in challenge tokens: random, stored only as a hash (`UserToken`), expiring, single use, sent only in request bodies | spec §4.2, spec §6.1.10; ADR-0018 K-09, K-15 |
 | Access token | Signed JWT, ES256, key in KMS, **10-minute** lifetime, no permissions inside | spec §4.2 |
 | Refresh token | Opaque, stored only as a hash, **rotated on every use**, reuse revokes the whole session | spec §4.2 |
 | Session | Server-side `Session` row, loaded on **every** request, so revocation is immediate | spec §3.3, spec §7.5 |
@@ -30,7 +31,7 @@ Owner decision D-02 (ADR-0002): identity lives in the API as a **first-party, OI
 flowchart LR
   subgraph Device["Client device"]
     IOS["Provider or patient iOS app"]
-    KC[("Keychain: refresh token with biometric access control")]
+    KC[("Keychain: refresh token, this device only, biometric access control")]
     SPA["Admin web SPA in a browser"]
     IOS --- KC
   end
@@ -41,9 +42,10 @@ flowchart LR
     AUTH["Auth module: login, MFA, refresh, logout, sessions"]
     PIPE["Request pipeline: token check, session load, tenant, permission"]
   end
-  DB[("PostgreSQL: User, UserCredential, Session, Device, LoginEvent, AuditEvent")]
+  DB[("PostgreSQL: User, UserCredential, UserToken, Session, Device, LoginEvent, AuditEvent")]
   KMS["KMS: ES256 signing key, TOTP seed envelope key"]
   JWKS["GET /.well-known/jwks.json"]
+  SES["Amazon SES: invitation and reset email, no PHI"]
   IOS --> WAF
   SPA --> WAF
   WAF --> AUTH
@@ -52,6 +54,7 @@ flowchart LR
   PIPE --> DB
   AUTH --> KMS
   AUTH --- JWKS
+  AUTH --> SES
 ```
 
 ---
@@ -80,14 +83,31 @@ Rules that bind implementers:
 
 | Type | Stored as | Role | Rules |
 |---|---|---|---|
-| PASSWORD | Argon2id PHC string (`passwordHash`) | First factor | One active password per user. Hashing parameters and the password policy (length, breached-password checks) are not specified: set at Layer 1 (M1.3) and recorded in [`SECURITY_REQUIREMENTS.md`](SECURITY_REQUIREMENTS.md) |
+| PASSWORD | Argon2id PHC string (`passwordHash`) | First factor | One active password per user. Policy per NIST SP 800-63B: at least 12 characters, checked against a common and breached-password list, no composition rules (spec §4.2; ADR-0018 K-15). The Argon2id cost parameters are not specified: set in M1.3 and recorded in [`SECURITY_REQUIREMENTS.md`](SECURITY_REQUIREMENTS.md) |
 | TOTP | Seed envelope-encrypted with a KMS key (`totpSecretCiphertext`) | Second factor | spec §4.2, spec §7.1 |
 | WEBAUTHN | Credential ID, public key, signature counter | Second factor (passkey) | Relying-party ID and associated-domain setup for the apps are decided at M1.3 |
 
-- **Enrollment and removal:** `POST /auth/mfa/enrollments` and `DELETE /auth/mfa/enrollments/{id}` need an authenticated session **plus step-up**, and enrollment needs an `Idempotency-Key` (spec §6.3).
+- **Enrollment and removal:** `POST /auth/mfa/enrollments` and `DELETE /auth/mfa/enrollments/{id}` need an authenticated session **plus step-up**, and enrollment needs an `Idempotency-Key`. Both are audited as `SECURITY_CREDENTIAL_CHANGED` (spec §6.3, spec §7.3).
+- **Password change:** `POST /auth/password/change` needs the current password and a recent MFA, and is audited as `SECURITY_CREDENTIAL_CHANGED` (spec §4.2, spec §6.3; ADR-0018 K-15).
 - **Revocation:** credentials are revoked by setting `revokedAt`; they are not deleted.
-- **MFA policy:** MFA is required for the admin web and for any admin role, per deployment policy, held in `OrganizationSetting` key `security.mfaPolicy` (spec §4.2; Bible [B §21.1] "Administrative MFA support/requirement according to deployment policy"). Patient-app MFA is not specified; biometrics are optional there.
+- **MFA policy:** MFA is **always required for the admin web and for any admin role**. An organization's policy (`OrganizationSetting` key `security.mfaPolicy`) may require it for more users, never fewer. At sign-in, before an organization is chosen, the strictest policy among the user's active memberships applies (spec §4.2; ADR-0018 K-03; Bible [B §21.1] "Administrative MFA support/requirement according to deployment policy"). Patient-app MFA is not specified; biometrics are optional there.
 - The spec calls passkeys a second factor. Passwordless sign-in with a passkey as the only factor is not specified.
+
+### 3.1 One-time tokens (`UserToken`)
+
+Emailed links and sign-in steps use single-use secrets held in `UserToken` (spec §5.2; ADR-0018 K-09, K-15).
+
+| Purpose | Used for | Context it carries |
+|---|---|---|
+| `INVITATION` | Staff invitation, accepted with `POST /auth/invitations/accept` | The organization whose membership it activates |
+| `PASSWORD_RESET` | `POST /auth/password/reset`; valid **30 minutes** (spec §4.2) | None |
+| `MFA_CHALLENGE` | The pending second factor after an accepted password, completed with `POST /auth/mfa/verify` | The client app the session will be issued to |
+| `WEBAUTHN_REGISTRATION` | A pending passkey registration for a signed-in user | The WebAuthn challenge |
+
+- Only a SHA-256 hash of the random token is stored. The token itself travels only in request bodies, never in a path, query string, log or audit record (spec §6.1.10).
+- Every token expires and is consumed once. Failed attempts are counted, and the token is consumed at the limit.
+- A database CHECK fixes the context each purpose carries. Triggers let only the attempt counter and the consumption stamp change, and a consumed token can never change again (`constraints.sql`, Layer 1).
+- Transactional email (invitations, password reset; no PHI) goes out from the api through Amazon SES under the BAA; Mailpit catches it in local `docker compose`. The notifications service still arrives in Layer 5 (ADR-0018 K-14).
 
 ---
 
@@ -133,7 +153,7 @@ A `Session` row exists for every signed-in client. It is the unit of revocation.
 
 ### 4.4 Lifetimes and re-authentication (UD-18 defaults, spec §4.2)
 
-All values are defaults, configurable per organization.
+All values are defaults, configurable per organization. ADR-0018 K-03 confirmed them for Layer 1.
 
 | Client | Access token | Session idle | Session absolute | Local re-authentication |
 |---|---|---|---|---|
@@ -143,11 +163,13 @@ All values are defaults, configurable per organization.
 
 ### 4.5 Step-up
 
-Designated sensitive actions need a recent `mfaVerifiedAt`; otherwise the API returns `403 REAUTHENTICATION_REQUIRED` (spec §4.2, spec §6.2). On iOS, LocalAuthentication additionally gates signing and export on the device. Named so far: MFA enrollment and removal (spec §6.3), and leaving staff-assisted patient signing mode, which requires staff re-authentication (UD-31; `DESIGN_SYSTEM.md` rule C13). The full list and the recency window are not specified; each layer's feature prompt names its step-up actions, and the Layer 1 list is set at kickoff (UD-18).
+Designated sensitive actions need a recent `mfaVerifiedAt`; otherwise the API returns `403 REAUTHENTICATION_REQUIRED` (spec §4.2, spec §6.2). On iOS, LocalAuthentication additionally gates signing and export on the device. Named so far: MFA enrollment and removal, password change (spec §6.3), and leaving staff-assisted patient signing mode, which requires staff re-authentication (UD-31; `DESIGN_SYSTEM.md` rule C13). The full list and the recency window are not specified; each layer's feature prompt names its step-up actions, and M1.3 fixes the Layer 1 recency window.
 
 ### 4.6 Organization switch
 
-`PUT /auth/session/organization` re-checks the membership in the target organization and issues new tokens bound to it (spec §4.2). Tokens for the old organization stop being useful for the new one because tenant context comes only from the token. How the first organization is chosen at sign-in for a user with several memberships is decided at M1.3.
+`PUT /auth/session/organization` re-checks the membership in the target organization and issues new tokens bound to it. It is audited as `ORGANIZATION_SWITCHED`, and every later event carries the new tenant (spec §4.2, spec §7.3; ADR-0018 K-04). Tokens for the old organization stop being useful for the new one because tenant context comes only from the token. How the first organization is chosen at sign-in for a user with several memberships is decided at M1.3.
+
+Because sign-in already applies the strictest MFA policy among the user's active memberships (§3), a switch never meets a stricter policy than the one satisfied at sign-in. What happens when a membership is added or a policy is tightened during a session is not specified (§14).
 
 ### 4.7 Revocation
 
@@ -157,10 +179,14 @@ Revocation takes effect on the very next request, because every request loads th
 |---|---|---|---|
 | Sign out | `POST /auth/logout` | `LOGOUT` | `LOGOUT` |
 | User revokes one of their own sessions or devices | `DELETE /auth/sessions/{id}` | `LOGOUT` or `DEVICE_REVOKED` (confirmed at M1.3) | `SECURITY_SESSION_REVOKED` |
-| Administrator revokes a user's sessions or devices | `POST /users/{id}/sessions/revoke` (`security.manage`) | `ADMIN_REVOKED`, `DEVICE_REVOKED` | `SECURITY_SESSION_REVOKED` |
-| User or membership disabled | `POST /users/{id}/disable` | `USER_DISABLED`, `MEMBERSHIP_DISABLED` | `USER_DISABLED`, `SECURITY_SESSION_REVOKED` |
+| Organization administrator revokes a user's sessions or devices | `POST /users/{id}/sessions/revoke` (`security.manage`): only the sessions bound to the administrator's organization | `ADMIN_REVOKED`, `DEVICE_REVOKED` | `SECURITY_SESSION_REVOKED` |
+| Platform security revokes a user's sessions | `POST /users/{id}/sessions/revoke` with `security.manage` at platform scope: all of the user's sessions | `ADMIN_REVOKED` | `SECURITY_SESSION_REVOKED` |
+| Membership disabled | `POST /users/{id}/disable`: ends only that organization's sessions | `MEMBERSHIP_DISABLED` | `USER_DISABLED`, `SECURITY_SESSION_REVOKED` |
 | Refresh-token reuse | `POST /auth/token/refresh` | `REFRESH_TOKEN_REUSE` | `SECURITY_SESSION_REVOKED` |
-| Credential changed | Password reset (spec §6.3 has no separate password-change endpoint) | `CREDENTIAL_CHANGED` (the reason exists in the schema; which sessions it revokes is decided at M1.3) | Not specified (§14) |
+| Password reset completed | `POST /auth/password/reset`: all of the user's sessions | `CREDENTIAL_CHANGED` | `SECURITY_CREDENTIAL_CHANGED`, `SECURITY_SESSION_REVOKED` |
+| Administrator MFA reset | `POST /users/{id}/mfa-reset` (`security.manage`): removes the second factors and ends all of the user's sessions | `CREDENTIAL_CHANGED` or `ADMIN_REVOKED` (confirmed at M1.6) | `SECURITY_CREDENTIAL_CHANGED`, `SECURITY_SESSION_REVOKED` |
+
+The scope rules are spec §4.2 (ADR-0018 K-12). An organization administrator never ends a user's sessions in another organization; a password reset, an administrator MFA reset and platform security end all of them. A password change through `POST /auth/password/change` is audited, but the spec does not say whether it ends the user's other sessions (§14). The schema reason `USER_DISABLED` fits a disable of the platform-level user; no spec §6.3 endpoint does that yet.
 
 ---
 
@@ -168,18 +194,19 @@ Revocation takes effect on the very next request, because every request loads th
 
 | Concern | Provider iOS/iPadOS | Patient iOS | Admin web SPA |
 |---|---|---|---|
-| Refresh token | Keychain, access control `.biometryCurrentSet` with device-passcode fallback (spec §4.2) | Keychain [B §21.1] | Held in memory plus a `SameSite=Strict` HttpOnly cookie (spec §4.2) |
-| Access token | Not specified by the spec; kept in memory is the natural reading for a 10-minute token (confirm at M1.9) | As provider app | Not specified; in memory is the natural reading (confirm at M1.11) |
+| Refresh token | Keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` with access control `.biometryCurrentSet`; **no fallback to the device passcode** (spec §4.2; ADR-0018 K-22) | Keychain (spec §4.2) [B §21.1]; biometrics are optional in this app, so its access-control flags are set in Layer 5 | **Only** in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie whose path is `/api/v1/auth/token/refresh` (spec §4.2; ADR-0018 K-11) |
+| Access token | In memory (spec §4.2) | In memory (spec §4.2) | In memory; never in web storage (spec §4.2) |
 | Unlock | LocalAuthentication gates app unlock after 5 min in the background, and step-up actions (signing, export) | Biometrics optional | Not applicable |
-| Browser controls | Not applicable | Not applicable | Strict CORS (admin origin only), `Cache-Control: no-store` on PHI responses, HSTS (spec §6.1.10) |
-| MFA | Per organization policy | Not specified | Required (spec §4.2) |
+| Browser controls | Not applicable | Not applicable | Every cookie-authenticated request must carry an allow-listed `Origin` (CSRF defense, spec §4.2); strict CORS (admin origin only), `Cache-Control: no-store` on PHI responses, HSTS (spec §6.1.10) |
+| MFA | Always for an admin role; otherwise per organization policy, which may only add users (spec §4.2) | Not specified | Always required (spec §4.2; ADR-0018 K-03) |
 | Deep links | Always re-run authorization; never trust cached UI state [B §24.5] | Same | Same (route guards are hints only) |
-| On revocation or sign-out | Clear Keychain items; purge cached patients and media per cache policy (UD-25) | Clear Keychain items | Drop in-memory tokens; cookie handling per the M1.3 decision |
+| On revocation or sign-out | Clear Keychain items; purge cached patients and media per cache policy (UD-25) | Clear Keychain items | Drop in-memory tokens; the server rejects the cookie's refresh token once the session is revoked (spec §7.5) |
 
 Notes:
 
-- `.biometryCurrentSet` invalidates the Keychain item when the device's enrolled biometrics change, so the user must sign in again with the password. The Layer 1 app treats this as an ordinary sign-in, not an error.
-- The admin SPA wording in spec §4.2 does not say which secret the HttpOnly cookie carries. The split (for example, cookie-held refresh credential versus in-memory tokens), page-reload behavior and any extra CSRF measure beyond `SameSite=Strict` plus strict CORS are decided at M1.3 together with the admin web shell (M1.11).
+- There is no PKCE. PKCE protects redirect-based authorization-code flows, and Aestara's clients sign in directly with `POST /auth/login` over TLS (spec §4.2; ADR-0018 K-11).
+- `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` keeps the refresh token on this device only, out of iCloud Keychain backup and sync. `.biometryCurrentSet` makes the item unreadable when the enrolled biometrics change. If biometrics are unavailable or have changed, the user signs in again with password and MFA; there is no fallback to the device passcode (spec §4.2; ADR-0018 K-22). The Layer 1 app treats this as an ordinary sign-in, not an error.
+- The admin web never holds the refresh token in script: the cookie is sent only to the refresh path. A page reload loses the in-memory access token, and the SPA gets a new one from `POST /auth/token/refresh` with the cookie. `SameSite=Strict`, the `Origin` allow-list and strict CORS together guard against CSRF (spec §4.2; ADR-0018 K-11). The admin SPA's Content Security Policy is not specified (§14).
 - The design prototype (`apps/design-prototype`) has no authentication by design (ADR-0009) and is never a reference for these flows.
 
 ---
@@ -203,15 +230,19 @@ sequenceDiagram
   A->>D: load User by kind and normalized email, and the active PASSWORD credential
   A->>A: verify Argon2id hash
   alt unknown user, wrong password, locked or no active membership
-    A->>D: insert LoginEvent LOGIN_FAILURE with reason, and AuditEvent LOGIN_FAILURE
+    A->>D: insert LoginEvent LOGIN_FAILURE with reason
+    A->>D: insert AuditEvent LOGIN_FAILURE only if the identifier matches a user
     A-->>C: generic failure, identical for unknown user and wrong password
   else second factor required by policy
+    A->>D: store hashed MFA challenge token (UserToken MFA_CHALLENGE)
+    A->>D: insert LoginEvent MFA_CHALLENGE_ISSUED, no AuditEvent
     A-->>C: 401 MFA_REQUIRED with an MFA challenge
-    C->>A: POST /auth/mfa/verify with TOTP code or passkey assertion
+    C->>A: POST /auth/mfa/verify with the challenge and a TOTP code or passkey assertion
     alt factor invalid
       A->>D: insert LoginEvent LOGIN_FAILURE MFA_FAILED, and AuditEvent LOGIN_FAILURE
       A-->>C: generic failure
     else factor valid
+      A->>D: consume the challenge token
       A->>D: create Session, set mfaVerifiedAt, store refresh token hash
       A->>D: insert LoginEvent LOGIN_SUCCESS, and AuditEvent LOGIN_SUCCESS
       A-->>C: access token and refresh token
@@ -224,9 +255,11 @@ sequenceDiagram
 ```
 
 - Which identity kind is authenticated follows from the client (`app`): the provider app and admin web sign in WORKFORCE users, the patient app PATIENT users. This is the reading of the `(kind, email)` key; confirm at M1.3.
-- Spec §4.2 asks for "PKCE-style proof" for native apps. The Layer 1 endpoint set is a direct credential exchange at `/auth/login`; how the proof binds into that exchange is decided at M1.3.
-- The diagram writes nothing when it returns the MFA challenge. `LoginFailureReason` includes MFA_REQUIRED, so the schema anticipates ledgering that step; whether it is written as a `LoginEvent` LOGIN_FAILURE, and whether it is also audited, is decided at M1.3.
-- Patients first set their credentials by accepting an invitation: `POST /auth/patient-invitations/{token}/accept` (Layer 5), which links the account and audits `PATIENT_ACCOUNT_LINKED`.
+- This is a direct first-party login over TLS. There is no redirect-based authorization-code flow, so there is no PKCE (spec §4.2; ADR-0018 K-11).
+- **When a second factor is required:** always for the admin web and for a user holding any admin role; otherwise when the strictest `security.mfaPolicy` among the user's active memberships requires it (spec §4.2; ADR-0018 K-03).
+- **The MFA step is not a failure.** `401 MFA_REQUIRED` means "password accepted, second factor pending". It is written as `LoginEvent` `MFA_CHALLENGE_ISSUED`, with no `AuditEvent`, and it does not count toward lockout. `LoginFailureReason` has no MFA_REQUIRED value (spec §4.2; ADR-0018 K-15). The challenge is a `UserToken` bound to the client app (§3.1).
+- **Unknown identifier:** the attempt is recorded in `LoginEvent` only (keyed hash of the identifier, IP, reason), because an `AuditEvent` with actor type USER needs a user. An `AuditEvent` `LOGIN_FAILURE` is written when the identifier matches a user. The client response is identical either way (spec §4.2; ADR-0018 K-13).
+- Staff first set their credentials by accepting an invitation (§6.6). Patients do the same with `POST /auth/patient-invitations/accept`, the token in the request body (Layer 5), which links the account and audits `PATIENT_ACCOUNT_LINKED` (spec §6.5, spec §6.1.10; ADR-0018 K-09).
 
 ### 6.2 Refresh and rotation
 
@@ -287,7 +320,7 @@ sequenceDiagram
   Admin->>W: revoke sessions for a user
   W->>A: POST /users/ID/sessions/revoke
   A->>A: authorize security.manage in the caller's organization
-  A->>D: set revokedAt and revokedReason ADMIN_REVOKED on the target sessions
+  A->>D: set revokedAt and revokedReason ADMIN_REVOKED on the target's sessions bound to that organization
   A->>D: insert AuditEvent SECURITY_SESSION_REVOKED
   A-->>W: success
   P->>A: any call with an access token that has not yet expired
@@ -319,6 +352,16 @@ sequenceDiagram
   end
 ```
 
+### 6.6 Staff invitation and the first administrator
+
+| Step | Endpoint | Audit |
+|---|---|---|
+| An administrator invites a user and creates the membership; the api emails a single-use invitation token (`UserToken` INVITATION, naming the organization) through SES | `POST /users` (`user.create`, never for oneself) | `USER_CREATED` |
+| The user accepts with the token in the request body: sets the password, enrolls a second factor where policy requires it, and the membership becomes active | `POST /auth/invitations/accept` (public, invitation token) | `SECURITY_CREDENTIAL_CHANGED` |
+| The platform invites an organization's first ORGANIZATION_ADMIN, only while the organization has no active one | `POST /organizations` or `POST /organizations/{id}/admin-bootstrap` (`organization.manage` at platform scope) | `CONFIGURATION_CHANGED` (create); `USER_CREATED`, `ROLE_ASSIGNED` (bootstrap) |
+
+Sources: spec §4.5 rule 2, spec §6.3; ADR-0018 K-05, K-09, K-14. The invitation token's lifetime is not specified (§14).
+
 ---
 
 ## 7. Lockout and rate limiting (UD-27)
@@ -326,15 +369,15 @@ sequenceDiagram
 | Control | Design | Source |
 |---|---|---|
 | Edge | AWS WAF per-IP rate rules on public and authentication endpoints | spec §6.1.10, spec §7.1 |
-| Account | Progressive lockout after repeated login failures, computed from `LoginEvent` | spec §6.1.10 |
+| Account | Progressive lockout computed from `LoginEvent`: 5 consecutive failures lock the account for 15 minutes; each further lock within 24 hours doubles the period, up to 24 hours. The count restarts after a successful sign-in or a password reset. `MFA_CHALLENGE_ISSUED` is not a failure and does not count | spec §4.2, spec §6.1.10; ADR-0018 K-15 |
 | Sensitive endpoints | Per-user limits on exports, AI generation and search; `429 RATE_LIMITED` with `Retry-After` | spec §6.1.10 |
 | Counter store | Database-backed in Layer 1; a shared Valkey (ElastiCache) store once more than one API task runs | spec §10.2 (UD-27) |
 | Correlation | `LoginEvent` stores the submitted identifier only as a keyed hash (`identifierHash`), plus IP and user agent, so brute-force patterns can be found without keeping typed input | `schema.prisma` |
 | Alerts | Login-failure spikes, `ACCESS_DENIED` bursts, refresh-token reuse | spec §7.6 |
 
-Server-side failure reasons (`LoginFailureReason`): INVALID_CREDENTIALS, ACCOUNT_LOCKED, ACCOUNT_DISABLED, NO_ACTIVE_MEMBERSHIP, MFA_REQUIRED, MFA_FAILED, RATE_LIMITED. They go to the ledger, never to the client in a form that reveals whether an account exists (spec §4.2).
+Server-side failure reasons (`LoginFailureReason`): INVALID_CREDENTIALS, ACCOUNT_LOCKED, ACCOUNT_DISABLED, NO_ACTIVE_MEMBERSHIP, MFA_FAILED, RATE_LIMITED. They go to the ledger, never to the client in a form that reveals whether an account exists (spec §4.2). A pending second factor is not a failure: it is the `LoginEvent` type `MFA_CHALLENGE_ISSUED` (ADR-0018 K-15).
 
-**Not specified, decided at Layer 1 kickoff (UD-27, M1.3):** failure thresholds and the backoff curve; lock duration; whether lockout sets `User.status = LOCKED` or is purely time-based; the unlock path; and how a locked account is signaled without enabling enumeration.
+The UD-27 baseline (WAF plus database-backed lockout in Layer 1; a shared counter store only when more than one api task runs) was re-confirmed unchanged in ADR-0018. **Still not specified, decided in M1.3:** whether lockout also sets `User.status = LOCKED` or stays purely time-based; any unlock path besides the lock expiring; and how a locked account is signaled without enabling enumeration.
 
 ---
 
@@ -342,14 +385,15 @@ Server-side failure reasons (`LoginFailureReason`): INVALID_CREDENTIALS, ACCOUNT
 
 | Case | Specified | Not specified (decision point) |
 |---|---|---|
-| Forgotten password | `POST /auth/password/forgot` and `POST /auth/password/reset`, public, with an **identical response for unknown accounts** (spec §6.3). Layer 1 | Delivery channel, token format, lifetime and single use; whether a reset also requires the second factor; which sessions are revoked (`CREDENTIAL_CHANGED` exists); the audit event. **Layer 1 kickoff (M1.3)** |
-| Lost second factor (TOTP device or passkey) | Nothing | Recovery codes, administrator-assisted reset, identity proofing. **Layer 1 kickoff (M1.3)**, as a new entry in spec §10.2 plus an ADR, because it is the most common account-takeover path |
+| Forgotten password | `POST /auth/password/forgot` and `POST /auth/password/reset`, public, with an **identical response for unknown accounts**. The reset token is sent by email, stored only as a hash (`UserToken` PASSWORD_RESET), valid **30 minutes**, single use, and travels in the request body. Completing a reset revokes all the user's sessions and is audited as `SECURITY_CREDENTIAL_CHANGED` and `SECURITY_SESSION_REVOKED` (spec §4.2, spec §6.3; ADR-0018 K-15). Layer 1 (M1.3) | Whether a reset also requires the second factor. **M1.3** |
+| Password change while signed in | `POST /auth/password/change` needs the current password and a recent MFA; audited as `SECURITY_CREDENTIAL_CHANGED` (spec §4.2, spec §6.3; ADR-0018 K-15). Layer 1 (M1.3) | Whether it also ends the user's other sessions. **M1.3** |
+| Lost second factor (TOTP device or passkey) | An administrator-initiated MFA reset: `POST /users/{id}/mfa-reset` (`security.manage`) removes the factors and revokes all sessions, and the user enrolls again at the next sign-in. An organization administrator may reset only a user whose sole active membership is in that organization; otherwise platform security does it, because credentials are platform-level. Audited as `SECURITY_CREDENTIAL_CHANGED` and `SECURITY_SESSION_REVOKED` (spec §4.2, spec §6.3; ADR-0018 K-15). Layer 1 (M1.6) | How the administrator verifies the requester's identity before the reset. **M1.6** |
 | Patient account recovery | Nothing | **Layer 5 kickoff**, with UD-08 |
-| Email verification | `User.emailVerifiedAt` exists | When verification is required. **Layer 1 kickoff** |
+| Email verification | `User.emailVerifiedAt` exists | When verification is required. **M1.3** |
 
-Two constraints bind whatever is chosen: recovery must not let platform or support staff reach patient data [B §17.2], and every recovery action that changes a credential must end in an audit trail.
+Two constraints bind every recovery path: recovery must not let platform or support staff reach patient data [B §17.2], and every recovery action that changes a credential ends in an audit trail (`SECURITY_CREDENTIAL_CHANGED`, spec §7.3).
 
-Delivery of staff invitations and password-reset messages is also open: `POST /users` (invite) and the reset endpoints are Layer 1, while the notifications service and the local mail catcher arrive with Layer 5 (roadmap, ADR-0010).
+Invitation and password-reset email goes out from the api through Amazon SES in Layer 1, with Mailpit in local `docker compose`; the notifications service still arrives in Layer 5 (ADR-0018 K-14).
 
 ---
 
@@ -383,22 +427,24 @@ Delivery of staff invitations and password-reset messages is also open: `POST /u
 - `/internal/v1` is never internet-routable (spec §6.1.1). Each service has its own IAM role, and queue policies are set per producer and consumer (spec §7.1).
 - Internal payloads, as specified, carry organization, job and object identifiers and job parameters only; never names, dates of birth, MRNs or other demographics (spec §3.1, spec §6.7).
 - Imaging and AI services cannot query the database. The api persists their results and audits system transitions with actor type SERVICE (`AuditEvent.actorServiceId`).
-- Workers share the api codebase and access PostgreSQL directly (spec §3.1). Like request handlers, they must run tenant-owned work inside a transaction that sets the tenant context, so RLS applies (ADR-0004; see [`AUTHORIZATION_RBAC.md`](AUTHORIZATION_RBAC.md)).
+- Workers share the api codebase and access PostgreSQL directly (spec §3.1). Like request handlers, they set the tenant for each job and run tenant-owned work inside a transaction that sets the tenant context, so RLS applies (spec §3.5; ADR-0004; ADR-0018 K-16; see [`AUTHORIZATION_RBAC.md`](AUTHORIZATION_RBAC.md)).
 
 ---
 
 ## 11. Audit events for authentication
 
-The normative catalog is spec §7.3. Every login attempt writes **both** a `LoginEvent` (security ledger) and an `AuditEvent`; both tables are append-only by trigger (spec §5.5).
+The normative catalog is spec §7.3. Every login attempt writes a `LoginEvent` (security ledger). An `AuditEvent` is also written when the identifier matches a user; an unknown identifier is recorded in `LoginEvent` only, and the MFA challenge step (`MFA_CHALLENGE_ISSUED`) writes no `AuditEvent` (spec §4.2; ADR-0018 K-13, K-15). Both tables are append-only by trigger (spec §5.5).
 
 | Event | Written when |
 |---|---|
 | `LOGIN_SUCCESS` | Sign-in completes (after the second factor when required) |
-| `LOGIN_FAILURE` | Any failed attempt, including a failed second factor |
+| `LOGIN_FAILURE` | A failed attempt for an identifier that matches a user, including a failed second factor |
 | `LOGOUT` | `POST /auth/logout` |
-| `SECURITY_SESSION_REVOKED` | Any revocation other than logout: own-session revoke, administrator revoke, disable, refresh-token reuse |
+| `SECURITY_SESSION_REVOKED` | Any revocation other than logout: own-session revoke, administrator revoke, disable, refresh-token reuse, password reset, administrator MFA reset |
+| `SECURITY_CREDENTIAL_CHANGED` [P] | Password changed or reset, second factor enrolled or removed, administrator MFA reset, invitation accepted. Details give the factor type and the action, never a secret (ADR-0018 K-04) |
+| `ORGANIZATION_SWITCHED` [P] | `PUT /auth/session/organization` (ADR-0018 K-04) |
 | `USER_DISABLED` | Membership disabled; the revoked sessions are also audited as `SECURITY_SESSION_REVOKED` |
-| `ACCESS_DENIED` [P] | Authorization failures on sensitive endpoints (see [`AUTHORIZATION_RBAC.md`](AUTHORIZATION_RBAC.md)) |
+| `ACCESS_DENIED` [P] | Authorization failures on routes that touch patient data; identical repeats from one actor collapse into one event with a count (ADR-0018 K-10; see [`AUTHORIZATION_RBAC.md`](AUTHORIZATION_RBAC.md)) |
 | `PATIENT_ACCOUNT_LINKED` [P] | Patient invitation accepted (Layer 5) |
 
 Event contents follow [B §22.2]: actor, organization, action, time, request ID, session, device, IP and user agent. **Passwords, codes, tokens, challenge values and typed identifiers are never logged or audited**; the log allow-list and the PHI canary test enforce it (spec §7.2).
@@ -412,19 +458,22 @@ Bible §36 requires "session expiration/revocation tested; secrets stored secure
 | Test | Level and tool | Layer |
 |---|---|---|
 | Argon2id hashing; wrong password rejected; no plaintext or reversible secret stored | Unit (Vitest) | L1 |
-| Unknown user and wrong password return identical responses, apart from `requestId`; same for password-reset requests | API (Testcontainers PostgreSQL) | L1 |
-| MFA challenge flow; MFA required for admin web and admin roles per policy; TOTP and passkey verification | API | L1 |
+| Password policy: fewer than 12 characters, or a common or breached password, is rejected; no composition rule is enforced | Unit, API | L1 |
+| Unknown user and wrong password return identical responses, apart from `requestId`; same for password-reset requests; an unknown identifier writes a `LoginEvent` and no `AuditEvent` | API (Testcontainers PostgreSQL) | L1 |
+| MFA challenge flow: always required for the admin web and admin roles; organization policy only adds users; the strictest policy among active memberships applies at sign-in; the challenge writes `MFA_CHALLENGE_ISSUED`, no `AuditEvent`, and does not count toward lockout; TOTP and passkey verification | API | L1 |
+| One-time tokens: stored only as a hash; an expired, consumed or over-attempted token is rejected; a reset token expires after 30 minutes; no token is accepted in a path or query string | API, contract | L1 |
+| Password reset and administrator MFA reset revoke all the user's sessions; password change needs the current password and a recent MFA; each writes `SECURITY_CREDENTIAL_CHANGED` | API | L1 |
 | Refresh rotation: the previous token is rejected after use; reuse revokes the whole session and writes `SECURITY_SESSION_REVOKED` | API | L1 |
 | Revoked session: access **and** refresh tokens rejected on the very next request (spec §7.5) | API | L1 |
 | Idle and absolute expiry for each client default | API (controlled clock) | L1 |
-| Disabling a user or membership revokes all their sessions | API | L1 |
-| Organization switch re-checks membership; tokens carry only the new organization; body or path organization IDs are ignored | API plus cross-tenant suite | L1 |
+| Revocation scope: disabling a membership, or an organization administrator's revocation, ends only that organization's sessions; platform security ends all of them | API | L1 |
+| Organization switch re-checks membership and writes `ORGANIZATION_SWITCHED`; tokens carry only the new organization; body or path organization IDs are ignored | API plus cross-tenant suite | L1 |
 | Tokens contain no permissions; a revoked role takes effect on the next call | API | L1 |
-| Lockout and `429 RATE_LIMITED` with `Retry-After` | API | L1 |
+| Lockout: 5 consecutive failures lock for 15 minutes, doubling within 24 hours up to 24 hours; `429 RATE_LIMITED` with `Retry-After` | API (controlled clock) | L1 |
 | `LoginEvent` and `AuditEvent` are append-only; a failure always carries a reason | DB behavior suite (B7, B8, G series) | L1 |
 | Secrets and PHI canary strings never appear in logs | API log capture | L1 |
-| Keychain storage with biometric access control; re-authentication after 5 min in the background; deep links re-authorize | Swift Testing, XCUITest | L1 |
-| Admin web sign-in with MFA; no token in web storage | Playwright | L1 (with M1.11) |
+| Keychain storage this-device-only with `.biometryCurrentSet`; changed biometrics force a password and MFA sign-in; re-authentication after 5 min in the background; deep links re-authorize | Swift Testing, XCUITest | L1 |
+| Admin web sign-in with MFA; no token in web storage; the refresh cookie is `HttpOnly`, `Secure`, `SameSite=Strict` and limited to the refresh path; a cookie request without an allow-listed `Origin` is rejected | Playwright, API | L1 (with M1.11) |
 | Login p95 within the RLS performance gate | Benchmark (ADR-0004) | L1 |
 | Service authentication on `/internal/v1` rejects unsigned callers | Integration | L7 |
 | External penetration test | Third party | Before production (ADR-0002) |
@@ -446,22 +495,18 @@ Whatever the answers, these invariants stay: server-side sessions with immediate
 
 ## 14. Open items
 
+The Layer 1 kickoff (ADR-0018) settled the MFA rule, client token handling, lockout thresholds, password policy, reset and recovery, login audit, revocation scope, email delivery, the Keychain settings and the body-borne invitation tokens; the sections above state each decision. What remains:
+
 | Item | Confirmed at |
 |---|---|
-| UD-18 session lifetimes and MFA defaults (§4.4) | L1 kickoff |
-| UD-27 rate-limit store; lockout thresholds, duration and unlock path (§7) | L1 kickoff |
-| Account recovery: password reset details, lost second factor, email verification (§8) | L1 kickoff (new decision-register entry and ADR) |
-| MFA policy is per organization, but sign-in happens before an organization is selected: which policy applies at sign-in, and whether switching into a stricter organization forces a second factor | L1 kickoff |
-| Admin SPA cookie contents, reload behavior and CSRF measures (§5) | L1 kickoff (M1.3, M1.11) |
-| PKCE-style proof for native apps versus the direct `/auth/login` exchange (§6.1) | L1 kickoff (M1.3) |
-| Refresh concurrency grace window, if any (§4.3) | L1 kickoff (M1.3) |
-| Audit events for MFA enrollment and removal, password reset, and organization switch (none listed in spec §6.3); a password-change endpoint for signed-in users is also absent from spec §6.3 | L1 kickoff (UD-19) |
-| How `LOGIN_FAILURE` for an unknown identifier is recorded, since `AuditEvent_actor_chk` requires a user ID for actor type USER | L1 kickoff (M1.3) |
-| Whether the password step that ends in an MFA challenge is ledgered (`LoginFailureReason` MFA_REQUIRED exists) and audited (§6.1) | L1 kickoff (M1.3) |
-| Scope of administrator revocation and of "disable revokes all sessions" for a user who also works in other organizations | L1 kickoff |
-| Session policy for platform operators, whose sessions have no organization | L1 kickoff |
-| Delivery channel for staff invitations and password reset before the Layer 5 notifications service | L1 kickoff |
-| Keychain accessibility class for tokens (a this-device-only class keeps them out of iCloud Keychain backup and sync), and the exact access-control flags: `.biometryCurrentSet` alone gives no device-passcode fallback, which spec §4.2 asks for ([`IOS_ARCHITECTURE.md`](IOS_ARCHITECTURE.md) open items) | L1 (M1.9) |
-| The patient invitation token travels in the URL path (`/auth/patient-invitations/{token}/accept`), which the spec's URL-logging rationale (spec §6.1.10) argues against for secrets; the proposed fix moves it into the request body ([`API_CONTRACTS.md`](API_CONTRACTS.md) open items) | L1 kickoff; the endpoint itself is Layer 5 |
+| Lockout details: whether lockout also sets `User.status = LOCKED`, any unlock path besides the lock expiring, and how a locked account is signaled without enumeration (§7) | M1.3 |
+| Whether a password reset also requires the second factor, and whether a password change ends the user's other sessions (§4.7, §8) | M1.3 |
+| Email verification: when it is required (§8) | M1.3 |
+| Refresh concurrency grace window, if any (§4.3) | M1.3 |
+| Session policy for platform operators, whose sessions have no organization | M1.3 |
+| A membership added or an MFA policy tightened during a session: whether the next organization switch needs a new second factor (§4.6) | M1.3 |
+| Lifetime of the staff invitation token (§6.6), and how an administrator verifies the requester's identity before an MFA reset (§8) | M1.6 |
+| Content Security Policy for the admin SPA (§5; [`SECURITY_REQUIREMENTS.md`](SECURITY_REQUIREMENTS.md) open items) | M1.11 |
+| Keychain access-control flags for the patient app, where biometrics are optional (§5) | L5 kickoff |
 | Service-to-service mechanism for ai-gateway: IAM-signed requests or mTLS | L7 kickoff (M7.1) |
 | Offline duration and replay after re-sign-in (§9) | L2 kickoff (UD-25) |

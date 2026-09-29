@@ -48,13 +48,17 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Generated files are up to date (design tokens, OpenAPI)
+      - name: Generated files are up to date (design tokens, OpenAPI, shared enums)
         run: |
           pnpm tokens
           git diff --exit-code -- \
             packages/design-tokens/generated \
             apps/ios-provider/Modules/DesignSystem/Sources/DesignSystem/DesignTokens.swift \
-            packages/api-contracts/openapi.json
+            packages/api-contracts/openapi.json \
+            packages/shared-types/generated
+
+      - name: Database schema, catalog and constraint migrations match the design
+        run: pnpm --filter @aestara/database schema:check
 
       - uses: actions/setup-go@v6
         with:
@@ -115,6 +119,52 @@ jobs:
         env:
           DATABASE_URL: postgresql://verify:verify@localhost:5432/aestara_verify
         run: bash docs/technical-spec/verification/run_schema_checks.sh
+
+  database:
+    name: Database · migrations · RLS · behaviour · RLS benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: verify
+          POSTGRES_PASSWORD: verify
+          POSTGRES_DB: aestara_verify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U verify -d aestara_verify"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      ADMIN_DATABASE_URL: postgresql://verify:verify@localhost:5432/aestara_verify
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Enable pnpm (corepack, version from package.json)
+        run: corepack enable
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+      - name: Migrations as a non-superuser, drift, ownership and RLS, Layer 1 behaviour suite
+        run: pnpm --filter @aestara/database db:test
+
+      # ADR-0004 gate. Report only until the owner decides the search design
+      # under RLS (packages/database/README.md, "RLS performance").
+      - name: RLS performance benchmark (report)
+        run: pnpm --filter @aestara/database bench:rls --report-only | tee -a "$GITHUB_STEP_SUMMARY"
 
   terraform:
     name: Terraform · fmt · validate · tflint · checkov

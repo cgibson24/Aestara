@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28. CI gates are live; nothing is deployed yet. |
-| Authority | Bible §26 (runbooks, feature flags), §28 (environments, CI gates, deployment), §30 (the owner approves progression); ADR-0010 |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29. CI gates are live; nothing is deployed yet. |
+| Authority | Bible §26 (runbooks, feature flags), §28 (environments, CI gates, deployment), §30 (the owner approves progression); ADR-0010, ADR-0018 (Layer 1 kickoff: K-14, K-21, K-23) |
 | Normative sources | spec §2.3 (CI/CD), spec §7.6 (migrations, AI deployments, runbooks); `.github/workflows/ci.yml`, `infrastructure/terraform`, [INFRASTRUCTURE.md](INFRASTRUCTURE.md) |
 
 This document explains how a change travels from a branch to production, and how each kind of artifact is released:
@@ -31,7 +31,7 @@ flowchart LR
 ```
 
 - Work happens on a feature branch. The owner approves merges to `main` (`CLAUDE.md`).
-- `main` deploys to dev automatically once deployment is wired in Layer 1.
+- `main` deploys to dev automatically once deployment is wired. Layer 1 is built and proven locally and in CI; nothing is deployed until the owner inputs for the first deployment exist (AWS accounts, the BAA, domain names; [LAYER_1_KICKOFF.md](LAYER_1_KICKOFF.md) §3).
 - Promotion to staging and then production deploys **the same immutable artifacts**. Only configuration differs.
 - **No deployment when a required gate fails** [B §28.2].
 
@@ -43,7 +43,7 @@ flowchart LR
 | Type checking | `workspace` (tsc) | Live |
 | Unit, API and database tests | `workspace` (Vitest), `spec` (database behaviour suite on PostgreSQL 18); the API and cross-tenant suites join in Layer 1 | Live, grows each layer |
 | Migration validation | `spec` (fresh database: schema plus constraints). Per-layer migrations from Layer 1 | Live |
-| Dependency and security scanning | `security` (OSV-Scanner); Dependabot updates | Live |
+| Dependency and security scanning | `security` (OSV-Scanner); Dependabot updates. GitHub CodeQL (SAST) and gitleaks (secret scanning) from M1.2 (ADR-0018 K-21) | Live; CodeQL and gitleaks in M1.2 |
 | Container scanning | Trivy on each image before push | Layer 1, with the first image |
 | Terraform validation and plan review | `terraform` (validate, tflint, checkov); the plan is reviewed by a person before any apply | Validation live; plan review with the first account |
 | iOS build and tests | `ios` (macOS 26, Xcode 26.6) | Live |
@@ -51,6 +51,8 @@ flowchart LR
 | Documentation integrity | `spec` (pack completeness, references, Bible export) | Live |
 
 Flaky tests are fixed, never skipped, disabled or quarantined to get a green build ([TESTING_STRATEGY.md](TESTING_STRATEGY.md)).
+
+Third-party GitHub Actions are pinned to commit SHAs in M1.2, so a moved tag cannot change what CI runs (ADR-0018 K-21).
 
 ## 3. Services (from Layer 1)
 
@@ -82,7 +84,7 @@ Migrations are forward-planned and use **expand → migrate → contract**:
 1. Change Terraform on a branch. CI runs fmt, validate, tflint and checkov.
 2. After merge, a person runs `terraform plan -out=tfplan` for the target environment, reviews it, and applies exactly that plan.
 3. Production applies need owner approval. A plan that replaces or destroys data stores (RDS, S3) is rejected unless it is the explicit subject of an ADR.
-4. CI never holds long-lived AWS keys. The proposed baseline is GitHub OIDC with per-environment roles; it is decided at Layer 1 kickoff ([INFRASTRUCTURE.md](INFRASTRUCTURE.md) open items).
+4. CI never holds long-lived AWS keys. The proposed baseline is GitHub OIDC with per-environment roles; it is decided with the AWS accounts before the first deployment ([INFRASTRUCTURE.md](INFRASTRUCTURE.md) open items).
 
 ## 6. iOS apps
 
@@ -97,7 +99,7 @@ Before the first TestFlight build we need the Apple Developer team and bundle id
 
 ## 7. Admin web (from Layer 1)
 
-It is a static build of the React SPA (ADR-0003), uploaded to a private S3 bucket and served through CloudFront with WAF. It is fronted only for static assets; it never serves PHI [B §25.3]. Releases are atomic: new assets are uploaded under content-hashed names, then `index.html` is switched and invalidated. Rollback switches `index.html` back.
+Layer 1 builds a minimal shell (M1.11: sign-in, users and roles, the audit viewer) that runs against the Layer 1 API locally and in CI (ADR-0018 K-23). Once deployed, it is a static build of the React SPA (ADR-0003), uploaded to a private S3 bucket and served through CloudFront with WAF. It is fronted only for static assets; it never serves PHI [B §25.3]. Releases are atomic: new assets are uploaded under content-hashed names, then `index.html` is switched and invalidated. Rollback switches `index.html` back.
 
 ## 8. AI models (from Layer 7)
 
@@ -114,6 +116,7 @@ Flags allow controlled rollout per organization or practice [B §26]. **A flag n
 
 - Runtime secrets (database credentials, vendor credentials) live in AWS Secrets Manager. They are injected into ECS tasks as secrets, never as plain environment variables in task definitions or images.
 - Signing keys for access tokens are KMS keys (spec §4.2).
+- Transactional email (invitations, password reset; no PHI) goes through Amazon SES under the BAA; locally, Mailpit in `docker compose` catches it (ADR-0018 K-14).
 - Configuration that is not secret lives in the task definition, per environment.
 - Nothing secret is committed. `.env.example` holds local-only values.
 
@@ -134,7 +137,6 @@ Each runbook is kept with the operations dashboards and exercised before product
 
 | Item | Decision point |
 |---|---|
-| CI → AWS authentication (GitHub OIDC roles) and deployment job | Layer 1 kickoff |
-| Pinning third-party GitHub Actions to commit SHAs | Layer 1 kickoff (see [THREAT_MODEL.md](THREAT_MODEL.md)) |
+| CI → AWS authentication (GitHub OIDC roles) and deployment job | Before the first deployment, with the AWS accounts |
 | iOS distribution model for practices (App Store vs custom apps) | Before the first release to a practice |
 | Release approval roles beyond the owner | Production readiness |

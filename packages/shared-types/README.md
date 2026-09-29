@@ -1,9 +1,7 @@
 # Shared types
 
-Enums and value types generated from the Prisma enums and shared by API, admin web and contract tests.
+Enum values generated from `packages/database/prisma/schema.prisma` (spec §6.8), so API contracts and services use exactly the database's values.
 
-**Status:** placeholder. No code yet, by design: the Bible forbids fake business implementations (§0.1, §31).
-
-**Built in:** Layer 1.
-
-Roadmap: `docs/DEVELOPMENT_ROADMAP.md`.
+- `generated/enums.ts` is committed. `pnpm --filter @aestara/shared-types build` regenerates it, and CI fails if the committed file is out of date.
+- It holds one `as const` array and one union type per enum. It covers only the layers that `packages/database` has built.
+- Clients must tolerate values added later (spec §6.1.1).

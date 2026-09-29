@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Production Bible §2, §3.1, §20.3, §21, §25, §26, §31 ("Architecture requirements"). ADR-0001 (tenancy boundary), ADR-0002 (identity), ADR-0003 (admin SPA), ADR-0004 (RLS), ADR-0006 (US only), ADR-0008 (delegated proposals) |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Production Bible §2, §3.1, §20.3, §21, §25, §26, §31 ("Architecture requirements"). ADR-0001 (tenancy boundary), ADR-0002 (identity), ADR-0003 (admin SPA), ADR-0004 (RLS), ADR-0006 (US only), ADR-0008 (delegated proposals), ADR-0018 (Layer 1 kickoff decisions) |
 | Normative sources | Technical Specification §1 (product), §2 (tech stack), §3.1 (services), §3.3 (request pipeline), §3.4 (key flows), §3.5 (tenant isolation), §6.7 (internal contracts), §7 (security); `technical-spec/schema.prisma` |
 
 This document shows how Aestara is put together: the people and systems it serves, the deployable containers, who owns which data, how a request and an event travel, and how tenant isolation is layered. It organizes and diagrams the locked specification. If this document and the spec disagree, the spec wins and this document is corrected.
@@ -57,12 +57,12 @@ flowchart LR
 
 | External dependency | Used for | Constraint | Source |
 |---|---|---|---|
-| APNs, Amazon SES, AWS End User Messaging (SMS) | Push, email, SMS | Payload is a fixed template key; no patient or clinical content | [B §14.3], spec §2.1, §7.2 |
+| APNs, Amazon SES, AWS End User Messaging (SMS) | Push, email, SMS. From Layer 1 the api sends transactional email (invitations, password reset) through SES; the rest arrives with the notifications service in Layer 5 | Payload is a fixed template key; no patient or clinical content | [B §14.3], spec §2.1, §7.2; ADR-0018 K-14 |
 | EMR and practice-management systems | Inbound and outbound sync of canonical resources | Vendor specifics stay inside adapters; vendor BAA required | [B §18], [EMR_INTEGRATIONS.md](EMR_INTEGRATIONS.md) |
 | Telehealth video vendor | Waiting room, video and audio | BAA-capable vendor; calls are not recorded | [B §16], spec §2.1 (UD-05) |
 | Enterprise identity providers | Not used at launch | Identity is first-party; SSO federation can be added later behind an adapter | ADR-0002 |
 
-Platform operators act through the platform-scope `SUPER_ADMIN` role, which holds no `patient.*` permission, so they cannot browse patient records [B §17.2]. Separation-of-duties rule 2 in spec §4.5 closes the path by which an operator could grant themselves clinical access.
+Platform operators act through the platform-scope `SUPER_ADMIN` role, which holds no `patient.*` permission, so they cannot browse patient records [B §17.2]. Platform permissions reach organization metadata only (organizations, practices, memberships, account status), and the platform database role has no access to patient or clinical tables (spec §3.5, §4.6; ADR-0018 K-06). Separation-of-duties rule 2 in spec §4.5 closes the path by which an operator could grant themselves clinical access.
 
 ---
 
@@ -122,14 +122,14 @@ Supporting AWS services across the platform: Secrets Manager (all secrets), KMS 
 
 | Container | Technology | Responsibility | Talks to | PostgreSQL | Built in |
 |---|---|---|---|---|---|
-| `services/api` | NestJS 12, Fastify, TypeScript 6.0 | All public REST endpoints; authentication and authorization; domain logic and state transitions; the media module (upload intents, signed URLs, storage ledger); audit; outbox writes | PostgreSQL, S3, ai-gateway | **Sole owner of the schema** | Layer 1 |
+| `services/api` | NestJS 12, Fastify, TypeScript 6.0 | All public REST endpoints; authentication and authorization; domain logic and state transitions; the media module (upload intents, signed URLs, storage ledger); audit; outbox writes; transactional email (invitations, password reset) through SES until the notifications service arrives (ADR-0018 K-14) | PostgreSQL, S3, ai-gateway, SES | **Sole owner of the schema** | Layer 1 |
 | worker | Same codebase as api, separate process | Outbox relay, exports, retention jobs, sync orchestration, notification fan-out, permission-expiry job | PostgreSQL, S3, SQS | Yes | Layer 2 onward (outbox relay, roadmap M2.2) |
 | `services/image-processing` | Python 3.13, OpenCV, pyvips (UD-06) | Thumbnails, display previews, normalization, before/after registration, annotated and export renders | SQS, S3 (signed, per object) | **No** | Layer 2 (derivatives), Layer 3 (registration) |
 | `services/ai-gateway` | NestJS (TypeScript) | Internal AI job API, model routing through the active rollout, provenance capture, validation harness | api (internal), SQS, inference | **No**: results return as events | Layer 7 |
 | AI inference | Python, PyTorch or ONNX Runtime, private GPU (UD-04) | Quality, landmarks, segmentation, simulation, identity similarity, artifact detection | ai-gateway only | **No** | Layers 7–8 |
 | `services/notifications` | Not fixed by spec §2 | APNs, email and SMS delivery of generic templates | SQS, providers | No | Layer 5 |
 | `services/integration-service` | Not fixed by spec §2 | FHIR, vendor and CSV adapters behind one `IntegrationAdapter` interface | api (internal), SQS, external EMRs | **No**: api persists mappings | Layer 10 |
-| `apps/admin-web` | React 19, TypeScript, Vite 8, TanStack Router/Query | Administration SPA, served as static assets | api | — | Layer 1 onward (shell confirmed at Layer 1 kickoff) |
+| `apps/admin-web` | React 19, TypeScript, Vite 8, TanStack Router/Query | Administration SPA, served as static assets | api | — | Layer 1 onward: a minimal shell with sign-in, users and roles, and the audit viewer (M1.11; ADR-0018 K-23) |
 | `apps/ios-provider`, `apps/ios-patient` | Swift 6, SwiftUI, Tuist, GRDB + SQLCipher | Provider and patient apps | api | — | Layers 1 and 5 |
 
 Sources: spec §2, §3.1; Bible §25.2 allows either a media service or a media module, and the spec places the media module inside api [P].
@@ -142,10 +142,10 @@ Sources: spec §2, §3.1; Bible §25.2 allows either a media service or a media 
 
 | Data | Owner and writer | Who may read it | Notes |
 |---|---|---|---|
-| All relational records (87 tables) | api, through Prisma Migrate under a migration owner role | api and worker only | Tenancy enforced by composite FKs and RLS; see [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) |
+| All relational records (88 tables) | api, through Prisma Migrate under a migration owner role | api and worker only | Tenancy enforced by composite FKs and RLS; see [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) |
 | Media bytes in S3 | Media module in api owns the `StorageObject` ledger | Clients and services only through short-lived presigned URLs for one object | Keys are opaque random paths, never returned as data (spec §6.1.9, §7.4) |
 | Derivatives, AI outputs | image-processing and inference write new objects; from result events, api records `PhotoDerivative` and `AIValidationRecord` rows and completes the `SimulationVersion` created at `/generate` (spec §3.4 B, §6.7) | As media bytes | Originals are never overwritten [B §6.6] |
-| Audit trail | api and worker insert `AuditEvent` in the same transaction as the change | `audit.read` holders, per tenant | Append-only by trigger and grants; WORM copy in S3 Object Lock (spec §7.3) |
+| Audit trail | api and worker insert `AuditEvent` in the same transaction as the change | `audit.read` holders, per tenant | Append-only by trigger and grants; WORM copy in S3 Object Lock from Layer 2, with the outbox (spec §7.3; ADR-0018 K-18) |
 | Domain events | `OutboxEvent` rows written by api and worker in the same transaction as the change | Relay in worker | Payloads carry identifiers only |
 | Integration mappings and sync runs | api persists; integration-service holds none | api, worker | spec §3.1, §6.7 |
 | Secrets | Secrets Manager | The owning service's IAM role | `Integration.secretRef` stores only a reference |
@@ -234,7 +234,7 @@ Each flow is specified in spec §3.4 and walked through end to end in [WORKFLOWS
 | B. AI visualization | `DRAFT` with same-patient sources, `/generate` freezes parameters and queues an `AIJob`, ai-gateway runs the validation pipeline, provider approves or rejects, release is a separate explicit action with the mandatory disclaimer | spec §3.4, §5.4.2, [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) |
 | C. Patient photo intake | `PhotoRequest`, portal upload into quarantine, malware and file-type checks, staff review, accept or request retake | spec §3.4, §5.4.10 |
 | D. Integration sync | `EMRSyncEvent` with idempotency key, canonical mapping, idempotent upsert through `IntegrationMapping`, conflicts surfaced, dead letters, retry with backoff | spec §3.4, [EMR_INTEGRATIONS.md](EMR_INTEGRATIONS.md) |
-| Authentication | First-party login, MFA, rotating refresh tokens with reuse detection, server-side revocation | spec §4.2, [AUTHENTICATION_ARCHITECTURE.md](AUTHENTICATION_ARCHITECTURE.md) |
+| Authentication | First-party direct login over TLS (no PKCE), MFA, rotating refresh tokens with reuse detection, server-side revocation scoped per organization | spec §4.2, [AUTHENTICATION_ARCHITECTURE.md](AUTHENTICATION_ARCHITECTURE.md) |
 
 ---
 
@@ -248,7 +248,7 @@ Patient data may be shared across the practices of one organization and never ac
 | 2 | Guard | Membership must be `ACTIVE`; permissions evaluated for that organization only | [AUTHORIZATION_RBAC.md](AUTHORIZATION_RBAC.md) |
 | 3 | Data access | A Prisma client extension requires a tenant context and injects `organizationId` into every query on tenant-owned models; unscoped access only through an explicitly named platform repository | [AUTHORIZATION_RBAC.md](AUTHORIZATION_RBAC.md) |
 | 4 | Database constraints | Composite foreign keys that include `organizationId` (and `patientId` where same-patient is required), plus CHECKs that close `MATCH SIMPLE` gaps | [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) §4 |
-| 5 | Row-Level Security | Policies keyed on `SET LOCAL app.organization_id`; application role without `BYPASSRLS`; Layer 1 performance gate (≤ 10% added p95 and ≤ 5 ms) | [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) §6, ADR-0004 |
+| 5 | Row-Level Security | Policies on every tenant-owned table (`FORCE ROW LEVEL SECURITY`) keyed on `SET LOCAL app.organization_id`, set from the verified token; an unset value matches no rows; application role without `BYPASSRLS`; platform role limited to platform tables; Layer 1 performance gate (≤ 10% added p95 and ≤ 5 ms) | [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) §6, spec §3.5, ADR-0004 |
 | 6 | Tests | Generated cross-tenant tests: tenant B credentials against tenant A IDs return a `404` whose body matches a random-UUID request byte for byte, apart from the per-request `requestId` | [TESTING_STRATEGY.md](TESTING_STRATEGY.md), spec §7.5 |
 
 ---
@@ -282,7 +282,7 @@ Versions as checked on 2026-09-25 and recorded in spec §2; lockfiles pin exact 
 | IaC | Terraform, one root module per environment | — |
 | CI/CD | GitHub Actions | — |
 | Tests | Vitest, Testcontainers + PostgreSQL, Playwright, Swift Testing / XCTest + XCUITest | — |
-| Local development | Docker Compose with `postgres:18`; LocalStack and a mail catcher arrive with Layers 2 and 5 | — |
+| Local development | Docker Compose with `postgres:18`; Mailpit (mail catcher) arrives with Layer 1 (M1.3, ADR-0018 K-14) and LocalStack with Layer 2 | — |
 
 Deliberately excluded (spec §2.4): public CDN caching of patient media, PHI-capable third-party analytics or crash SDKs, third-party generative-AI APIs receiving patient images, payment or claims engines, GraphQL.
 
@@ -317,7 +317,7 @@ The pilot is about 10 practices; the design must not block about 1,000 [B §1.1,
 | ~100 practices | Capacity monitoring, worker scaling, stronger queue partitioning, search and index strategy, observability and SLOs | Monthly partitions for `AuditEvent` and `LoginEvent`; read replicas for reporting; consider OpenSearch (spec §5.6) |
 | ~1,000 practices | Horizontal API and worker scaling, database partitioning, tenant-aware rate limits, dedicated AI capacity, disaster-recovery exercises | Evaluate hash partitioning by `organizationId`, RDS Proxy, per-tenant rate limits (spec §5.6); evaluate per-tenant KMS keys (spec §7.1); DR exercise before enterprise rollout (spec §7.6) |
 
-Choices made now so the larger tiers stay open: time-ordered UUIDv7 keys; `organizationId`-leading indexes; `AuditEvent` with no foreign keys so it can be partitioned; stateless API tasks behind a load balancer; queue-driven workers; a shared rate-limit store (ElastiCache for Valkey) once more than one API task runs (UD-27).
+Choices made now so the larger tiers stay open: time-ordered UUIDv7 keys; `organizationId`-leading indexes; `AuditEvent` with no foreign keys so it can be partitioned; stateless API tasks behind a load balancer; queue-driven workers; a shared rate-limit store (ElastiCache for Valkey) once more than one API task runs (UD-27, re-confirmed unchanged in ADR-0018).
 
 ---
 
@@ -357,9 +357,8 @@ Detailed in [INFRASTRUCTURE.md](INFRASTRUCTURE.md) and [DEPLOYMENT.md](DEPLOYMEN
 
 | Item | Status | Confirmed at |
 |---|---|---|
-| RLS performance gate result | Benchmark in roadmap M1.1; design revised, not dropped, if it fails (ADR-0004) | Layer 1 |
-| PostgreSQL 18 availability on RDS in us-east-1 | ADR-0014 pins RDS PostgreSQL 18 (parameter family `postgres18`), but the Terraform has not been applied; 17 is the fallback (spec §2.1) | First `terraform apply` (Layer 1, [INFRASTRUCTURE.md](INFRASTRUCTURE.md)) |
-| Rate-limit store (UD-27) | WAF + database lockout first; Valkey when more than one API task runs | Layer 1 |
+| RLS performance gate result | Design in spec §3.5 (ADR-0018 K-16); benchmark in roadmap M1.1; design revised, not dropped, if it fails (ADR-0004) | Layer 1 (M1.1) |
+| PostgreSQL 18 availability on RDS in us-east-1 | ADR-0014 pins RDS PostgreSQL 18 (parameter family `postgres18`), but the Terraform has not been applied; 17 is the fallback (spec §2.1) | First `terraform apply`, before the first deployment ([INFRASTRUCTURE.md](INFRASTRUCTURE.md)) |
 | Image-processing language (UD-06), malware scanning (UD-22) | Python; managed scanning if in BAA scope, else ClamAV worker | Layer 2 |
 | Outbox consumer de-duplication | Not specified beyond `AIJob.idempotencyKey` | Layer 2 (M2.2) |
 | Telehealth vendor (UD-05) | BAA-capable; Amazon Chime SDK evaluated first | Layer 6 |

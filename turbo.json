@@ -15,6 +15,16 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
+    },
+    "@aestara/shared-types#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/database/prisma/schema.prisma"],
+      "outputs": ["generated/**"]
+    },
+    "@aestara/database#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!generated/**"],
+      "outputs": ["generated/**"]
     }
   }
 }

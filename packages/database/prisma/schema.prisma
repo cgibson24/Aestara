@@ -1,0 +1,714 @@
+// =============================================================================
+// GENERATED FILE. Do not edit. Source: docs/technical-spec/schema.prisma.
+// Contains the tables of layers 1..1 (spec §5.8), copied verbatim.
+// Regenerate: pnpm --filter @aestara/database schema:promote
+// =============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserKind {
+  WORKFORCE
+  PATIENT
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  LOCKED
+  DISABLED
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  OFFBOARDED
+}
+
+enum OperationalStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum RoleAssignmentScope {
+  PLATFORM
+  ORGANIZATION
+  PRACTICE
+  LOCATION
+}
+
+enum ClientApp {
+  IOS_PROVIDER
+  IOS_PATIENT
+  ADMIN_WEB
+}
+
+enum CredentialType {
+  PASSWORD
+  TOTP
+  WEBAUTHN
+}
+
+enum SessionRevokedReason {
+  LOGOUT
+  ADMIN_REVOKED
+  DEVICE_REVOKED
+  REFRESH_TOKEN_REUSE
+  CREDENTIAL_CHANGED
+  MEMBERSHIP_DISABLED
+  USER_DISABLED
+}
+
+enum LoginEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  /// Password accepted, second factor pending: a step, not a failure
+  /// (ADR-0018 K-15). The API answers 401 MFA_REQUIRED with a challenge.
+  MFA_CHALLENGE_ISSUED
+}
+
+enum LoginFailureReason {
+  INVALID_CREDENTIALS
+  ACCOUNT_LOCKED
+  ACCOUNT_DISABLED
+  NO_ACTIVE_MEMBERSHIP
+  MFA_FAILED
+  RATE_LIMITED
+}
+
+enum UserTokenPurpose {
+  /// Staff invitation sent by email; activates a membership (organizationId set).
+  INVITATION
+  /// Password reset sent by email; single use, 30 minutes (ADR-0018 K-15).
+  PASSWORD_RESET
+  /// Pending second factor after an accepted password (MFA_CHALLENGE_ISSUED).
+  MFA_CHALLENGE
+  /// Pending passkey registration for an authenticated user.
+  WEBAUTHN_REGISTRATION
+}
+
+enum PatientStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+  DECEASED
+}
+
+enum PatientContactKind {
+  EMERGENCY_CONTACT
+  GUARDIAN
+  CAREGIVER
+  OTHER
+}
+
+enum ActorType {
+  USER
+  SERVICE
+  SYSTEM
+}
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  FAILURE
+}
+
+enum IdempotencyState {
+  IN_PROGRESS
+  COMPLETED
+}
+
+/// Bible 22.1 minimum events first, then spec additions marked [P] in the
+/// specification (pending approval).
+enum AuditAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  PATIENT_CREATED
+  PATIENT_VIEWED
+  PATIENT_UPDATED
+  PATIENT_ARCHIVED
+  PHOTO_CAPTURED
+  PHOTO_VIEWED
+  PHOTO_EXPORTED
+  PHOTO_PERMISSION_CHANGED
+  CONSULTATION_CREATED
+  CONSULTATION_COMPLETED
+  SIMULATION_GENERATED
+  SIMULATION_VIEWED
+  SIMULATION_APPROVED
+  SIMULATION_REJECTED
+  SIMULATION_REGENERATED
+  SIMULATION_RELEASED
+  CONSENT_ASSIGNED
+  CONSENT_VIEWED
+  CONSENT_SIGNED
+  CONSENT_COMPLETED
+  CONSENT_VOIDED
+  MESSAGE_SENT
+  ATTACHMENT_DOWNLOADED
+  USER_CREATED
+  USER_UPDATED
+  USER_DISABLED
+  ROLE_ASSIGNED
+  INTEGRATION_SYNC_STARTED
+  INTEGRATION_SYNC_SUCCEEDED
+  INTEGRATION_SYNC_FAILED
+  DATA_EXPORT_REQUESTED
+  DATA_EXPORT_COMPLETED
+  SECURITY_SESSION_REVOKED
+  // ---- [P] proposed additions (spec section 7.3) ----
+  SIMULATION_CREATED
+  SIMULATION_STATUS_CHANGED
+  CONSENT_STATUS_CHANGED
+  DOCUMENT_VIEWED
+  ACCESS_DENIED
+  ROLE_REVOKED
+  PATIENT_ACCOUNT_LINKED
+  CONSULTATION_STATUS_CHANGED
+  PHOTO_ANNOTATED
+  PHOTO_INTAKE_REVIEWED
+  BEFORE_AFTER_CREATED
+  MEDIA_RELEASED
+  MEDIA_RELEASE_REVOKED
+  SIMILAR_CASES_SHOWN
+  AI_MODEL_ROLLOUT_CHANGED
+  TREATMENT_PLAN_STATUS_CHANGED
+  CONSENT_TEMPLATE_PUBLISHED
+  DOCUMENT_RELEASED
+  CONTENT_ASSIGNED
+  INSTRUCTION_ASSIGNED
+  INSTRUCTION_ACKNOWLEDGED
+  APPOINTMENT_STATUS_CHANGED
+  TELEHEALTH_STATUS_CHANGED
+  INTEGRATION_CONFIG_CHANGED
+  DATA_EXPORT_DOWNLOADED
+  CONFIGURATION_CHANGED
+  // ---- added at the Layer 1 kickoff (ADR-0018 K-04) ----
+  SECURITY_CREDENTIAL_CHANGED
+  ORGANIZATION_SWITCHED
+}
+
+/// Platform-level identity. NOT tenant-owned: one workforce user may hold
+/// memberships in several organizations. Tenant access always flows through
+/// Membership + UserRole (staff) or PatientUserLink (patients), never User alone.
+model User {
+  id                 String     @id @default(uuid(7)) @db.Uuid
+  kind               UserKind
+  /// Stored normalized (trimmed, lower-cased). Unique per kind.
+  email              String
+  emailVerifiedAt    DateTime?  @db.Timestamptz(3)
+  phone              String?
+  displayName        String?
+  status             UserStatus @default(INVITED)
+  /// Reserved for future enterprise SSO federation (identity is first-party, D-02).
+  externalIdpSubject String?    @unique
+  lastLoginAt        DateTime?  @db.Timestamptz(3)
+  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
+  version            Int        @default(1)
+
+  // --- back-relations (required by Prisma; not columns) ---
+  memberships                 Membership[]            @relation("MembershipUser")
+  membershipsDisabled         Membership[]            @relation("MembershipDisabledBy")
+  roleAssignments             UserRole[]              @relation("UserRoleUser")
+  roleAssignmentsGranted      UserRole[]              @relation("UserRoleAssignedBy")
+  roleAssignmentsRevoked      UserRole[]              @relation("UserRoleRevokedBy")
+  credentials                 UserCredential[]
+  devices                     Device[]                @relation("DeviceUser")
+  devicesRevoked              Device[]                @relation("DeviceRevokedBy")
+  sessions                    Session[]               @relation("SessionUser")
+  sessionsRevoked             Session[]               @relation("SessionRevokedBy")
+  loginEvents                 LoginEvent[]
+  tokens                      UserToken[]             @relation("UserTokenUser")
+  tokensCreated               UserToken[]             @relation("UserTokenCreatedBy")
+  patientsCreated             Patient[]               @relation("PatientCreatedBy")
+  patientsUpdated             Patient[]               @relation("PatientUpdatedBy")
+  patientsArchived            Patient[]               @relation("PatientArchivedBy")
+  patientContactsCreated      PatientContact[]
+  organizationSettingsUpdated OrganizationSetting[]
+
+  @@unique([kind, email])
+}
+
+/// First-party credentials (D-02). Secrets are never stored in plaintext.
+model UserCredential {
+  id                   String         @id @default(uuid(7)) @db.Uuid
+  userId               String         @db.Uuid
+  type                 CredentialType
+  /// Argon2id PHC string (PASSWORD only).
+  passwordHash         String?
+  /// KMS envelope-encrypted TOTP seed (TOTP only).
+  totpSecretCiphertext Bytes?
+  webauthnCredentialId Bytes?         @unique
+  webauthnPublicKey    Bytes?
+  webauthnSignCount    BigInt?
+  label                String?
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  lastUsedAt           DateTime?      @db.Timestamptz(3)
+  revokedAt            DateTime?      @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, type])
+}
+
+/// Single-use secret for an emailed link or a sign-in step (ADR-0018 K-09,
+/// K-15). Only a SHA-256 hash of the random token is stored; the token itself
+/// travels in request bodies only, never in a URL, log or audit record.
+model UserToken {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  userId            String           @db.Uuid
+  purpose           UserTokenPurpose
+  /// Hex SHA-256 of the 256-bit random token.
+  tokenHash         String           @unique
+  /// INVITATION: the organization whose membership the token activates.
+  organizationId    String?          @db.Uuid
+  /// MFA_CHALLENGE: the client the resulting session is issued to.
+  clientApp         ClientApp?
+  /// WebAuthn challenge bytes (passkey assertion or registration).
+  webauthnChallenge Bytes?
+  /// Failed verification attempts; the token is consumed at the limit.
+  attemptCount      Int              @default(0)
+  createdById       String?          @db.Uuid
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  expiresAt         DateTime         @db.Timestamptz(3)
+  consumedAt        DateTime?        @db.Timestamptz(3)
+
+  user         User          @relation("UserTokenUser", fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User?         @relation("UserTokenCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
+model Organization {
+  id        String             @id @default(uuid(7)) @db.Uuid
+  name      String
+  /// URL-safe identifier used by admin tooling; never proof of entitlement.
+  slug      String             @unique
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime           @updatedAt @db.Timestamptz(3)
+  version   Int                @default(1)
+
+  practices            Practice[]
+  memberships          Membership[]
+  roles                Role[]
+  sessions             Session[]
+  loginEvents          LoginEvent[]
+  userTokens           UserToken[]
+  patients             Patient[]
+  organizationSettings OrganizationSetting[]
+}
+
+model Practice {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  organizationId String            @db.Uuid
+  name           String
+  /// IANA time zone, e.g. America/New_York.
+  timezone       String
+  status         OperationalStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  version        Int               @default(1)
+
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  locations        Location[]
+  roleAssignments  UserRole[]
+  patients         Patient[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
+}
+
+model Location {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  organizationId String            @db.Uuid
+  practiceId     String            @db.Uuid
+  name           String
+  timezone       String
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  region         String?
+  postalCode     String?
+  countryCode    String?           @db.Char(2)
+  status         OperationalStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  version        Int               @default(1)
+
+  practice        Practice       @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  roleAssignments UserRole[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, practiceId, id])
+  @@index([organizationId, practiceId])
+}
+
+/// A workforce user's membership in one organization. user.disable acts here
+/// (per-organization), not on the platform-level User.
+model Membership {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  status         MembershipStatus @default(INVITED)
+  invitedAt      DateTime?        @db.Timestamptz(3)
+  activatedAt    DateTime?        @db.Timestamptz(3)
+  disabledAt     DateTime?        @db.Timestamptz(3)
+  disabledById   String?          @db.Uuid
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+  version        Int              @default(1)
+
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  user            User             @relation("MembershipUser", fields: [userId], references: [id])
+  disabledBy      User?            @relation("MembershipDisabledBy", fields: [disabledById], references: [id], onDelete: Restrict)
+  roleAssignments UserRole[]
+  providerProfile ProviderProfile?
+  staffProfile    StaffProfile?
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+/// organizationId NULL = platform-defined system role (the Bible 3.2 roles).
+/// Non-null = organization custom role (creation of custom roles is UD-07).
+model Role {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String?  @db.Uuid
+  /// Stable machine key, e.g. SURGEON_PHYSICIAN, FRONT_DESK.
+  key            String
+  name           String
+  description    String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  permissions  RolePermission[]
+  assignments  UserRole[]
+
+  @@unique([organizationId, key])
+}
+
+/// Platform catalog of permission keys (Bible 3.3). Not tenant-owned.
+model Permission {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// e.g. patient.read, simulation.approve
+  key         String   @unique
+  description String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+}
+
+/// Role assignment with explicit scope. PLATFORM scope has no organization
+/// (SUPER_ADMIN); all other scopes require an active Membership in that
+/// organization, enforced by the composite FK to Membership.
+model UserRole {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  userId         String              @db.Uuid
+  organizationId String?             @db.Uuid
+  roleId         String              @db.Uuid
+  scope          RoleAssignmentScope
+  practiceId     String?             @db.Uuid
+  locationId     String?             @db.Uuid
+  assignedById   String?             @db.Uuid
+  assignedAt     DateTime            @default(now()) @db.Timestamptz(3)
+  revokedAt      DateTime?           @db.Timestamptz(3)
+  revokedById    String?             @db.Uuid
+
+  user       User        @relation("UserRoleUser", fields: [userId], references: [id])
+  membership Membership? @relation(fields: [organizationId, userId], references: [organizationId, userId], onDelete: Restrict)
+  role       Role        @relation(fields: [roleId], references: [id])
+  practice   Practice?   @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
+  location   Location?   @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
+  assignedBy User?       @relation("UserRoleAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  revokedBy  User?       @relation("UserRoleRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@index([userId, organizationId])
+  @@index([organizationId, roleId])
+}
+
+model Device {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  userId             String    @db.Uuid
+  clientApp          ClientApp
+  /// Hash of the per-install identifier; the raw identifier is never stored.
+  installationIdHash String
+  name               String?
+  model              String?
+  osVersion          String?
+  appVersion         String?
+  apnsToken          String?
+  apnsTokenUpdatedAt DateTime? @db.Timestamptz(3)
+  lastSeenAt         DateTime? @db.Timestamptz(3)
+  revokedAt          DateTime? @db.Timestamptz(3)
+  revokedById        String?   @db.Uuid
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  user              User               @relation("DeviceUser", fields: [userId], references: [id])
+  revokedBy         User?              @relation("DeviceRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  sessions          Session[]
+
+  @@unique([userId, installationIdHash])
+}
+
+/// Server-side session enabling revocation (Bible 21.1). Refresh tokens rotate
+/// on every use; a presented token whose generation is behind
+/// refreshGeneration is treated as reuse and revokes the session.
+model Session {
+  id                String                @id @default(uuid(7)) @db.Uuid
+  userId            String                @db.Uuid
+  /// Active tenant context bound into issued access tokens.
+  organizationId    String?               @db.Uuid
+  deviceId          String?               @db.Uuid
+  clientApp         ClientApp
+  refreshTokenHash  String                @unique
+  refreshGeneration Int                   @default(0)
+  mfaVerifiedAt     DateTime?             @db.Timestamptz(3)
+  ipAddress         String?               @db.Inet
+  userAgent         String?
+  createdAt         DateTime              @default(now()) @db.Timestamptz(3)
+  lastUsedAt        DateTime?             @db.Timestamptz(3)
+  idleExpiresAt     DateTime              @db.Timestamptz(3)
+  absoluteExpiresAt DateTime              @db.Timestamptz(3)
+  revokedAt         DateTime?             @db.Timestamptz(3)
+  revokedById       String?               @db.Uuid
+  revokedReason     SessionRevokedReason?
+
+  user         User          @relation("SessionUser", fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  device       Device?       @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  revokedBy    User?         @relation("SessionRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt])
+  @@index([deviceId])
+}
+
+/// Security record of authentication activity. The submitted identifier is
+/// stored only as a keyed hash so brute-force patterns can be correlated
+/// without retaining arbitrary typed input.
+model LoginEvent {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  eventType      LoginEventType
+  userId         String?             @db.Uuid
+  organizationId String?             @db.Uuid
+  clientApp      ClientApp?
+  failureReason  LoginFailureReason?
+  identifierHash String?
+  sessionId      String?             @db.Uuid
+  deviceId       String?             @db.Uuid
+  ipAddress      String?             @db.Inet
+  userAgent      String?
+  requestId      String
+  occurredAt     DateTime            @default(now()) @db.Timestamptz(3)
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([userId, occurredAt])
+  @@index([identifierHash, occurredAt])
+  @@index([occurredAt])
+}
+
+/// Clinical/provider identity inside one organization. Every "provider" field
+/// elsewhere references (organizationId, userId) here, so a provider from
+/// another tenant can never be attached to a record.
+model ProviderProfile {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  displayName    String
+  /// e.g. "MD, FACS"
+  credentials    String?
+  specialty      String?
+  /// US National Provider Identifier (United States only, D-06).
+  npi            String?  @db.Char(10)
+  bio            String?
+  isBookable     Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  membership          Membership          @relation(fields: [organizationId, userId], references: [organizationId, userId])
+
+  @@unique([organizationId, userId])
+}
+
+model StaffProfile {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  displayName    String
+  jobTitle       String?
+  department     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  membership Membership @relation(fields: [organizationId, userId], references: [organizationId, userId])
+
+  @@unique([organizationId, userId])
+}
+
+/// Bible 4.2 minimum patient entity. organizationId is always server-assigned.
+model Patient {
+  id                    String        @id @default(uuid(7)) @db.Uuid
+  organizationId        String        @db.Uuid
+  /// Optional or required per deployment policy (OrganizationSetting).
+  primaryPracticeId     String?       @db.Uuid
+  firstName             String
+  middleName            String?
+  lastName              String
+  preferredName         String?
+  dateOfBirth           DateTime      @db.Date
+  email                 String?
+  phone                 String?
+  /// Internal or externally mapped identifier; unique within the organization.
+  mrn                   String?
+  externalEmrIdentifier String?
+  status                PatientStatus @default(ACTIVE)
+  archivedAt            DateTime?     @db.Timestamptz(3)
+  archivedById          String?       @db.Uuid
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+  /// NULL only when created by an integration/system actor.
+  createdById           String?       @db.Uuid
+  updatedById           String?       @db.Uuid
+  version               Int           @default(1)
+
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  primaryPractice  Practice?    @relation(fields: [organizationId, primaryPracticeId], references: [organizationId, id], onDelete: Restrict)
+  createdBy        User?        @relation("PatientCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy        User?        @relation("PatientUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  archivedBy       User?        @relation("PatientArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+
+  contacts           PatientContact[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, mrn])
+  @@index([organizationId, lastName, firstName])
+  @@index([organizationId, dateOfBirth])
+  @@index([organizationId, status])
+}
+
+model PatientContact {
+  id             String             @id @default(uuid(7)) @db.Uuid
+  organizationId String             @db.Uuid
+  patientId      String             @db.Uuid
+  kind           PatientContactKind
+  fullName       String
+  relationship   String?
+  phone          String?
+  email          String?
+  isPrimary      Boolean            @default(false)
+  notes          String?
+  createdById    String?            @db.Uuid
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @db.Timestamptz(3)
+  version        Int                @default(1)
+
+  patient   Patient @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, patientId])
+}
+
+/// Append-only audit trail (Bible 22). Deliberately has NO foreign keys so it
+/// can be partitioned, exported to WORM storage and outlive referenced rows.
+/// UPDATE/DELETE are blocked by trigger and by database grants.
+/// metadata must never embed clinical content (Bible 22.2).
+model AuditEvent {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String?      @db.Uuid
+  actorType      ActorType
+  actorUserId    String?      @db.Uuid
+  actorServiceId String?
+  action         AuditAction
+  outcome        AuditOutcome @default(SUCCESS)
+  resourceType   String
+  resourceId     String?      @db.Uuid
+  /// Enables per-patient access reports; an identifier, not clinical content.
+  patientId      String?      @db.Uuid
+  requestId      String
+  sessionId      String?      @db.Uuid
+  deviceId       String?      @db.Uuid
+  ipAddress      String?      @db.Inet
+  userAgent      String?
+  metadata       Json?
+  occurredAt     DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, patientId, occurredAt])
+  @@index([organizationId, resourceType, resourceId])
+  @@index([actorUserId, occurredAt])
+  @@index([requestId])
+}
+
+/// Replay protection for retry-sensitive mutations (Bible 20.3). Stores the
+/// outcome reference, not the response body, to avoid duplicating PHI.
+model IdempotencyKey {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  /// "user:<uuid>" or "service:<name>"
+  actorKey       String
+  key            String
+  organizationId String?          @db.Uuid
+  method         String
+  routeTemplate  String
+  /// SHA-256 of the canonical request; a reused key with a different hash is rejected.
+  requestHash    String
+  state          IdempotencyState @default(IN_PROGRESS)
+  responseStatus Int?
+  resourceType   String?
+  resourceId     String?          @db.Uuid
+  errorCode      String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  expiresAt      DateTime         @db.Timestamptz(3)
+
+  @@unique([actorKey, key])
+  @@index([expiresAt])
+}
+
+model OrganizationSetting {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @db.Uuid
+  key            String
+  value          Json
+  updatedById    String?  @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  updatedBy    User?        @relation(fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, key])
+}

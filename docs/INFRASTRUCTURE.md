@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28. Terraform written and statically checked; **not yet applied to any AWS account.** |
-| Authority | Bible §21.2–21.3 (security rules, HIPAA-ready posture), §25.1–25.4 (stack, services, AWS map, scale), §26 (observability), §28 (environments); ADR-0006 (United States only), ADR-0010 |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29. Terraform written and statically checked; **not yet applied to any AWS account.** |
+| Authority | Bible §21.2–21.3 (security rules, HIPAA-ready posture), §25.1–25.4 (stack, services, AWS map, scale), §26 (observability), §28 (environments); ADR-0006 (United States only), ADR-0010, ADR-0018 (Layer 1 kickoff: K-14, K-18; owner inputs before the first deployment) |
 | Normative sources | spec §2.3 (infrastructure stack), spec §3.1–3.2 (services and components), spec §7.1, §7.4, §7.6 (security mechanisms, media storage, operations commitments); `infrastructure/terraform` |
 
 This document describes where Aestara runs and how the cloud estate is built. The Terraform in `infrastructure/terraform` is the executable form. [DEPLOYMENT.md](DEPLOYMENT.md) covers how changes reach it.
@@ -84,17 +84,18 @@ This is the Bible §25.3 deployment map. The api and its worker process (same co
 | Remote state (versioned, KMS, TLS-only S3 with lock files) | `bootstrap` | Yes | — |
 | SQS / EventBridge for the transactional outbox | — | No | Layer 2 (M2.2) |
 | CloudFront + WAF for the admin SPA | — | No | Layer 1, with the admin web |
-| Notifications: APNs credentials, SES, SMS | — | No | Layer 5 |
+| SES for transactional email (invitations, password reset; no PHI) | — | No | The api sends it from Layer 1 (ADR-0018 K-14), through Mailpit locally; the SES resources arrive with the first deployment |
+| Notifications service: APNs credentials, SMS and notification email | — | No | Layer 5 |
 | AI inference: ECS on EC2 GPU in a subnet tier with **no internet egress** (spec §2.1) | — | No | Layer 7 (UD-04, F-62) |
 | Cross-region backup copies | — | No | Production readiness (roadmap step 14) |
 
-Layer 0 deploys nothing that runs code. The modules exist so every later layer adds to a reviewed, checked baseline instead of starting from scratch.
+Layer 0 deploys nothing that runs code. Layer 1 is built and proven locally and in CI, and nothing is deployed until the owner inputs for the first deployment exist (AWS accounts, the BAA, domain names; [LAYER_1_KICKOFF.md](LAYER_1_KICKOFF.md) §3). The modules exist so every later layer adds to a reviewed, checked baseline instead of starting from scratch.
 
 ## 4. Environments
 
 | Environment | Purpose | Data | Sizing (Terraform) |
 |---|---|---|---|
-| Local | Developer machines, Codespaces, Claude Code on the web | Synthetic only | `docker compose` PostgreSQL 18 |
+| Local | Developer machines, Codespaces, Claude Code on the web | Synthetic only | `docker compose` PostgreSQL 18; Mailpit from M1.3 (ADR-0018 K-14) |
 | dev | Integration of merged work | Synthetic only | 2 AZs, single NAT gateway, `db.t4g.medium` single-AZ |
 | staging | Release candidate, acceptance and load tests | Synthetic only | 3 AZs, NAT per AZ, `db.t4g.large` multi-AZ |
 | production | Customers | PHI | 3 AZs, NAT per AZ, `db.r7g.large` multi-AZ |
@@ -111,7 +112,7 @@ Production data is never copied into a lower environment unless an approved de-i
 | Originals never destroyed | Versioning on, and `s3:DeleteObject`/`DeleteObjectVersion` denied on clinical media for every principal (a future retention role can be allowed once UD-24 is decided) | `modules/storage` |
 | Secrets Manager | RDS master password created and rotated by Secrets Manager (`manage_master_user_password`); no secrets in Terraform or state | `modules/database` |
 | Least privilege | One IAM role per service (Layer 1+); task security group with no inbound access until a load balancer exists | `modules/compute` |
-| Tamper-resistant audit trail | CloudTrail across all regions with log-file validation and KMS, delivered to an Object Lock bucket (compliance mode in staging and production). A separate security account follows the account-structure decision (F-59). The application audit log's WORM copy arrives with the outbox (Layer 2, spec §7.3). | `modules/account-baseline` |
+| Tamper-resistant audit trail | CloudTrail across all regions with log-file validation and KMS, delivered to an Object Lock bucket (compliance mode in staging and production). A separate security account follows the account-structure decision (F-59). The application audit log's WORM copy arrives with the outbox (Layer 2, spec §7.3); Layer 1 relies on append-only triggers and insert/select-only grants (ADR-0018 K-18). | `modules/account-baseline` |
 | No PHI in logs | The database logs no statement text (`log_statement=none`). Application logs are filtered before they leave the process (spec §7.2). | `modules/database`, services |
 | WAF and rate limits | WAF on the ALB and CloudFront with rate rules on public and auth endpoints | Layer 1 |
 
@@ -161,10 +162,10 @@ CI never applies. It only validates (see [DEPLOYMENT.md](DEPLOYMENT.md)).
 
 | Item | Decision point |
 |---|---|
-| AWS account IDs and the AWS Organizations structure, including the separate security account for CloudTrail (spec §7.1); BAA signed | Before the first `apply` (Layer 1) |
-| Domain names and TLS certificates for the api and admin web | Layer 1 kickoff |
-| How CI authenticates to AWS for plans and deploys (GitHub OIDC with per-environment roles is the proposed baseline) | Layer 1 kickoff |
+| AWS account IDs and the AWS Organizations structure, including the separate security account for CloudTrail (spec §7.1, F-59); BAA signed | Owner input before the first deployment |
+| Domain names and TLS certificates for the api and admin web | Owner input before the first deployment |
+| How CI authenticates to AWS for plans and deploys (GitHub OIDC with per-environment roles is the proposed baseline) | Before the first deployment, with the AWS accounts |
 | Second US region for backup copies; RPO/RTO targets | Production readiness (roadmap step 14) |
 | SLO and load-test targets | Before production (see [TESTING_STRATEGY.md](TESTING_STRATEGY.md)) |
-| Human production access to PHI (break-glass role, session recording, approval) | Before production (see [THREAT_MODEL.md](THREAT_MODEL.md)) |
+| Human production access to PHI (break-glass role, session recording, approval) | Before the first deployment (see [THREAT_MODEL.md](THREAT_MODEL.md)) |
 | DDoS protection beyond WAF (AWS Shield Advanced) | Production readiness |

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 baseline, 2026-09-28 |
-| Authority | Bible §2, §13, §23, §24.1–24.5, §21.1–21.2; ADR-0005 (iOS/iPadOS 26, intuitive controls), ADR-0011 (one token source) |
+| Status | Layer 0 baseline, 2026-09-28; updated for the Layer 1 kickoff decisions (ADR-0018), 2026-09-29 |
+| Authority | Bible §2, §13, §23, §24.1–24.5, §21.1–21.2; ADR-0005 (iOS/iPadOS 26, intuitive controls), ADR-0011 (one token source), ADR-0018 (Layer 1 kickoff: K-17, K-22) |
 | Normative sources | spec §2.2 (client stack), spec §4.2 (authentication on devices), spec §8 (offline and sync contract), [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md); `apps/ios-provider/Modules/modules.json`, `apps/ios-provider/Project.swift`, `apps/ios-patient/Project.swift` |
 
 This document describes how the two iOS apps are built:
@@ -157,7 +157,7 @@ The device follows spec §8 exactly; this is the implementation shape.
 
 | Rule | How |
 |---|---|
-| What works offline | Cached recent patients, photo capture, note drafts, annotating cached photos, queueing uploads and mutations [B §23.1]. AI generation, EMR sync, release, export, sign-off, permission changes and consent completion need a connection [B §23.2]; the UI disables them with the offline banner. |
+| What works offline | Cached recent patients, photo capture, note drafts, annotating cached photos, queueing uploads and mutations [B §23.1]. AI generation, EMR sync, release, export, sign-off, permission changes and consent completion need a connection [B §23.2]; the UI disables them with the offline banner. Patient creation is online-only too, because the duplicate check needs the server (spec §6.1.8; ADR-0018 K-17). |
 | Encrypted at rest | GRDB + SQLCipher database; cached media encrypted with CryptoKit AES-GCM; keys in the Keychain; files use Data Protection *Complete* (spec §7.1). |
 | Mutation queue | Each operation stores a UUIDv7 `operationId`, which is sent as `Idempotency-Key`. Creates also store a client-generated `id`, and updates the resource `version`, which is sent as `If-Match`. Operations replay in order per aggregate; a failed dependency pauses only its dependents (spec §8 rules 1–3). |
 | Conflicts | `412 VERSION_CONFLICT` is shown to the user with both versions. Nothing is auto-resolved by timestamp [B §23.3]. |
@@ -169,7 +169,7 @@ The device follows spec §8 exactly; this is the implementation shape.
 
 | Concern | Design |
 |---|---|
-| Tokens | Short-lived access token in memory. The refresh token is in the Keychain, gated by biometrics (spec §4.2). A background app requires Face ID or Touch ID again after the configured time: 5 minutes by default for the provider app. |
+| Tokens | Short-lived access token in memory. The refresh token is in the Keychain as `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` with access control `.biometryCurrentSet`, so it stays on this device and is unreadable once the enrolled biometrics change. There is no fallback to the device passcode: if biometrics are unavailable or have changed, the user signs in again with password and MFA (spec §4.2; ADR-0018 K-22). A background app requires Face ID or Touch ID again after the configured time: 5 minutes by default for the provider app. |
 | Step-up | Signing and export require a fresh biometric check on the device, and the server also requires a recent MFA verification (spec §4.2). |
 | Staff-assisted signing | The consent-scoped hand-off locks the app to the consent. Leaving it needs staff re-authentication (UD-31, DESIGN_SYSTEM.md C13). |
 | No PHI leaks | No PHI in logs, analytics, crash reports, notification payloads, URLs or pasteboard defaults (Bible §21.2, spec §7.2). Notifications carry only a deep-link identifier. |
@@ -201,6 +201,5 @@ The CI `ios` job generates both projects, builds both apps for the simulator (th
 | Item | Decision point |
 |---|---|
 | Apple Developer team and bundle identifier prefix (`com.aestara.*` is provisional) | UD-34, before the first TestFlight build (end of Layer 1) |
-| Keychain accessibility class and exact biometric flags: spec §4.2 asks for `.biometryCurrentSet` with a passcode fallback, which that flag alone does not give (F-32) | Layer 1 (M1.9), see [AUTHENTICATION_ARCHITECTURE.md](AUTHENTICATION_ARCHITECTURE.md) |
-| Snapshot-testing tool for SwiftUI views | Layer 1 kickoff |
-| App-switcher privacy screen and jailbreak signals | Layer 1 kickoff, see [THREAT_MODEL.md](THREAT_MODEL.md) |
+| Snapshot-testing tool for SwiftUI views | Layer 1 (M1.9), with an ADR |
+| App-switcher privacy screen and jailbreak signals | Layer 1 (M1.9), with an ADR; see [THREAT_MODEL.md](THREAT_MODEL.md) |

@@ -431,7 +431,7 @@ Excerpt; the catalog and event contents are normative in spec §7.3. Audit metad
 
 | Suite | Covers | When |
 |---|---|---|
-| SQL behaviour suite ([`schema_behavior_tests.sql`](technical-spec/verification/schema_behavior_tests.sql)) | C1–C10 (originals, storage, before/after, derivatives), D1–D10 (permissions, releases), R1–R3 (photo sessions), R15–R17 (pins), H6 (retention) | Every CI run (`spec` job) |
+| SQL behaviour suite ([`behavior/`](technical-spec/verification/behavior/), fragments `L02`, `L03`) | C1–C10 (originals, storage, before/after, derivatives), D1–D10 (permissions, releases), R1–R3 (photo sessions), R15–R17 (pins), H6 (retention) | Every CI run (`spec` job) |
 | API integration tests (Testcontainers PostgreSQL) | Upload intent and completion, checksum mismatch, idempotent replay, access-URL permissions per variant, export and release with revoked or expired grants | Layer 2 onward |
 | Generated cross-tenant tests | Every photo route returns an identical 404 for another organization's IDs | Layer 2 onward |
 | Portal visibility tests | Photos and before/after need a current grant and an unrevoked release | Layer 5 |
@@ -450,7 +450,7 @@ See [TESTING_STRATEGY.md](TESTING_STRATEGY.md) for tooling and [SECURITY_REQUIRE
 | UD-21 permission scope granularity, including which scope wins when a patient-wide row and a per-photo row disagree | Layer 2 kickoff |
 | UD-22 malware scanning: provider captures, and handling of `INFECTED` / `ERROR` results | Layer 2 kickoff |
 | UD-25 offline cache policy | Layer 2 kickoff |
-| UD-24 retention defaults and legal hold | Layers 1–2 |
+| UD-24 retention defaults and legal hold (re-confirmed unchanged for Layer 1 in ADR-0018: nothing is deleted automatically) | Layer 2 |
 | Upload size limit; multipart resumption; renewing an expired upload URL; retry policy for derivative jobs | Layer 2 (M2.1, M2.6) |
 | Bucket placement of object classes other than clinical photos, exports and integration payloads | Layer 2 (M2.1) |
 | Spec §7.1/§7.4 storage controls not yet in Terraform: the VPC-endpoint condition in the bucket policies, and the denial of `s3:PutObject` on existing keys (per-service IAM roles) | Layer 1 (first IAM roles) and Layer 2 (M2.1) |

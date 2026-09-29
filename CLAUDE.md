@@ -40,7 +40,9 @@ If something conflicts, the higher source wins. If behaviour is genuinely undefi
 | `services/*` | Backend services (placeholders until their layer) |
 | `packages/design-tokens` | **Single source** of colours/type/spacing for iOS (Swift) and web (CSS) |
 | `packages/api-contracts` | Zod → OpenAPI 3.1 (`openapi.json`); Layer 0 holds the shared primitives only (ADR-0013) |
-| `packages/database`, `packages/security`, `packages/shared-types` | Placeholders until Layer 1 |
+| `packages/database` | Prisma schema **generated** from `docs/technical-spec/schema.prisma` for the built layers, migrations, roles and RLS, permission catalog (`src/catalog.ts`), table ownership (`src/ownership.ts`) |
+| `packages/shared-types` | Enum values generated from the Prisma schema |
+| `packages/security` | Placeholder until its Layer 1 micro-prompt |
 | `infrastructure/terraform` | AWS baseline, checked but not applied (ADR-0014) |
 | `docs/` | Bible export, spec, ADRs, roadmap, Layer 0 documentation pack, acceptance review, changelog |
 
@@ -53,7 +55,10 @@ pnpm dev:prototype        # run the design prototype at http://localhost:5173
 pnpm tokens               # regenerate design tokens after editing packages/design-tokens/tokens.json
 pnpm services:up          # local PostgreSQL 18 (docker compose)
 pnpm verify:spec          # Bible → spec traceability (needs: pip install pypdf)
-DATABASE_URL=… pnpm verify:schema   # schema + DB behaviour suite on an EMPTY database
+DATABASE_URL=… pnpm verify:schema   # design schema + all behaviour fragments on an EMPTY database
+ADMIN_DATABASE_URL=… pnpm --filter @aestara/database db:test   # real migrations as non-superuser, drift, RLS, Layer 1 checks
+ADMIN_DATABASE_URL=… pnpm --filter @aestara/database bench:rls # RLS performance gate (ADR-0004)
+DATABASE_URL=… pnpm --filter @aestara/database db:seed:dev      # local synthetic organization + invited admin
 python3 docs/technical-spec/verification/check_docs.py    # documentation pack, references, links
 python3 apps/ios-provider/scripts/check_module_graph.py   # iOS module architecture rules
 cd apps/ios-provider && tuist generate                    # Xcode projects (macOS; run `mise install` first)
