@@ -13,8 +13,6 @@
 # with the messaging key. The local emulator mirrors this layout
 # (services/api/src/aws/local-resources.ts).
 
-data "aws_caller_identity" "current" {}
-
 locals {
   max_receives = 5
 

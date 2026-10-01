@@ -64,7 +64,7 @@ export function ConfigurationPage() {
       </p>
       <FeatureFlags practiceId={practiceId || undefined} />
       {practiceId ? (
-        <OfflinePolicy practiceId={practiceId} />
+        <OfflinePolicy key={practiceId} practiceId={practiceId} />
       ) : (
         <section className="card stack" aria-labelledby="offline-title">
           <h2 id="offline-title">Offline use</h2>
@@ -138,8 +138,12 @@ function FeatureFlags({ practiceId }: { practiceId: string | undefined }) {
   );
 }
 
+type Notice = { tone: "success" | "danger"; text: string };
+
 function OfflinePolicy({ practiceId }: { practiceId: string }) {
   const result = useQuery(offlinePolicyQuery(practiceId));
+  // Kept here, outside the per-version form, so "Saved." survives the reload a save causes.
+  const [notice, setNotice] = useState<Notice>();
   if (result.error) return <ErrorState error={result.error} onRetry={() => void result.refetch()} />;
   if (result.data === undefined) return <LoadingState label="Loading the offline policy" />;
   // A fresh form per stored version, so a save or a reload shows the stored values.
@@ -148,6 +152,8 @@ function OfflinePolicy({ practiceId }: { practiceId: string }) {
       key={`${practiceId}-${result.data.version}`}
       practiceId={practiceId}
       setting={result.data}
+      notice={notice}
+      setNotice={setNotice}
     />
   );
 }
@@ -155,15 +161,18 @@ function OfflinePolicy({ practiceId }: { practiceId: string }) {
 function OfflinePolicyForm({
   practiceId,
   setting,
+  notice,
+  setNotice,
 }: {
   practiceId: string;
   setting: Schemas["PracticeSetting"];
+  notice: Notice | undefined;
+  setNotice: (notice: Notice | undefined) => void;
 }) {
   // The registered shape of offline.cachePolicy (the api validates every write).
   const value = setting.value as { maxPatients: number; maxAgeDays: number };
   const [maxPatients, setMaxPatients] = useState(String(value.maxPatients));
   const [maxAgeDays, setMaxAgeDays] = useState(String(value.maxAgeDays));
-  const [notice, setNotice] = useState<{ tone: "success" | "danger"; text: string }>();
   const [busy, setBusy] = useState(false);
 
   return (
