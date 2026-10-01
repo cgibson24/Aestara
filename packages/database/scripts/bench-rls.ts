@@ -1,28 +1,23 @@
-// Row-Level Security performance gate (spec §3.5; ADR-0004; ADR-0018 K-16).
+// Row-Level Security performance (spec §3.5; ADR-0004; ADR-0018 K-16; ADR-0020).
 //
 // Builds a throwaway database from the migrations, loads synthetic data (no PHI)
 // and times the database work of the three core requests, with and without RLS:
 //   login           user lookup, credential, memberships, ledger, session, audit
-//   patient search  session, membership, grants, trigram name search (25 rows)
+//   patient search  session, membership, grants, last-name prefix search on the
+//                   leakproof search key (ADR-0020), 25 rows
 //   patient open    session, membership, grants, patient, contacts, PATIENT_VIEWED
-// Three modes, each on its own connection:
+// Two modes, each on its own connection, alternating order every round:
 //   baseline  a role with the application role's privileges plus BYPASSRLS (not a
 //             superuser, which would also skip permission checks), running the same
 //             statements with the same explicit organizationId filters the
 //             tenant-scoped repositories add anyway, in a transaction
-//   rls       the application role; the tenant is set by a separate set_config
-//             statement; memberships come from the sign-in lookup function
-//   tuned     as rls, but the tenant is set in the same round trip as BEGIN, and
-//             patient search runs through a tenant-bound SECURITY DEFINER function
-//             (created in the benchmark database only), because LIKE and lower()
-//             are not leakproof: under RLS the planner may not use them in index
-//             conditions ahead of the policy, so a plain search scans the whole
-//             organization
-// Rounds rotate the order of the modes so drift affects all of them equally.
+//   rls       the application role; the tenant is set with set_config in the
+//             transaction; memberships come from the sign-in lookup function
 //
-// Gate, per request: added p95 ≤ 10% and ≤ 5 ms. The database work is only part
-// of an endpoint's latency, so passing here is stricter than the endpoint gate;
-// M1.8 repeats the measurement end to end through the api.
+// Gate: added p95 ≤ 5 ms for every request; this fails the run. The relative
+// limit (≤ 10%) is reported here and judged end to end at M1.8 (ADR-0020),
+// because the database work is only part of an endpoint's latency. That search
+// keeps using its index under RLS is proven deterministically by test/sql/rls.sql.
 //
 // Usage: ADMIN_DATABASE_URL=postgresql://superuser:pw@host:5432/postgres node scripts/bench-rls.ts [--out file.json] [--report-only]
 import { execFileSync } from "node:child_process";
@@ -153,13 +148,13 @@ async function loadFixture(client: pg.Client): Promise<Fixture> {
     list.push(row.id);
     patients.set(row.org, list);
   }
-  const searchTerms = ["arton", "kelwo", "sel", "orby", "quinfi", "man", "holt", "pemm", "rosley", "dunf"];
+  // Normalized prefixes, as staff type them (the api normalizes like app_name_search_key).
+  const searchTerms = ["al", "bart", "cor", "dunf", "elw", "garm", "holt", "kel", "mars", "torw"];
   return { organizations: orgs, staff, patients, searchTerms };
 }
 
-type Mode = "baseline" | "rls" | "tuned";
-const MODES: readonly Mode[] = ["baseline", "rls", "tuned"];
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+type Mode = "baseline" | "rls";
+const MODES: readonly Mode[] = ["baseline", "rls"];
 type Workload = (client: pg.Client, mode: Mode, pick: () => number) => Promise<void>;
 
 function choose<T>(list: readonly T[], pick: () => number): T {
@@ -174,12 +169,6 @@ const BASELINE_MEMBERSHIPS = `
   FROM "Membership" m JOIN "Organization" o ON o.id = m."organizationId" WHERE m."userId" = $1`;
 
 async function begin(client: pg.Client, mode: Mode, org: string): Promise<void> {
-  if (mode === "tuned") {
-    // One round trip; the identifier is validated, so inlining it is safe.
-    if (!UUID.test(org)) throw new Error("invalid organization id");
-    await client.query(`BEGIN; SELECT set_config('app.organization_id', '${org}', true)`);
-    return;
-  }
   await client.query("BEGIN");
   if (mode === "rls") await client.query("SELECT set_config('app.organization_id', $1, true)", [org]);
 }
@@ -248,16 +237,12 @@ function workloads(f: Fixture): Record<string, Workload> {
       await begin(client, mode, org);
       await guard(client, org, user);
       const term = choose(f.searchTerms, pick);
-      if (mode === "tuned") {
-        await client.query("SELECT * FROM bench_patient_search($1, 25)", [term]);
-      } else {
-        await client.query(
-          `SELECT id, "firstName", "lastName", "dateOfBirth", mrn, status FROM "Patient"
-           WHERE "organizationId" = $1 AND lower("lastName") LIKE '%' || $2 || '%'
-           ORDER BY "lastName", "firstName", id LIMIT 25`,
-          [org, term],
-        );
-      }
+      await client.query(
+        `SELECT id, "firstName", "lastName", "dateOfBirth", mrn, status FROM "Patient"
+         WHERE "organizationId" = $1 AND "lastNameKey" >= $2 AND "lastNameKey" < $3
+         ORDER BY "lastNameKey", "firstNameKey", id LIMIT 25`,
+        [org, term, nextPrefix(term)],
+      );
       await client.query("COMMIT");
     },
     "patient open": async (client, mode, pick) => {
@@ -281,46 +266,30 @@ function workloads(f: Fixture): Record<string, Workload> {
   };
 }
 
+/** The smallest key after every key that starts with prefix (keys hold only a-z, 0-9). */
+function nextPrefix(prefix: string): string {
+  const last = prefix.at(-1) ?? "";
+  if (last === "z") return nextPrefix(prefix.slice(0, -1));
+  return prefix.slice(0, -1) + (last === "9" ? "a" : String.fromCharCode(last.charCodeAt(0) + 1));
+}
+
 function percentile(sorted: number[], p: number): number {
   const index = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
   return sorted[Math.max(0, index)] ?? Number.NaN;
 }
 
-// Benchmark database only: the tenant-bound search function the "tuned" mode
-// measures. It is not part of the migrations.
-const BENCH_SEARCH_SQL = `
+// The baseline role: the application role's privileges plus BYPASSRLS.
+const BASELINE_ROLE_SQL = `
 DO $$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'aestara_bench_baseline') THEN
     CREATE ROLE aestara_bench_baseline NOLOGIN BYPASSRLS;
   END IF;
 END $$;
 GRANT aestara_app TO aestara_bench_baseline;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'aestara_bench_search') THEN
-    CREATE ROLE aestara_bench_search NOLOGIN NOBYPASSRLS;
-  END IF;
-END $$;
-GRANT SELECT ON "Patient" TO aestara_bench_search;
-CREATE POLICY bench_search ON "Patient" FOR SELECT TO aestara_bench_search USING (true);
-CREATE FUNCTION bench_patient_search(p_term text, p_limit int)
-RETURNS TABLE (id uuid, first_name text, last_name text, date_of_birth date, mrn text, status text)
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET plan_cache_mode = force_custom_plan AS $f$
-BEGIN
-  RETURN QUERY
-  SELECT p.id, p."firstName", p."lastName", p."dateOfBirth"::date, p.mrn, p.status::text FROM "Patient" p
-  WHERE p."organizationId" = app_current_organization_id() AND lower(p."lastName") LIKE '%' || p_term || '%'
-  ORDER BY p."lastName", p."firstName", p.id LIMIT p_limit;
-END $f$;
-GRANT CREATE ON SCHEMA public TO aestara_bench_search;
-ALTER FUNCTION bench_patient_search(text, int) OWNER TO aestara_bench_search;
-REVOKE CREATE ON SCHEMA public FROM aestara_bench_search;
-REVOKE ALL ON FUNCTION bench_patient_search(text, int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION bench_patient_search(text, int) TO aestara_app;
 `;
 
 interface Row {
   request: string;
-  mode: Exclude<Mode, "baseline">;
   baselineP50: number;
   p50: number;
   baselineP95: number;
@@ -345,7 +314,7 @@ async function run(): Promise<number> {
     await setup.connect();
     const loadStart = performance.now();
     await setup.query(LOAD_SQL);
-    await setup.query(BENCH_SEARCH_SQL);
+    await setup.query(BASELINE_ROLE_SQL);
     const fixture = await loadFixture(setup);
     const version = (await setup.query<{ v: string }>("SELECT current_setting('server_version') AS v"))
       .rows[0]?.v;
@@ -356,7 +325,7 @@ async function run(): Promise<number> {
         `(PostgreSQL ${version})`,
     );
 
-    // One connection per mode; the RLS modes act as the application role.
+    // One connection per mode; the rls mode acts as the application role.
     const clients = Object.fromEntries(
       MODES.map((m) => [m, new pg.Client({ connectionString: dbUrl })]),
     ) as Record<Mode, pg.Client>;
@@ -369,7 +338,7 @@ async function run(): Promise<number> {
 
     const results: Record<string, Record<Mode, number[]>> = {};
     for (const [name, workload] of Object.entries(workloads(fixture))) {
-      const samples: Record<Mode, number[]> = { baseline: [], rls: [], tuned: [] };
+      const samples: Record<Mode, number[]> = { baseline: [], rls: [] };
       for (const mode of MODES) {
         const pick = prng(7);
         for (let i = 0; i < WARMUP; i++) await workload(clients[mode], mode, pick);
@@ -392,33 +361,32 @@ async function run(): Promise<number> {
     const rows: Row[] = [];
     for (const [request, samples] of Object.entries(results)) {
       const base = [...samples.baseline].sort((a, b) => a - b);
-      for (const mode of ["rls", "tuned"] as const) {
-        const sorted = [...samples[mode]].sort((a, b) => a - b);
-        const baselineP95 = percentile(base, 95);
-        const p95 = percentile(sorted, 95);
-        const addedMs = p95 - baselineP95;
-        const addedRatio = addedMs / baselineP95;
-        rows.push({
-          request,
-          mode,
-          baselineP50: percentile(base, 50),
-          p50: percentile(sorted, 50),
-          baselineP95,
-          p95,
-          addedMs,
-          addedRatio,
-          pass: addedMs <= MAX_ADDED_MS && addedRatio <= MAX_ADDED_RATIO,
-        });
-      }
+      const sorted = [...samples.rls].sort((a, b) => a - b);
+      const baselineP95 = percentile(base, 95);
+      const p95 = percentile(sorted, 95);
+      const addedMs = p95 - baselineP95;
+      rows.push({
+        request,
+        baselineP50: percentile(base, 50),
+        p50: percentile(sorted, 50),
+        baselineP95,
+        p95,
+        addedMs,
+        addedRatio: addedMs / baselineP95,
+        pass: addedMs <= MAX_ADDED_MS,
+      });
     }
     const ms = (v: number) => v.toFixed(3);
     console.log(`\n${ROUNDS * PER_ROUND} samples per request and mode (after ${WARMUP} warm-up)\n`);
-    console.log("| Request | Mode | p50 baseline | p50 | p95 baseline | p95 | Added p95 | Gate |");
+    console.log(
+      "| Request | p50 baseline | p50 RLS | p95 baseline | p95 RLS | Added p95 | ≤ 5 ms | ≤ 10% (judged at M1.8) |",
+    );
     console.log("|---|---|---|---|---|---|---|---|");
     for (const r of rows) {
       console.log(
-        `| ${r.request} | ${r.mode} | ${ms(r.baselineP50)} ms | ${ms(r.p50)} ms | ${ms(r.baselineP95)} ms | ${ms(r.p95)} ms | ` +
-          `${ms(r.addedMs)} ms (${(r.addedRatio * 100).toFixed(1)}%) | ${r.pass ? "PASS" : "FAIL"} |`,
+        `| ${r.request} | ${ms(r.baselineP50)} ms | ${ms(r.p50)} ms | ${ms(r.baselineP95)} ms | ${ms(r.p95)} ms | ` +
+          `${ms(r.addedMs)} ms (${(r.addedRatio * 100).toFixed(1)}%) | ${r.pass ? "PASS" : "FAIL"} | ` +
+          `${r.addedRatio <= MAX_ADDED_RATIO ? "within" : "over"} |`,
       );
     }
     if (outFile) {
@@ -427,16 +395,14 @@ async function run(): Promise<number> {
         `${JSON.stringify({ postgres: version, samples: ROUNDS * PER_ROUND, rows }, null, 2)}\n`,
       );
     }
-    // The gate applies to the design as specified ("rls"); "tuned" shows what the
-    // proposed changes achieve. --report-only prints without gating.
-    const passed = rows.filter((r) => r.mode === "rls").every((r) => r.pass);
-    console.log(`\nGate on the design as specified (rls): ${passed ? "PASS" : "FAIL"}`);
+    // --report-only prints without failing the run.
+    const passed = rows.every((r) => r.pass);
+    console.log(`\nAbsolute gate (added p95 ≤ ${MAX_ADDED_MS} ms): ${passed ? "PASS" : "FAIL"}`);
     return passed || process.argv.includes("--report-only") ? 0 : 1;
   } finally {
     const cleanup = new pg.Client({ connectionString: adminUrl });
     await cleanup.connect();
     await cleanup.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await cleanup.query("DROP ROLE IF EXISTS aestara_bench_search");
     await cleanup.query("DROP ROLE IF EXISTS aestara_bench_baseline");
     await cleanup.end();
   }

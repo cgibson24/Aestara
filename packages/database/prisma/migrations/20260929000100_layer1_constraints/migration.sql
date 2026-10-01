@@ -7,8 +7,8 @@
 -- LAYER 1 - Identity, tenancy, patients, audit
 -- #############################################################################
 
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS btree_gin;
+-- Accent folding for patient search keys (ADR-0020); a trusted extension.
+CREATE EXTENSION IF NOT EXISTS unaccent;
 
 -- Rejects the operation outright (append-only ledgers, immutable rows).
 CREATE OR REPLACE FUNCTION app_reject_mutation() RETURNS trigger
@@ -124,11 +124,38 @@ CREATE TRIGGER "UserToken_consumed_final"
   BEFORE UPDATE ON "UserToken"
   FOR EACH ROW WHEN (OLD."consumedAt" IS NOT NULL) EXECUTE FUNCTION app_reject_mutation();
 
--- Tenant-scoped fuzzy name search (Layer 1 patient search).
-CREATE INDEX "Patient_search_last_name_trgm"
-  ON "Patient" USING gin ("organizationId", lower("lastName") gin_trgm_ops);
-CREATE INDEX "Patient_search_first_name_trgm"
-  ON "Patient" USING gin ("organizationId", lower("firstName") gin_trgm_ops);
+-- Patient search under Row-Level Security (ADR-0020). LIKE, lower() and the
+-- trigram operators are not leakproof, so under a tenant policy PostgreSQL may
+-- not use them in an index condition. Search therefore runs on keys the
+-- database derives here, with leakproof operators only. Name keys hold only
+-- a-z and 0-9, whose order is the same in every collation, so a name prefix is
+-- the range "key >= k AND key < k'" (k' = k with its last character advanced);
+-- email, phone, MRN and date of birth are equalities. The B-tree indexes on
+-- (organizationId, key) are declared in schema.prisma.
+CREATE OR REPLACE FUNCTION app_name_search_key(value text) RETURNS text
+LANGUAGE sql STABLE PARALLEL SAFE
+SET search_path = pg_catalog, public AS $$
+  SELECT NULLIF(regexp_replace(lower(public.unaccent('public.unaccent'::regdictionary, value)),
+                               '[^a-z0-9]+', '', 'g'), '')
+$$;
+
+-- Runs on every insert and update, so a key can never disagree with its source.
+CREATE OR REPLACE FUNCTION app_patient_search_keys() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public AS $$
+BEGIN
+  NEW."firstNameKey"     := coalesce(app_name_search_key(NEW."firstName"), '');
+  NEW."lastNameKey"      := coalesce(app_name_search_key(NEW."lastName"), '');
+  NEW."preferredNameKey" := app_name_search_key(NEW."preferredName");
+  NEW."emailKey"         := NULLIF(lower(btrim(NEW.email)), '');
+  NEW."phoneKey"         := NULLIF(regexp_replace(NEW.phone, '[^0-9]+', '', 'g'), '');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "Patient_search_keys"
+  BEFORE INSERT OR UPDATE ON "Patient"
+  FOR EACH ROW EXECUTE FUNCTION app_patient_search_keys();
 
 ALTER TABLE "Patient" ADD CONSTRAINT "Patient_archived_chk"
   CHECK (("status" = 'ARCHIVED') = ("archivedAt" IS NOT NULL));

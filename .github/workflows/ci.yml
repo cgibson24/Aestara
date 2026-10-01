@@ -161,10 +161,10 @@ jobs:
       - name: Migrations as a non-superuser, drift, ownership and RLS, Layer 1 behaviour suite
         run: pnpm --filter @aestara/database db:test
 
-      # ADR-0004 gate. Report only until the owner decides the search design
-      # under RLS (packages/database/README.md, "RLS performance").
-      - name: RLS performance benchmark (report)
-        run: pnpm --filter @aestara/database bench:rls --report-only | tee -a "$GITHUB_STEP_SUMMARY"
+      # ADR-0004: fails if RLS adds more than 5 ms p95 to a request; the 10%
+      # limit is reported here and judged end to end at M1.8 (ADR-0020).
+      - name: RLS performance benchmark
+        run: pnpm --filter @aestara/database bench:rls | tee -a "$GITHUB_STEP_SUMMARY"
 
   terraform:
     name: Terraform · fmt · validate · tflint · checkov

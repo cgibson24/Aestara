@@ -331,6 +331,11 @@ CREATE TABLE "Patient" (
     "dateOfBirth" DATE NOT NULL,
     "email" TEXT,
     "phone" TEXT,
+    "firstNameKey" TEXT NOT NULL DEFAULT '',
+    "lastNameKey" TEXT NOT NULL DEFAULT '',
+    "preferredNameKey" TEXT,
+    "emailKey" TEXT,
+    "phoneKey" TEXT,
     "mrn" TEXT,
     "externalEmrIdentifier" TEXT,
     "status" "PatientStatus" NOT NULL DEFAULT 'ACTIVE',
@@ -514,6 +519,21 @@ CREATE INDEX "Patient_organizationId_dateOfBirth_idx" ON "Patient"("organization
 
 -- CreateIndex
 CREATE INDEX "Patient_organizationId_status_idx" ON "Patient"("organizationId", "status");
+
+-- CreateIndex
+CREATE INDEX "Patient_organizationId_lastNameKey_idx" ON "Patient"("organizationId", "lastNameKey");
+
+-- CreateIndex
+CREATE INDEX "Patient_organizationId_firstNameKey_idx" ON "Patient"("organizationId", "firstNameKey");
+
+-- CreateIndex
+CREATE INDEX "Patient_organizationId_preferredNameKey_idx" ON "Patient"("organizationId", "preferredNameKey");
+
+-- CreateIndex
+CREATE INDEX "Patient_organizationId_emailKey_idx" ON "Patient"("organizationId", "emailKey");
+
+-- CreateIndex
+CREATE INDEX "Patient_organizationId_phoneKey_idx" ON "Patient"("organizationId", "phoneKey");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Patient_organizationId_id_key" ON "Patient"("organizationId", "id");

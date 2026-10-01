@@ -5,6 +5,11 @@ packages:
 allowBuilds:
   '@prisma/engines': true
   prisma: true
+# Patched versions of Prisma's transitive dependencies (OSV-Scanner, ADR-0016):
+# GHSA-ggr8-5vv4-36mx (deepmerge-ts), GHSA-3f6p-5ww8-9rcr and GHSA-rgwj-5xj2-c3m3 (mysql2).
+overrides:
+  deepmerge-ts: 8.0.2
+  mysql2: 3.24.5
 minimumReleaseAgeExclude:
   - '@turbo/darwin-64@2.11.4'
   - '@turbo/darwin-arm64@2.11.4'

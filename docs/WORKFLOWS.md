@@ -79,7 +79,7 @@ Steps [B §4.1]:
 
 Search, update and archive:
 
-- `POST /patients/search` carries name, DOB, MRN, phone or email in the body, never the URL. Results span every practice of the organization (D-01).
+- `POST /patients/search` carries a name prefix, DOB, MRN, phone or email in the body, never the URL. Names match by prefix of the last, first or preferred name; the others match exactly (ADR-0020). Results span every practice of the organization (D-01).
 - `PATCH /patients/{pid}` and `POST /patients/{pid}/archive` require `If-Match`. `PATCH` also sets the status `INACTIVE` or `DECEASED`; it never sets or clears `ARCHIVED` (spec §5.4.10).
 
 Rules:

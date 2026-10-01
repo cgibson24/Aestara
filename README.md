@@ -49,8 +49,8 @@ Placeholders say which layer builds them. Nothing is faked ahead of its layer.
 
 ```bash
 pnpm verify:spec                                   # Bible → spec traceability (pip install pypdf)
-DATABASE_URL=postgresql://…/empty_db pnpm verify:schema   # design schema + 99 database behaviour checks
-ADMIN_DATABASE_URL=postgresql://…/postgres pnpm --filter @aestara/database db:test   # Layer 1 migrations, RLS, 57 checks
+DATABASE_URL=postgresql://…/empty_db pnpm verify:schema   # design schema + 101 database behaviour checks
+ADMIN_DATABASE_URL=postgresql://…/postgres pnpm --filter @aestara/database db:test   # Layer 1 migrations, RLS, 61 checks
 pnpm --filter @aestara/design-tokens test          # WCAG contrast gate for the palette
 python3 docs/technical-spec/verification/check_docs.py    # documentation pack and references
 python3 apps/ios-provider/scripts/check_module_graph.py   # iOS module architecture

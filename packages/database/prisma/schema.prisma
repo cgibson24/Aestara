@@ -592,6 +592,15 @@ model Patient {
   dateOfBirth           DateTime      @db.Date
   email                 String?
   phone                 String?
+  /// Search keys (ADR-0020), maintained by a database trigger from the name,
+  /// email and phone columns; the application never writes them. Name keys are
+  /// lower-case, accent-free and alphanumeric only; emailKey is the trimmed,
+  /// lower-cased address; phoneKey holds the digits only.
+  firstNameKey          String        @default("")
+  lastNameKey           String        @default("")
+  preferredNameKey      String?
+  emailKey              String?
+  phoneKey              String?
   /// Internal or externally mapped identifier; unique within the organization.
   mrn                   String?
   externalEmrIdentifier String?
@@ -618,6 +627,12 @@ model Patient {
   @@index([organizationId, lastName, firstName])
   @@index([organizationId, dateOfBirth])
   @@index([organizationId, status])
+  /// Search indexes (ADR-0020): leakproof comparisons on the keys keep them usable under RLS.
+  @@index([organizationId, lastNameKey])
+  @@index([organizationId, firstNameKey])
+  @@index([organizationId, preferredNameKey])
+  @@index([organizationId, emailKey])
+  @@index([organizationId, phoneKey])
 }
 
 model PatientContact {

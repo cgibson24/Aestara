@@ -2,6 +2,18 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-01: Patient search under RLS decided (ADR-0020)
+
+- The owner's decision on UD-35. No patient query bypasses Row-Level Security.
+- **Search keys:** `Patient` gains five keys maintained by a database trigger. Search matches name prefixes and exact date of birth, MRN, email and phone through leakproof operators, so its indexes work under the tenant policy.
+- **Indexes and extensions:** the trigram indexes, `pg_trgm` and `btree_gin` are removed; `unaccent` is added.
+- **Gate:** the RLS gate for fixed per-statement cost is judged end to end at M1.8.
+  - Measured on the database work: patient search now adds about 0.4 ms p95 (it was 3.5 to 3.7 ms), and the cost no longer grows with organization size.
+  - Every request is under the 5 ms limit, and CI now fails on that limit.
+  - RLS check S21 proves the search index is used under the tenant policy.
+- **Database checks:** 101 on the full design (`K1`–`K2` added); 61 against the Layer 1 migrations.
+- **Dependencies:** pnpm overrides patch two of Prisma's transitive dependencies flagged by OSV-Scanner: `deepmerge-ts` 8.0.2 (GHSA-ggr8-5vv4-36mx) and `mysql2` 3.24.5 (GHSA-3f6p-5ww8-9rcr, GHSA-rgwj-5xj2-c3m3).
+
 ## 2026-09-29: Layer 1 database foundation (M1.1)
 
 - **`packages/database`** (ADR-0019):

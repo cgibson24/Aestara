@@ -209,6 +209,55 @@ SELECT pg_temp.expect_rows_as('aestara_app', NULL,
   $$SELECT 1 FROM "IdempotencyKey"$$, 1,
   'S20 without a tenant only keys stored without a tenant are visible');
 
+-- Search under the tenant policy (ADR-0020): 2,000 synthetic patients in B give
+-- the planner a real choice. A leakproof prefix search must use its key index;
+-- the old lower()/LIKE form must not, which is why the keys exist.
+INSERT INTO "Patient" (id, "organizationId", "firstName", "lastName", "dateOfBirth", "updatedAt")
+SELECT gen_random_uuid(), '0b000000-0000-7000-8000-000000000001', 'Synthetic',
+       (ARRAY['Lee','Kim','Ng','Ortiz','Patel','Reyes','Shah','Tran'])[1 + n % 8] || n, date '1970-01-01' + n, now()
+FROM generate_series(1, 2000) n;
+ANALYZE "Patient";
+
+CREATE FUNCTION pg_temp.plan_as_app(org uuid, stmt text) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE plan text := ''; line text;
+BEGIN
+  PERFORM set_config('app.organization_id', org::text, true);
+  EXECUTE 'SET LOCAL ROLE aestara_app';
+  FOR line IN EXECUTE 'EXPLAIN (COSTS OFF) ' || stmt LOOP
+    plan := plan || line || E'\n';
+  END LOOP;
+  RESET ROLE;
+  PERFORM set_config('app.organization_id', '', true);
+  RETURN plan;
+END;
+$$;
+
+DO $$
+DECLARE plan text;
+BEGIN
+  plan := pg_temp.plan_as_app('0b000000-0000-7000-8000-000000000001',
+    $q$SELECT id FROM "Patient" WHERE "organizationId" = '0b000000-0000-7000-8000-000000000001'
+         AND "lastNameKey" >= 'ortiz1' AND "lastNameKey" < 'ortiz2'
+       ORDER BY "lastNameKey" LIMIT 25$q$);
+  IF plan !~ 'Index Cond: [^\n]*"lastNameKey" >=' THEN
+    RAISE EXCEPTION 'FAIL  S21 a prefix search under RLS did not use its key index:%', E'\n' || plan;
+  END IF;
+  plan := pg_temp.plan_as_app('0b000000-0000-7000-8000-000000000001',
+    $q$SELECT id FROM "Patient" WHERE "organizationId" = '0b000000-0000-7000-8000-000000000001'
+         AND lower("lastName") LIKE 'ortiz1%' LIMIT 25$q$);
+  IF plan ~ 'Index Cond: [^\n]*lower' THEN
+    RAISE EXCEPTION 'FAIL  S21 control: a non-leakproof predicate became an index condition:%', E'\n' || plan;
+  END IF;
+  INSERT INTO _results VALUES ('S21 under RLS a name-prefix search uses its key index; lower()/LIKE cannot', true);
+  RAISE NOTICE 'PASS  S21 under RLS a name-prefix search uses its key index; lower()/LIKE cannot';
+END $$;
+
+SELECT pg_temp.expect_rows_as('aestara_app', '0b000000-0000-7000-8000-000000000001',
+  $$SELECT 1 FROM "Patient" WHERE "organizationId" = '0b000000-0000-7000-8000-000000000001'
+      AND "phoneKey" = '15550100199'$$, 0,
+  'S22 a search key from another tenant''s patient is not found');
+
 -- =============================================================================
 -- P. Platform role: organization metadata only (ADR-0018 K-06)
 -- =============================================================================

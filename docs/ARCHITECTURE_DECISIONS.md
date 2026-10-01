@@ -31,6 +31,7 @@ Status values:
 | [0017](#adr-0017) | Layer 0 errata to the locked specification | Accepted | 2026-09-28 |
 | [0018](#adr-0018) | Layer 1 kickoff decisions | Accepted | 2026-09-29 |
 | [0019](#adr-0019) | Layer 1 database foundation: generated schema, roles, Row-Level Security, catalog | Adopted (delegated) | 2026-09-29 |
+| [0020](#adr-0020) | Patient search under Row-Level Security: leakproof search keys (UD-35) | Accepted | 2026-10-01 |
 
 ---
 
@@ -352,3 +353,36 @@ Status values:
 - **Consequences:**
   - A later layer promotes its tables by raising one constant and adds its own constraints and security migrations. Tables without a classification, a policy or a matching fragment fail CI.
   - The benchmark shows that non-leakproof search predicates cannot use indexes under RLS (UD-35). Layer 1 does not go past M1.1 until the owner decides.
+
+## ADR-0020
+
+**Patient search under Row-Level Security: leakproof search keys (UD-35)**
+
+- **Status:** Accepted, 2026-10-01. The owner chose "the most secure option that supports the narrative of the project", which "must be efficient for the client". The owner also decided that the ADR-0004 gate for requests without a scaling problem is judged end to end in M1.8.
+- **Context:** the M1.1 benchmark (ADR-0019) showed that the specified name search cannot use its trigram index under RLS. `LIKE`, `lower()` and the trigram operators are not leakproof, so PostgreSQL may not evaluate them in an index condition ahead of the tenant policy. It scans every patient of the organization: +3.5 to 3.7 ms p95 at 5,000 patients per organization, growing with size. The measured alternatives were:
+  - a tenant-bound `SECURITY DEFINER` search function: fast and fuzzy, but it bypasses RLS for its query and amends K-16
+  - leakproof prefix search: no bypass
+  - accepting the scan
+  - dropping RLS
+- **Decision:**
+  - **No query on patient data bypasses Row-Level Security.** K-16 stands unchanged: the sign-in lookup is the only `SECURITY DEFINER` function.
+  - **Search keys:** `Patient` gains `firstNameKey`, `lastNameKey`, `preferredNameKey`, `emailKey` and `phoneKey`. A database trigger maintains them on every insert and update; the application never writes them.
+    - Name keys are lower-case, accent-free and alphanumeric only, so "José O'Brien" becomes `jose` and `obrien`.
+    - The email key is the trimmed, lower-cased address.
+    - The phone key holds the digits only.
+  - **Indexes:** B-tree indexes on `(organizationId, key)`, declared in `schema.prisma`, replace the trigram indexes. Name keys hold only `a-z` and `0-9`, whose order is the same in every collation, so a name prefix is the range `key >= k AND key < k′`, where k′ is k with its last character advanced. Ordinary text comparison is leakproof.
+  - **Search:** `POST /patients/search` matches:
+    - a **prefix** of the last, first or preferred name
+    - the exact date of birth
+    - the exact MRN
+    - the exact email
+    - the exact phone digits
+
+    Search uses only leakproof operators on the keys, so every index stays usable under the tenant policy. Its time does not grow with the size of the organization.
+  - **Probable duplicates (Bible §4.1):** `POST /patients/duplicate-check` keeps tolerant matching. It narrows candidates with leakproof, indexed predicates (date of birth, email, phone), then compares names within that small set (M1.8).
+  - **Extensions:** `pg_trgm` and `btree_gin` are removed from Layer 1; nothing else used them. `unaccent` (a trusted extension) is added.
+  - **Gate:** the per-statement cost of RLS (about 0.03 ms per statement plus the tenant setting) is judged end to end at M1.8, for every core request. In M1.1 the RLS suite proves deterministically that a name search uses its index under the tenant policy.
+- **Consequences:**
+  - Staff search by the start of a name, or by an exact identifier. Typo-tolerant search is not offered; duplicate detection still catches near-matches before a patient is created.
+  - Because nothing has been applied to a shared environment, the Layer 1 migrations are amended in place rather than followed by a corrective migration.
+  - Spec §2.1, §5.2, §5.6 and §6.3 are corrected. UD-35 is closed.

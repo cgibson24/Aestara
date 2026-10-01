@@ -864,17 +864,29 @@ The three roles are `NOLOGIN`, never superusers and never `BYPASSRLS`; the migra
 
 `scripts/check-rls.ts` compares the classification with the live database: forced RLS on every tenant table, none on identity tables, the three roles' attributes, no grant to `PUBLIC`, no platform grant on a `none` table, delete and ledger privileges, and exactly one `SECURITY DEFINER` function, owned by `aestara_signin` and executable only by `aestara_app`. `test/ownership.test.ts` compares it with the schema.
 
-### 6.4 Performance gate (ADR-0004)
+### 6.4 Performance gate (ADR-0004) and search (ADR-0020)
 
-The gate: ≤ 10% added p95 latency and ≤ 5 ms absolute on login, patient search and patient open. Endpoints arrive in M1.2 to M1.8, so M1.1 measures the **database work** of each request (`pnpm --filter @aestara/database bench:rls`). This is stricter than the endpoint gate, because an endpoint adds fixed costs that RLS does not change. The benchmark uses 20 organizations, 100,000 patients and 200,000 audit events. It compares the application role against a role with the same privileges plus `BYPASSRLS`, over 6,000 interleaved samples per request.
+The gate is ≤ 10% added p95 latency and ≤ 5 ms absolute, on login, patient search and patient open. Endpoints arrive in M1.2 to M1.8, so M1.1 measures the **database work** of each request (`pnpm --filter @aestara/database bench:rls`).
 
-| Request | Added p95, database work | Result |
+The benchmark uses 20 organizations, 100,000 patients and 200,000 audit events. It compares the application role against a role with the same privileges plus `BYPASSRLS`, over 6,000 interleaved samples per request.
+
+**Search under RLS (UD-35, decided in ADR-0020).** `LIKE`, `lower()` and the trigram operators are not leakproof, so PostgreSQL may not use them in an index condition ahead of a tenant policy. The originally specified name search therefore scanned every patient of the organization: +3.5 to 3.7 ms p95 (90 to 105%), growing with organization size.
+
+The owner chose search that never bypasses RLS:
+
+- A trigger keeps search keys on `Patient`. Name keys are lower-case, accent-free and alphanumeric only; the email key is lower-cased; the phone key is digits only.
+- Search uses only leakproof comparisons on the keys. A name prefix is the range `key >= k AND key < k′`, served by B-tree indexes on `(organizationId, key)`.
+- The RLS suite proves deterministically (check S21) that such a search uses its index under the tenant policy, while `lower()`/`LIKE` cannot.
+
+Results on the current design:
+
+| Request | Added p95, database work | Gate |
 |---|---|---|
-| Login | None; the cached sign-in function is faster than the equivalent ad hoc query | Passes |
-| Patient open | 0.47 to 0.71 ms (17 to 25% of a 3 ms transaction): about 0.03 ms per statement at the median across six statements, plus the tenant `set_config` | Under 5 ms; over 10% of the database work alone |
-| Patient search | 3.5 to 3.7 ms (90 to 105%), growing with patients per organization. `LIKE`, `lower()` and the trigram operators are not leakproof, so PostgreSQL may not use them in index conditions ahead of the policy and scans the organization | **Fails.** Through a tenant-bound `SECURITY DEFINER` search function (measured in the benchmark database only): 0 to 0.4 ms (up to 10%) |
+| Login | none (the cached sign-in function is faster than the equivalent ad hoc query) | Passes |
+| Patient search | about 0.4 ms (16%); no longer grows with organization size | Under 5 ms |
+| Patient open | 0.5 to 0.7 ms (16 to 25%) | Under 5 ms |
 
-Ranges are from two full runs on PostgreSQL 16 (local); the CI `database` job reports the same table on PostgreSQL 18 on every push. ADR-0004 and ADR-0018 K-16 require the design to be revisited before Layer 1 goes further. The choice is recorded as UD-35 (spec §10.2) and waits for the owner.
+The remaining cost is fixed: about 0.03 ms per statement, plus setting the tenant. ADR-0020 judges the relative limit end to end at M1.8, where an endpoint adds costs that RLS does not change. CI fails the benchmark only if a request adds more than 5 ms.
 
 ---
 
@@ -884,7 +896,7 @@ The whole schema is designed now; each table is created only by the layer that u
 
 | Layer | Tables created (spec §5.8) | `constraints.sql` fragment |
 |---|---|---|
-| 1 | 21: Organization, Practice, Location, User, UserCredential, UserToken, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, IdempotencyKey, OrganizationSetting | Extensions `pg_trgm`, `btree_gin`; the three trigger functions; system role key uniqueness; `UserRole` scope shape, no self-assignment, one active assignment; credential shape; session checks; `LoginEvent` failure reason and append-only; `UserToken` shape, expiry and single use; `AuditEvent` append-only; patient trigram indexes |
+| 1 | 21: Organization, Practice, Location, User, UserCredential, UserToken, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, IdempotencyKey, OrganizationSetting | Extension `unaccent`; the three trigger functions; system role key uniqueness; `UserRole` scope shape, no self-assignment, one active assignment; credential shape; session checks; `LoginEvent` failure reason and append-only; `UserToken` shape, expiry and single use; `AuditEvent` append-only; patient search keys (ADR-0020) |
 | 2 | 14: StorageObject, PhotographyProtocol, PhotographyProtocolView, PhotoSession, PatientPhoto, PhotoDerivative, PhotoTag, PhotoPermission, MediaRelease, MediaReleasePermission, OutboxEvent, FeatureFlag, PracticeSetting, RetentionPolicy | Write-once storage; original and derivative immutability; session capturer and location checks; permission versioning; release subject and pin rules; flag scope; retention period. `PhotoPermission` evidence may not be `SIGNED_CONSENT` yet |
 | 3 | 10: Consultation, ConsultationNote, ConsultationConcern, PatientConcern, PatientMedicalHistory, PhotoAnnotation, BeforeAfterSet, Document, DocumentVersion, AIJob | Consultation status checks; FINAL notes; before/after distinct photos and registration; `DocumentVersion` immutable. **Re-created:** `MediaRelease_single_subject_chk` (adds before/after sets) |
 | 4 | 17: TreatmentCategory, Treatment, TreatmentPlan, TreatmentPlanItem, Procedure, Estimate, Quote, InvoiceReference, ConsentTemplate, ConsentTemplateVersion, ConsentAssignment, ConsentSignature, EducationContent, EducationContentVersion, ContentAssignment, PatientInstruction, DataExportJob | Amount checks; estimate, template, content and consent freezing and forward-only edges; signatures append-only; instruction context; export completion. **Re-created:** `PhotoPermission_evidence_chk` (`SIGNED_CONSENT` must name the consent) |
@@ -924,7 +936,7 @@ Rules:
 
 | Need | Index | Source |
 |---|---|---|
-| Patient search by name | GIN trigram on `lower(lastName)` and `lower(firstName)`, with `organizationId` leading through `btree_gin`. Under RLS these operators are not leakproof and the planner does not use the index for them (section 6.4, UD-35) | spec §5.6, `constraints.sql` |
+| Patient search | B-tree `(organizationId, lastNameKey / firstNameKey / preferredNameKey / emailKey / phoneKey)` on trigger-maintained keys. Name prefix as a range, others as equalities, all leakproof, so the indexes work under RLS (section 6.4) | spec §5.6, ADR-0020, `schema.prisma`, `constraints.sql` |
 | Patient lookup by DOB, MRN, status | B-tree `(organizationId, dateOfBirth)`, unique `(organizationId, mrn)`, `(organizationId, status)` | `schema.prisma` |
 | Hot lists | Tenant-leading composites such as `(organizationId, patientId, createdAt / startsAt / capturedAt)` | spec §5.6 |
 | Per-patient access reports | `AuditEvent (organizationId, patientId, occurredAt)` | `schema.prisma` |
@@ -952,8 +964,8 @@ Two runs share one behavior suite, `docs/technical-spec/verification/behavior/`.
 
 | Run | Command | What it proves |
 |---|---|---|
-| Design | `pnpm verify:schema` (`run_schema_checks.sh`) | `schema.prisma` validates with Prisma 7.10; the full schema plus all of `constraints.sql` applies to an **empty** PostgreSQL; all fragments pass (99 checks) |
-| Built layers | `pnpm --filter @aestara/database db:test` | The real migrations apply as a non-superuser, Prisma sees no drift, `check-rls.ts` passes, and the built layers' fragments plus the RLS suite (`test/sql/rls.sql`) pass (57 checks in Layer 1) |
+| Design | `pnpm verify:schema` (`run_schema_checks.sh`) | `schema.prisma` validates with Prisma 7.10; the full schema plus all of `constraints.sql` applies to an **empty** PostgreSQL; all fragments pass (101 checks) |
+| Built layers | `pnpm --filter @aestara/database db:test` | The real migrations apply as a non-superuser, Prisma sees no drift, `check-rls.ts` passes, and the built layers' fragments plus the RLS suite (`test/sql/rls.sql`) pass (61 checks in Layer 1) |
 
 Prerequisites: Node.js, the `psql` client, and a PostgreSQL superuser connection (local `docker compose` or the CI service).
 
@@ -975,6 +987,7 @@ ADMIN_DATABASE_URL=postgresql://aestara:aestara_local_only@localhost:5432/aestar
   - F: consents
   - G: audit
   - H: scheduling, notes and configuration
+  - K: patient search keys
   - T: one-time tokens
   - R: regressions from the independent review
   - V7: the `MATCH SIMPLE` audit (section 4.2)
@@ -990,7 +1003,6 @@ Details: [technical-spec/verification/README.md](technical-spec/verification/REA
 
 | Item | Status | Confirmed at |
 |---|---|---|
-| Patient search under RLS (UD-35, section 6.4) | Non-leakproof search operators cannot use indexes under RLS; the ADR-0004 gate fails for search as specified | Owner, before M1.2 |
 | Custom roles under RLS | `Role` uses RLS without `FORCE` while only system roles exist; organization custom roles would need a forced policy and a catalog-maintenance path | When custom roles are enabled |
 | Patient identities in `User` | `User` has no RLS (spec §4.1). Patient-kind users arrive in Layer 5, and their contact fields are more sensitive than staff ones; review their protection there | Layer 5 |
 | Custom roles (UD-07) | System roles only in Layer 1 (ADR-0018 K-02). `UserRole.roleId` references `Role(id)` alone, so before custom roles are enabled `UserRole` gets a composite key that stops one organization's custom role being assigned in another | When custom roles are enabled |

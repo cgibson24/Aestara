@@ -120,6 +120,43 @@ SELECT pg_temp.expect_error($$
   '23514', 'B10 an ARCHIVED patient records when it was archived');
 
 -- =============================================================================
+-- K. Patient search keys (ADR-0020)
+-- =============================================================================
+INSERT INTO "Patient" (id, "organizationId", "firstName", "lastName", "preferredName", "dateOfBirth", email, phone, "updatedAt")
+VALUES ('0a000000-0000-7000-8000-00000000c0de', '0a000000-0000-7000-8000-000000000001', 'José', 'O''Brien-Smith', 'Pepe',
+        '1980-04-04', ' Jose.OB@Example.TEST ', '+1 (555) 010-0199', now());
+
+DO $$
+DECLARE p record;
+BEGIN
+  SELECT * INTO p FROM "Patient" WHERE id = '0a000000-0000-7000-8000-00000000c0de';
+  IF (p."firstNameKey", p."lastNameKey", p."preferredNameKey", p."emailKey", p."phoneKey")
+     IS DISTINCT FROM ('jose', 'obriensmith', 'pepe', 'jose.ob@example.test', '15550100199') THEN
+    RAISE EXCEPTION 'FAIL  K1 search keys were %, %, %, %, %',
+      p."firstNameKey", p."lastNameKey", p."preferredNameKey", p."emailKey", p."phoneKey";
+  END IF;
+  INSERT INTO _results VALUES ('K1 the database derives accent-free, punctuation-free search keys', true);
+  RAISE NOTICE 'PASS  K1 the database derives accent-free, punctuation-free search keys';
+END $$;
+
+DO $$
+DECLARE k text;
+BEGIN
+  UPDATE "Patient" SET "lastNameKey" = 'forged', "phoneKey" = '0' WHERE id = '0a000000-0000-7000-8000-00000000c0de';
+  SELECT "lastNameKey" || '|' || "phoneKey" INTO k FROM "Patient" WHERE id = '0a000000-0000-7000-8000-00000000c0de';
+  IF k <> 'obriensmith|15550100199' THEN
+    RAISE EXCEPTION 'FAIL  K2 a written search key survived: %', k;
+  END IF;
+  UPDATE "Patient" SET "lastName" = 'Núñez', phone = NULL WHERE id = '0a000000-0000-7000-8000-00000000c0de';
+  SELECT "lastNameKey" || '|' || coalesce("phoneKey", 'null') INTO k FROM "Patient" WHERE id = '0a000000-0000-7000-8000-00000000c0de';
+  IF k <> 'nunez|null' THEN
+    RAISE EXCEPTION 'FAIL  K2 search keys did not follow an update: %', k;
+  END IF;
+  INSERT INTO _results VALUES ('K2 search keys always follow their source columns and cannot be written', true);
+  RAISE NOTICE 'PASS  K2 search keys always follow their source columns and cannot be written';
+END $$;
+
+-- =============================================================================
 -- T. One-time tokens (ADR-0018 K-09, K-15)
 -- =============================================================================
 INSERT INTO "UserToken" (id, "userId", purpose, "tokenHash", "organizationId", "expiresAt")

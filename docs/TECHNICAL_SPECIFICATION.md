@@ -138,7 +138,7 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | Contracts & validation | **Zod 4** schemas in `packages/api-contracts`, compiled to **OpenAPI 3.1** | zod 4.6, zod-to-openapi 9.1 | [P] | One source for runtime validation, TS types and the published OpenAPI document. DTOs are separate from DB models [B §20.3]. |
 | Database | **PostgreSQL 18** (Amazon RDS, Multi-AZ) | ≥ 15 required, 18 targeted | [B §25.1] PostgreSQL · [P] version | `NULLS NOT DISTINCT` and partial indexes (constraints.sql) need ≥ 15. PG 18 has native `uuidv7()`. Confirm the RDS region supports 18 at Layer 0 (17 is an acceptable fallback). |
 | ORM / migrations | **Prisma ORM 7** with the `@prisma/adapter-pg` driver adapter | 7.10 (stable) | [B §25.1] | Prisma 8 is at release-candidate stage (npm's `latest` tag currently points at 8.0.0-rc). **Do not adopt 8 until it is GA.** |
-| Search | PostgreSQL `pg_trgm` + `btree_gin` (tenant-scoped trigram indexes) | — | [P] | Enough for patient search up to ~100 practices. Revisit OpenSearch at the ~100-practice tier [B §25.4]. |
+| Search | PostgreSQL B-tree indexes on database-maintained search keys, queried with leakproof operators so they work under Row-Level Security (ADR-0020) | — | [P] | Name-prefix and exact-identifier patient search. Revisit OpenSearch at the ~100-practice tier [B §25.4]. |
 | Object storage | **Amazon S3**, private, SSE-KMS, versioning, Block Public Access | — | [B §25.3] | No public buckets and no public CDN for patient media [B §21.2, §25.3]. |
 | Queues & events | **SQS** (work queues) + **EventBridge** (domain events), fed by a **transactional outbox** | — | [B §25.3] · [P] outbox | The outbox (`OutboxEvent`) guarantees events are published only when the DB change commits: no lost or phantom events. |
 | Workers | NestJS worker processes (same codebase, separate deployables) | — | [B §25.2] "worker" | Exports, sync, derivatives, retention jobs; the UI always exposes job status [B §22.4]. |
@@ -553,7 +553,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 |---|---|---|---|
 | ProviderProfile | Clinical identity within an org (credentials, NPI, bookable) | FK `(organizationId, userId)` → Membership; target of every "provider" field | 1 |
 | StaffProfile | Non-clinical staff profile | FK → Membership | 1 |
-| Patient | Bible §4.2 minimum entity | Unique `(organizationId, mrn)`; trigram search indexes; `ARCHIVED` ⇔ `archivedAt` | 1 |
+| Patient | Bible §4.2 minimum entity | Unique `(organizationId, mrn)`; database-maintained search keys with B-tree indexes (ADR-0020); `ARCHIVED` ⇔ `archivedAt` | 1 |
 | PatientContact | Emergency contact / guardian / caregiver | FK → Patient | 1 |
 | PatientMedicalHistory | Allergies, medications, conditions, prior procedures | Category enum; source (staff / intake / integration) | 3 |
 | PatientConcern | Aesthetic concern by area | Linked to consultations | 3 |
@@ -858,7 +858,12 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 
 ### 5.6 Indexing, search & scale [B §25.4]
 
-- **Patient search:** tenant-scoped GIN trigram indexes on `lower(lastName)`, `lower(firstName)` (with `btree_gin` for the leading `organizationId`), plus B-tree on `(organizationId, dateOfBirth)` and unique `(organizationId, mrn)`. Search terms travel in a **POST body**, never a URL (§6.1.10).
+- **Patient search (ADR-0020):** a trigger keeps search keys on `Patient`:
+  - `firstNameKey`, `lastNameKey`, `preferredNameKey`: lower-case, accent-free, alphanumeric only
+  - `emailKey`: trimmed and lower-cased
+  - `phoneKey`: digits only
+
+  B-tree indexes on `(organizationId, key)` serve a **name prefix** as the range `key >= k AND key < k′`, and exact email or phone matches. B-tree `(organizationId, dateOfBirth)` and unique `(organizationId, mrn)` serve the other exact matches. Every predicate is leakproof, so the indexes stay usable under Row-Level Security; `LIKE`, `lower()` and trigram operators are not, so they are not used for search. Search terms travel in a **POST body**, never a URL (§6.1.10).
 - **Hot paths** are covered by tenant-leading composite indexes (`organizationId, patientId, createdAt/startsAt/capturedAt`).
 - **~100 practices:** partition `AuditEvent` and `LoginEvent` monthly (declarative range partitioning via raw-SQL migration). Retention detaches and archives whole partitions to WORM storage instead of deleting rows. Add read replicas for reporting, and consider OpenSearch for search.
 - **~1,000 practices:** evaluate hash-partitioning large tenant tables by `organizationId`, tenant-aware connection pooling (RDS Proxy), and per-tenant rate limits [B §25.4].
@@ -1059,7 +1064,7 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 
 | Method & path | Purpose | Perm | Idem | Audit | L |
 |---|---|---|---|---|---|
-| `POST /patients/search` | Search by name/DOB/MRN/phone/email (body only) | patient.read | – | – | 1 |
+| `POST /patients/search` | Search by a prefix of the last, first or preferred name, or exact DOB, MRN, phone or email (body only; §5.6, ADR-0020) | patient.read | – | – | 1 |
 | `GET /patients` | Recent/filtered list (status, practice); no PHI in query | patient.read | – | – | 1 |
 | `POST /patients/duplicate-check` | Probable-duplicate candidates before create [B §4.1] | patient.create | – | – | 1 |
 | `POST /patients` | Create; server assigns tenant; `confirmNoDuplicate` required if candidates exist | patient.create | R | PATIENT_CREATED | 1 |
@@ -1468,7 +1473,7 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 
 - **Cross-tenant suite:** for every tenant-scoped route (enumerated from the route table), tenant B's user requests tenant A's resource IDs and must get `404` with the same body as a random-UUID request, byte for byte apart from the per-request `requestId`. Runs in CI against a real Postgres (Testcontainers).
 - **Authorization suite:** role × endpoint matrix generated from §4.5; each cell asserts allow or deny.
-- **Database behavior suite:** `technical-spec/verification/behavior/`, one fragment per layer (ADR-0018 K-19): 99 checks over the full design, including the automated V7 audit. Each layer's migrations run the fragments of the layers built so far, plus the Row-Level Security suite (`packages/database/test/sql/rls.sql`).
+- **Database behavior suite:** `technical-spec/verification/behavior/`, one fragment per layer (ADR-0018 K-19): 101 checks over the full design, including the automated V7 audit. Each layer's migrations run the fragments of the layers built so far, plus the Row-Level Security suite (`packages/database/test/sql/rls.sql`).
 - **PHI log canary test** and **media permission tests** (export/release with a revoked or expired grant must fail).
 - **Session revocation tests:** a revoked session's refresh and access tokens are both rejected **immediately**, because the session is checked on every request (§3.3 step 3).
 - **Separation-of-duties tests** (§4.5): self-assignment, platform actor granting clinical roles, and a practice admin exceeding its scope are all rejected.
@@ -1649,7 +1654,7 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 
 | ID | Topic | Working baseline | Confirm at |
 |---|---|---|---|
-| UD-35 | Patient search under Row-Level Security. `LIKE`, `lower()` and the trigram operators are not leakproof, so under RLS PostgreSQL may not use them in index conditions ahead of the tenant policy: the §6.3 name search scans every patient of the organization. The M1.1 benchmark measures +3.5 to 3.7 ms p95 on the database work of a search (90 to 105%) at 5,000 patients per organization, against the ADR-0004 gate of ≤ 10% and ≤ 5 ms (`packages/database/README.md`) | **Pending the owner.** Measured alternatives: a tenant-bound `SECURITY DEFINER` search function (0 to 0.4 ms, up to 10%); prefix search on stored normalized name columns (leakproof operators); or revisiting D-04 | Before M1.2 |
+| UD-35 | Patient search under Row-Level Security: `LIKE`, `lower()` and the trigram operators are not leakproof, so the specified name search could not use its index under RLS (M1.1 benchmark) | **Decided 2026-10-01 (ADR-0020):** database-maintained search keys and leakproof prefix and exact-match search; no query on patient data bypasses RLS | Decided |
 
 ### 10.3 Proposals adopted [P]
 
@@ -1717,8 +1722,8 @@ With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 i
 | V2 Traceability | **58 / 58 pass** (57 at spec lock; Layer 0 added the no-dose-or-unit check). Includes: 70/70 §19 entities are Prisma models and in the catalog; all 18 additions marked ✚ (17 at lock, `UserToken` from ADR-0018); 41/41 §3.3 permissions in catalog and role matrix; 10/10 §3.2 roles; 36/36 §22.1 audit events in the enum and catalog; **9/9 Appendix A state machines equal the Prisma enums exactly**; 22/22 §20.2 resources have endpoints; 9/9 media-permission categories; 7/7 derivative kinds; 9/9 canonical FHIR resources; 7 simulation categories; 13/13 consent builder elements; 13/13 live-guidance codes; 9 education content types; §4.2, §15.1, §9.4, §22.2, §11.1 field sets; 12/12 patient-app screens; 12/12 patient-profile tabs; §32 Layer-1 permissions (13) and events (11); every Bible section §0–§36 plus Appendix A referenced; all 88 tables placed in exactly one layer; no required FK points at a later layer |
 | V3 Mutation test | **10 / 10 planted defects detected**; unmodified control passes |
 | V4 Prisma validate | **Valid** |
-| V5 Apply to PostgreSQL | **Clean.** 88 tables, 83 enum types, 281 foreign keys, 37 triggers, 47 CHECK constraints after ADR-0018 (87, 82, 278, 35 and 45 at lock; tested on PostgreSQL 16 locally and 18 in CI) |
-| V6 Behavior tests | **89 / 89 pass** at spec lock; **90 / 90** since Layer 0, when V7 was automated; **99 / 99** since ADR-0018 split the suite into per-layer fragments and added 9 Layer 1 checks (one-time tokens, the MFA sign-in step, archived patients). The Layer 0 groups: tenant isolation (5), identity/RBAC (8), photography (10), media permissions (10), AI provenance and review (15), consents (12), audit (4), scheduling/notes/configuration (6), review regressions R1–R18 (18), fixture (1) |
+| V5 Apply to PostgreSQL | **Clean.** 88 tables, 83 enum types, 281 foreign keys, 38 triggers, 47 CHECK constraints after ADR-0018 and ADR-0020 (87, 82, 278, 35 and 45 at lock; tested on PostgreSQL 16 locally and 18 in CI) |
+| V6 Behavior tests | **89 / 89 pass** at spec lock; **90 / 90** since Layer 0, when V7 was automated; **101 / 101** since ADR-0018 split the suite into per-layer fragments and added 9 Layer 1 checks (one-time tokens, the MFA sign-in step, archived patients), and ADR-0020 added 2 (patient search keys). The Layer 0 groups: tenant isolation (5), identity/RBAC (8), photography (10), media permissions (10), AI provenance and review (15), consents (12), audit (4), scheduling/notes/configuration (6), review regressions R1–R18 (18), fixture (1) |
 | V7 `MATCH SIMPLE` audit | 6 composite FKs have ≥ 2 nullable columns. **All 6 covered** (UserRole ×2 scope CHECK; FeatureFlag; AIValidationRecord ×2; PhotoSession, whose gap the review found, now closed). Automated in the behaviour suite since Layer 0: a catalog query fails the run on any uncovered FK |
 | V8 Diagrams | **4 / 4 render** |
 | V9 Adversarial review | **30 findings (10 high, 18 medium, 2 low groups). All 30 resolved:** fixed in schema/SQL with a regression test, fixed in the spec, or converted to an explicit decision. See §11.3. |

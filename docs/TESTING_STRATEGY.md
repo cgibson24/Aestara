@@ -127,8 +127,8 @@ The suite lives in `docs/technical-spec/verification/behavior/`, one fragment pe
 
 | Run | CI job | Database | Checks |
 |---|---|---|---|
-| Design: every fragment against `schema.prisma` plus all of `constraints.sql` | `spec` | Empty PostgreSQL 18 | 99: groups A–H, T and R, and the V7 audit |
-| Built layers: the real migrations, applied as a non-superuser, then the built layers' fragments plus the RLS suite `packages/database/test/sql/rls.sql` | `database` | Empty PostgreSQL 18 | 57 in Layer 1: the Layer 1 fragment (25), RLS groups S, P and I (31), and V7 |
+| Design: every fragment against `schema.prisma` plus all of `constraints.sql` | `spec` | Empty PostgreSQL 18 | 101: groups A–H, K, T and R, and the V7 audit |
+| Built layers: the real migrations, applied as a non-superuser, then the built layers' fragments plus the RLS suite `packages/database/test/sql/rls.sql` | `database` | Empty PostgreSQL 18 | 61 in Layer 1: the Layer 1 fragment (27), RLS groups S, P and I (33), and V7 |
 
 The `database` job also fails on migration drift against `prisma/schema.prisma`, and on any difference between the live roles, grants and RLS and `packages/database/src/ownership.ts` (`scripts/check-rls.ts`).
 
@@ -145,7 +145,7 @@ The `database` job also fails on migration drift against `prisma/schema.prisma`,
 
 | Layer | Fragment | Checks |
 |---|---|---|
-| 1 | `L01_identity_patients_audit.sql` | A2, A5, B1–B10, T1–T7, G1–G4, R4 |
+| 1 | `L01_identity_patients_audit.sql` | A2, A5, B1–B10, K1–K2, T1–T7, G1–G4, R4 |
 | 2 | `L02_photography.sql` | C1–C4, C8–C10, D1–D9, H4–H6, R1–R3, R15–R17 |
 | 3 | `L03_consultations_before_after.sql` | A1, C5–C7, D10, H2, H3 |
 | 4 | `L04_documents_consent_plans.sql` | F1–F12, R5–R9 |
@@ -321,7 +321,7 @@ Planned locations follow §2. Numbers are the Bible's own.
 | 5 | Authorized staff can create a patient | Duplicate check, idempotent create, `PATIENT_CREATED` | `services/api/test/integration/patients/` |
 | 6 | Authorized provider can open an allowed patient | Profile read writes `PATIENT_VIEWED`; demographics only | `services/api/test/integration/patients/` |
 | 7 | Cross-tenant access is rejected server-side | Generated cross-tenant suite; RLS tests | `services/api/test/cross-tenant/` |
-| 8 | Patient search works | `POST /patients/search`: tenant-scoped, trigram, no PHI in the URL; its search path under RLS follows UD-35 | `services/api/test/integration/patients/` |
+| 8 | Patient search works | `POST /patients/search`: tenant-scoped name-prefix and exact-identifier search on leakproof keys (ADR-0020), no PHI in the URL; the RLS suite proves the index is used under the tenant policy (S21) | `services/api/test/integration/patients/`; `packages/database/test/sql/rls.sql` |
 | 9 | Patient profile shell opens | XCUITest: profile with all 12 tabs in empty state | Provider app UI test target |
 | 10 | Audit events are written | Audit assertions for the 11 Bible §32 events and the Layer 1 additions (spec §6.4) | `services/api/test/audit/` |
 | 11 | Provider iOS app builds | `ios` job | CI |

@@ -49,15 +49,26 @@ SELECT set_config('app.organization_id', '<organization id from the verified tok
 
 `true` makes the setting end with the transaction, so it cannot leak through a pooled connection. With no tenant set, every tenant table returns no rows.
 
+## Patient search under RLS (ADR-0020)
+
+`LIKE`, `lower()` and the trigram operators are not leakproof, so PostgreSQL may not use them in an index condition ahead of a tenant policy. A search written with them scans every patient of the organization. Search therefore runs on keys a trigger keeps on `Patient`:
+
+| Key | Derived from | Search |
+|---|---|---|
+| `lastNameKey`, `firstNameKey`, `preferredNameKey` | the name, lower-case, accent-free, `a-z0-9` only | prefix: `key >= k AND key < k′` (k′ = k with its last character advanced) |
+| `emailKey` | trimmed, lower-cased email | equality |
+| `phoneKey` | digits of the phone number | equality |
+
+Normalize the typed term the same way (`app_name_search_key`) before comparing. Ordinary text comparison and equality are leakproof, so the B-tree indexes on `(organizationId, key)` stay usable under the tenant policy. `test/sql/rls.sql` check S21 proves this on every run.
+
 ## RLS performance
 
-The ADR-0004 gate is ≤ 10% added p95 and ≤ 5 ms. `bench:rls` builds a throwaway database with 20 organizations, 100,000 patients and 200,000 audit events. It times the database work of login, patient search and patient open, comparing the application role with a role that has the same privileges plus `BYPASSRLS`. Results from two runs on PostgreSQL 16:
+The ADR-0004 gate is ≤ 10% added p95 and ≤ 5 ms. `bench:rls` builds a throwaway database with 20 organizations, 100,000 patients and 200,000 audit events. It times the database work of login, patient search and patient open, comparing the application role with a role that has the same privileges plus `BYPASSRLS`.
 
-| Request | Added p95 | Gate |
-|---|---|---|
-| Login | none (−14 to −17%) | Passes |
-| Patient open | 0.47 to 0.71 ms (17 to 25%) | Under 5 ms; over 10% of the database work alone. An endpoint adds costs RLS does not change; measured end to end in M1.8 |
-| Patient search, as specified | 3.5 to 3.7 ms (90 to 105%) | **Fails**, and grows with patients per organization |
-| Patient search through a tenant-bound `SECURITY DEFINER` function (benchmark database only) | 0 to 0.4 ms (up to 10%) | Passes |
+| Request | Added p95 (PostgreSQL 16) |
+|---|---|
+| Login | none |
+| Patient search (name prefix) | about 0.4 ms (16%) |
+| Patient open | 0.5 to 0.7 ms (16 to 25%) |
 
-Search fails because `LIKE`, `lower()` and the trigram operators are not leakproof: under RLS, PostgreSQL may not evaluate them in an index condition ahead of the tenant policy, so it scans all of the organization's patients. The benchmark's `tuned` mode shows the alternative. The decision is UD-35 (spec §10.2) and is pending with the owner; until then CI runs the benchmark with `--report-only` and publishes the table in the job summary.
+The remaining cost is fixed: about 0.03 ms per statement, plus setting the tenant. The run fails if any request adds more than 5 ms. The 10% limit is judged end to end at M1.8 (ADR-0020), because an endpoint adds costs that RLS does not change. CI runs the benchmark on PostgreSQL 18 and publishes the table in the job summary.
