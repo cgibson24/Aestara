@@ -23,7 +23,16 @@ export function code(secret: string, step: number): string {
 /** Hands out codes for the current step, then the next one (the api accepts one step either side). */
 export class Authenticator {
   private lastStep = 0;
-  constructor(private readonly secret: string) {}
+  private readonly secret: string;
+
+  constructor(secret: string) {
+    this.secret = secret;
+  }
+
+  /** The last time step handed out; a later sign-in must use a later one. */
+  get lastUsedStep(): number {
+    return this.lastStep;
+  }
 
   async next(): Promise<string> {
     let step = Math.floor(Date.now() / 30_000);

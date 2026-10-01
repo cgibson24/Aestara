@@ -8,7 +8,8 @@ let package = Package(
     platforms: [.iOS("26.0")],
     products: [.library(name: "CoreSecurity", targets: ["CoreSecurity"])],
     targets: [
+        // Keychain tests need an app's entitlements: they run hosted in the
+        // provider app (apps/ios-provider/Tests, ADR-0022).
         .target(name: "CoreSecurity"),
-        .testTarget(name: "CoreSecurityTests", dependencies: ["CoreSecurity"]),
     ]
 )

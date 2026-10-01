@@ -1,6 +1,8 @@
+// CoreSecurity's Keychain, hosted in the provider app: a bare package test
+// bundle has no keychain entitlement on the simulator (ADR-0022).
+import CoreSecurity
 import Foundation
 import Testing
-@testable import CoreSecurity
 
 @Test func storesReadsAndDeletesADeviceValue() throws {
     let keychain = Keychain(service: "com.aestara.tests.\(UUID().uuidString)")

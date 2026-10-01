@@ -38,6 +38,8 @@ struct CreatePatientView: View {
                 }
                 Section("Date of birth") {
                     DatePicker("Date of birth", selection: $draft.dateOfBirth, in: ...Date(), displayedComponents: .date)
+                        // Wheels reach a birth year quickly; a calendar starts at this month.
+                        .datePickerStyle(.wheel)
                         .onChange(of: draft.dateOfBirth) { dateOfBirthChosen = true }
                         .accessibilityIdentifier("patient.dateOfBirth")
                 }

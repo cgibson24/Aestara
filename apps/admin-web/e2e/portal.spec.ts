@@ -4,14 +4,16 @@
 // refresh cookie restores the session while the access token never persists.
 import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
+import { Authenticator } from "../../../services/api/scripts/totp.ts";
 import { STACK_FILE } from "./stack.ts";
-import { Authenticator } from "./totp.ts";
 
 const stack = JSON.parse(readFileSync(STACK_FILE, "utf8")) as { invitationToken: string; email: string };
 const PASSWORD = "violet harbour lantern 42";
 let authenticator: Authenticator;
 
-test.describe.configure({ mode: "serial" });
+// Each sign-in needs a TOTP step not used before (replays are refused), so a
+// test may wait up to one 30-second step for the clock.
+test.describe.configure({ mode: "serial", timeout: 90_000 });
 
 async function signIn(page: Page) {
   await page.goto("/");

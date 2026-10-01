@@ -61,5 +61,35 @@ let project = Project(
             sources: ["Sources/**"],
             dependencies: [.package(product: "AppShell")]
         ),
+        // Unit tests that need the app host (Keychain entitlements).
+        .target(
+            name: "AestaraProviderTests",
+            destinations: [.iPhone, .iPad],
+            product: .unitTests,
+            bundleId: "com.aestara.provider.tests",
+            deploymentTargets: .iOS("26.0"),
+            infoPlist: .default,
+            sources: ["Tests/**"],
+            dependencies: [.target(name: "AestaraProvider"), .package(product: "CoreSecurity")]
+        ),
+        // End-to-end UI tests against the real api (Bible §32 #9, #12, #13); CI starts
+        // the api with services/api/scripts/test-stack.ts.
+        .target(
+            name: "AestaraProviderUITests",
+            destinations: [.iPhone, .iPad],
+            product: .uiTests,
+            bundleId: "com.aestara.provider.uitests",
+            deploymentTargets: .iOS("26.0"),
+            infoPlist: .default,
+            sources: ["UITests/**"],
+            dependencies: [.target(name: "AestaraProvider")]
+        ),
+    ],
+    schemes: [
+        .scheme(
+            name: "AestaraProviderTests",
+            buildAction: .buildAction(targets: ["AestaraProvider", "AestaraProviderTests", "AestaraProviderUITests"]),
+            testAction: .targets(["AestaraProviderTests", "AestaraProviderUITests"])
+        ),
     ]
 )

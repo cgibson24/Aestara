@@ -324,9 +324,9 @@ jobs:
           skip-dirs: node_modules
 
   ios:
-    name: iOS · Tuist generate · build · test
+    name: iOS · Tuist generate · build · test · UI tests
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -381,7 +381,7 @@ jobs:
           print(next(d["udid"] for runtime, ds in sorted(devices.items(), reverse=True)
                      if "iOS-26" in runtime for d in ds if d["name"].startswith("iPhone")))')
           echo "Simulator: $udid"
-          for entry in DesignSystem:4 CoreNetworking:4 CoreSecurity:2 PatientDomain:5; do
+          for entry in DesignSystem:4 CoreNetworking:4 PatientDomain:5; do
             module="${entry%%:*}"; minimum="${entry##*:}"
             bundle="$RUNNER_TEMP/$module.xcresult"
             echo "::group::$module"
@@ -397,3 +397,99 @@ jobs:
           PY
             echo "::endgroup::"
           done
+
+      # CoreSecurity's Keychain needs an app's entitlements, so its tests run
+      # hosted in the provider app (ADR-0022).
+      - name: Hosted app tests (Keychain) on an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          print(next(d["udid"] for runtime, ds in sorted(devices.items(), reverse=True)
+                     if "iOS-26" in runtime for d in ds if d["name"].startswith("iPhone")))')
+          bundle="$RUNNER_TEMP/hosted.xcresult"
+          xcodebuild test -workspace apps/ios-provider/AestaraProvider.xcworkspace \
+            -scheme AestaraProviderTests -only-testing:AestaraProviderTests -destination "id=$udid" \
+            -derivedDataPath "$RUNNER_TEMP/dd" -skipPackagePluginValidation -skipMacroValidation \
+            -resultBundlePath "$bundle" -quiet
+          xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$RUNNER_TEMP/hosted.json"
+          python3 - "$RUNNER_TEMP/hosted.json" <<'PY'
+          import json, sys
+          s = json.load(open(sys.argv[1]))
+          print(f"hosted: result={s['result']} passed={s['passedTests']} failed={s['failedTests']}")
+          assert s["result"] == "Passed" and s["failedTests"] == 0 and s["passedTests"] >= 2, "Hosted tests did not all run and pass"
+          PY
+
+      # Bible §32 #9, #12, #13: the provider app against the real api on this
+      # runner: sign-in with a wrong password then TOTP, create a patient with the
+      # duplicate check, the profile's twelve tabs, and search, on iPhone and iPad.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Build the api for the UI tests
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm turbo run build --filter=@aestara/api
+
+      - name: Local PostgreSQL for the UI tests
+        run: |
+          brew install postgresql@18
+          pgbin="$(brew --prefix postgresql@18)/bin"
+          "$pgbin/initdb" -D "$RUNNER_TEMP/pg" -U verify --auth=trust > /dev/null
+          "$pgbin/pg_ctl" -D "$RUNNER_TEMP/pg" -l "$RUNNER_TEMP/pg.log" -o "-p 5432 -k $RUNNER_TEMP" -w start
+
+      - name: Provider UI tests against the real api (iPhone and iPad)
+        env:
+          TEST_ADMIN_DATABASE_URL: postgresql://verify@localhost:5432/postgres
+        run: |
+          users="$RUNNER_TEMP/ios-users.json"
+          node services/api/scripts/test-stack.ts --ios "$users" iphone ipad &
+          stack=$!
+          trap 'kill $stack 2>/dev/null || true' EXIT
+          for _ in $(seq 1 180); do [ -s "$users" ] && break; sleep 1; done
+          [ -s "$users" ] || { echo "The api test stack did not start"; exit 1; }
+          devices=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
+          pick = lambda prefix: next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith(prefix))
+          print(pick("iPhone"), pick("iPad"))')
+          read -r iphone ipad <<< "$devices"
+          for entry in "iphone:$iphone" "ipad:$ipad"; do
+            name="${entry%%:*}"; udid="${entry##*:}"
+            echo "::group::UI tests on $name ($udid)"
+            eval "$(python3 - "$users" "$name" <<'PY'
+          import json, shlex, sys
+          u = json.load(open(sys.argv[1]))[sys.argv[2]]
+          for key, value in [("EMAIL", u["email"]), ("PASSWORD", u["password"]),
+                             ("TOTP_SECRET", u["totpSecret"]), ("TOTP_LAST_STEP", str(u["lastStep"]))]:
+              print(f"export TEST_RUNNER_UITEST_{key}={shlex.quote(value)}")
+          PY
+            )"
+            bundle="$RUNNER_TEMP/ui-$name.xcresult"
+            xcodebuild test -workspace apps/ios-provider/AestaraProvider.xcworkspace \
+              -scheme AestaraProviderTests -only-testing:AestaraProviderUITests -destination "id=$udid" \
+              -derivedDataPath "$RUNNER_TEMP/dd" -skipPackagePluginValidation -skipMacroValidation \
+              -resultBundlePath "$bundle" -quiet
+            xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$RUNNER_TEMP/ui-$name.json"
+            python3 - "$RUNNER_TEMP/ui-$name.json" "$name" <<'PY'
+          import json, sys
+          s = json.load(open(sys.argv[1]))
+          print(f"{sys.argv[2]}: result={s['result']} passed={s['passedTests']} failed={s['failedTests']}")
+          assert s["result"] == "Passed" and s["failedTests"] == 0 and s["passedTests"] >= 1, "UI tests did not all run and pass"
+          PY
+            echo "::endgroup::"
+          done
+
+      - name: Keep the UI test results
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-ui-test-results
+          path: ${{ runner.temp }}/ui-*.xcresult
+          retention-days: 7
