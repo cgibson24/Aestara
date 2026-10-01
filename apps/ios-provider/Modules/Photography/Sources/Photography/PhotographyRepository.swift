@@ -167,7 +167,8 @@ public actor PhotographyRepository {
             photoId: intent.photoId,
             status: intent.status.rawValue,
             url: intent.upload.flatMap { URL(string: $0.url) },
-            headers: intent.upload?.headers ?? [:]
+            // A free-form object is generated as a wrapper around its dictionary.
+            headers: intent.upload?.headers.additionalProperties ?? [:]
         )
     }
 
