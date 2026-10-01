@@ -55,8 +55,11 @@ let project = Project(
                 "AestaraAPIBaseURL": "$(AESTARA_API_BASE_URL)",
                 // Face ID guards the saved sign-in (spec §4.2).
                 "NSFaceIDUsageDescription": "Face ID unlocks Aestara and keeps patient information private.",
-                // Only local names (localhost, .local) may use plain HTTP, for a development server.
-                "NSAppTransportSecurity": ["NSAllowsLocalNetworking": true],
+                // Only a local development server may use plain HTTP (localhost and .local names).
+                "NSAppTransportSecurity": [
+                    "NSAllowsLocalNetworking": true,
+                    "NSExceptionDomains": ["localhost": ["NSExceptionAllowsInsecureHTTPLoads": true]],
+                ],
             ]),
             sources: ["Sources/**"],
             dependencies: [.package(product: "AppShell")]

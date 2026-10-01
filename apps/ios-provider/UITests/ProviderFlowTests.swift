@@ -22,7 +22,7 @@ final class ProviderFlowTests: XCTestCase {
 
         // Login UI: a wrong password shows the server's message.
         let emailField = app.textFields["signin.email"]
-        XCTAssertTrue(emailField.waitForExistence(timeout: 20), "The sign-in screen did not appear")
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20), "The sign-in screen did not appear. Screen: \(screen(app))")
         emailField.tap()
         emailField.typeText(email)
         let passwordField = app.secureTextFields["signin.password"]
@@ -32,7 +32,7 @@ final class ProviderFlowTests: XCTestCase {
         app.buttons["signin.submit"].tap()
         XCTAssertTrue(
             element(in: app, containing: "incorrect").waitForExistence(timeout: 15),
-            "A wrong password did not show an error"
+            "A wrong password did not show an error. Screen: \(screen(app))"
         )
         passwordField.tap()
         passwordField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: wrong.count))
@@ -41,18 +41,18 @@ final class ProviderFlowTests: XCTestCase {
 
         // Second factor.
         let codeField = app.textFields["mfa.code"]
-        XCTAssertTrue(codeField.waitForExistence(timeout: 15), "The code screen did not appear")
+        XCTAssertTrue(codeField.waitForExistence(timeout: 15), "The code screen did not appear. Screen: \(screen(app))")
         codeField.tap()
         codeField.typeText(TOTP.nextCode(secret: secret, after: lastStep))
         app.buttons["mfa.verify"].tap()
 
         // Signed in: create a patient (duplicate check first).
         let newPatient = app.buttons["patients.new"]
-        XCTAssertTrue(newPatient.waitForExistence(timeout: 20), "The patient list did not appear")
+        XCTAssertTrue(newPatient.waitForExistence(timeout: 20), "The patient list did not appear. Screen: \(screen(app))")
         newPatient.tap()
         let lastName = "Quill" + String((0..<6).map { _ in "abcdefghijklmnopqrstuvwxyz".randomElement()! })
         let firstName = app.textFields["patient.firstName"]
-        XCTAssertTrue(firstName.waitForExistence(timeout: 10))
+        XCTAssertTrue(firstName.waitForExistence(timeout: 10), "The new-patient form did not appear. Screen: \(screen(app))")
         firstName.tap()
         firstName.typeText("Ana")
         let lastNameField = app.textFields["patient.lastName"]
@@ -60,34 +60,48 @@ final class ProviderFlowTests: XCTestCase {
         lastNameField.typeText(lastName)
         // Date of birth: month, day, year wheels (en_US).
         let year = app.pickerWheels.element(boundBy: 2)
-        XCTAssertTrue(year.waitForExistence(timeout: 5), "The date-of-birth picker did not appear")
+        XCTAssertTrue(year.waitForExistence(timeout: 5), "The date-of-birth picker did not appear. Screen: \(screen(app))")
         year.adjust(toPickerWheelValue: "1988")
         let create = app.buttons["patient.create"]
-        XCTAssertTrue(waitUntil(timeout: 5) { create.isEnabled }, "Create stayed disabled")
+        XCTAssertTrue(waitUntil(timeout: 5) { create.isEnabled }, "Create stayed disabled. Screen: \(screen(app))")
         create.tap()
 
         // The profile shell opens with all twelve tabs.
         let photos = app.buttons["profile.tab.PHOTOS"]
-        XCTAssertTrue(photos.waitForExistence(timeout: 20), "The new patient's profile did not open")
-        XCTAssertTrue(element(in: app, containing: lastName).exists, "The profile header does not name the patient")
+        XCTAssertTrue(photos.waitForExistence(timeout: 20), "The new patient's profile did not open. Screen: \(screen(app))")
+        XCTAssertTrue(element(in: app, containing: lastName).exists, "The profile header does not name the patient. Screen: \(screen(app))")
         for tab in ["OVERVIEW", "TIMELINE", "CONSULTATIONS", "PHOTOS", "BEFORE_AFTER", "SIMULATIONS",
                     "TREATMENT_PLANS", "PROCEDURES", "DOCUMENTS", "INSTRUCTIONS", "APPOINTMENTS", "MESSAGES"] {
-            XCTAssertTrue(app.buttons["profile.tab.\(tab)"].exists, "Tab \(tab) is missing")
+            XCTAssertTrue(app.buttons["profile.tab.\(tab)"].exists, "Tab \(tab) is missing. Screen: \(screen(app))")
         }
         photos.tap()
-        XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 5), "Photos empty state")
+        XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 5), "Photos empty state. Screen: \(screen(app))")
 
         // Search finds the patient by name prefix.
         if app.navigationBars.buttons.firstMatch.exists, !app.searchFields.firstMatch.isHittable {
             app.navigationBars.buttons.firstMatch.tap()
         }
         let search = app.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 10), "The search field did not appear")
+        XCTAssertTrue(search.waitForExistence(timeout: 10), "The search field did not appear. Screen: \(screen(app))")
         search.tap()
         search.typeText(String(lastName.prefix(8)))
-        let row = app.cells.containing(NSPredicate(format: "label CONTAINS %@", lastName)).firstMatch
-        let combinedRow = app.cells.matching(NSPredicate(format: "label CONTAINS %@", lastName)).firstMatch
-        XCTAssertTrue(waitUntil(timeout: 15) { row.exists || combinedRow.exists }, "Search did not find the patient")
+        // The result row is in the list (a collection view), not the profile header.
+        let row = app.collectionViews.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", lastName)).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "Search did not find the patient. Screen: \(screen(app))")
+    }
+
+    /// What is on screen, for failure messages: texts, buttons and fields with their identifiers.
+    private func screen(_ app: XCUIApplication) -> String {
+        var parts: [String] = []
+        for (kind, query) in [("text", app.staticTexts), ("button", app.buttons), ("field", app.textFields),
+                              ("secure", app.secureTextFields), ("search", app.searchFields)] {
+            for element in query.allElementsBoundByIndex.prefix(25) where element.exists {
+                let id = element.identifier.isEmpty ? "" : "#\(element.identifier)"
+                parts.append("\(kind)\(id)'\(element.label.prefix(40))'")
+            }
+        }
+        return String(parts.joined(separator: " · ").prefix(2_000))
     }
 
     /// Any element whose label contains the text.

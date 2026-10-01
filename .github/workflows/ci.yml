@@ -472,10 +472,24 @@ jobs:
           PY
             )"
             bundle="$RUNNER_TEMP/ui-$name.xcresult"
+            status=0
             xcodebuild test -workspace apps/ios-provider/AestaraProvider.xcworkspace \
               -scheme AestaraProviderTests -only-testing:AestaraProviderUITests -destination "id=$udid" \
               -derivedDataPath "$RUNNER_TEMP/dd" -skipPackagePluginValidation -skipMacroValidation \
-              -resultBundlePath "$bundle" -quiet
+              -resultBundlePath "$bundle" -quiet || status=$?
+            if [ "$status" -ne 0 ]; then
+              # Print each failure's message (it carries a summary of the screen).
+              xcrun xcresulttool get test-results tests --path "$bundle" --format json | python3 -c '
+          import json, sys
+          def walk(node):
+              if node.get("nodeType") == "Failure Message":
+                  print("FAILURE:", node.get("name"))
+              for child in node.get("children", []):
+                  walk(child)
+          for node in json.load(sys.stdin).get("testNodes", []):
+              walk(node)'
+              exit "$status"
+            fi
             xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$RUNNER_TEMP/ui-$name.json"
             python3 - "$RUNNER_TEMP/ui-$name.json" "$name" <<'PY'
           import json, sys
