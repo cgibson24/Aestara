@@ -132,7 +132,8 @@ type Candidate = {
 @Injectable()
 export class PatientsService implements OnModuleInit {
   /** Search requests per user in the current minute (spec §6.1.10 per-user limits). */
-  private readonly searches = new Map<string, { minute: number; count: number }>();
+  /** Per user, the times of the searches in the last minute (a sliding window). */
+  private readonly searches = new Map<string, number[]>();
 
   constructor(
     private readonly audit: AuditWriter,
@@ -168,16 +169,17 @@ export class PatientsService implements OnModuleInit {
 
   // ---- Search and list -----------------------------------------------------
 
+  /** At most 60 searches in any 60 seconds per user; a sliding window, so no burst across a minute boundary. */
   private rateLimit(userId: string): void {
-    const minute = Math.floor(Date.now() / 60_000);
-    const entry = this.searches.get(userId);
-    if (entry === undefined || entry.minute !== minute) {
-      this.searches.set(userId, { minute, count: 1 });
-      if (this.searches.size > 50_000) this.searches.clear();
-      return;
+    const now = Date.now();
+    const recent = (this.searches.get(userId) ?? []).filter((t) => now - t < 60_000);
+    if (recent.length >= SEARCH_LIMIT_PER_MINUTE) {
+      this.searches.set(userId, recent);
+      throw rateLimited(((recent[0] ?? now) + 60_000 - now) / 1000);
     }
-    entry.count += 1;
-    if (entry.count > SEARCH_LIMIT_PER_MINUTE) throw rateLimited(60 - (Math.floor(Date.now() / 1000) % 60));
+    recent.push(now);
+    if (!this.searches.has(userId) && this.searches.size > 50_000) this.searches.clear();
+    this.searches.set(userId, recent);
   }
 
   async search(ctx: RequestContext, body: z.output<typeof PatientSearchRequest>): Promise<OperationResult> {

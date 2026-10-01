@@ -1,7 +1,7 @@
 // Patients over HTTP (roadmap M1.8; spec §6.3, §6.6.1, §5.4.10; ADR-0020,
 // ADR-0021): duplicate check, idempotent create, search keys, profile audit,
 // optimistic concurrency, archive and contacts.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { nameKey } from "../src/patients/search-keys.ts";
 import { databaseAvailable, startApi, type TestApi } from "./support/app.ts";
 import { bearer, Fixtures, type StaffMember } from "./support/fixtures.ts";
@@ -401,11 +401,24 @@ describe.runIf(databaseAvailable())("patients", () => {
     });
   });
 
-  it("limits search to 60 requests a minute per user", async () => {
+  it("limits search to 60 requests in any minute per user, across a minute boundary too", async () => {
     const member = await fx.staff(org, "FRONT_DESK");
-    let status = 200;
-    for (let i = 0; i < 61 && status === 200; i++)
-      status = (await search(member, { dateOfBirth: "1900-01-01" })).statusCode;
-    expect(status).toBe(429);
+    // Start just before a minute boundary: a per-calendar-minute counter would reset there.
+    const boundary = (Math.floor(Date.now() / 60_000) + 1) * 60_000;
+    vi.useFakeTimers({ toFake: ["Date"], now: boundary - 500 });
+    try {
+      for (let i = 0; i < 60; i++) {
+        if (i === 30) vi.setSystemTime(boundary + 500);
+        expect((await search(member, { dateOfBirth: "1900-01-01" })).statusCode).toBe(200);
+      }
+      const limited = await search(member, { dateOfBirth: "1900-01-01" });
+      expect(limited.statusCode).toBe(429);
+      expect(Number(limited.headers["retry-after"])).toBeGreaterThan(0);
+      // A minute after the first searches, there is room again.
+      vi.setSystemTime(boundary + 60_000);
+      expect((await search(member, { dateOfBirth: "1900-01-01" })).statusCode).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
