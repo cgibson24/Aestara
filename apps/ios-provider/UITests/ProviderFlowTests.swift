@@ -74,19 +74,24 @@ final class ProviderFlowTests: XCTestCase {
                     "TREATMENT_PLANS", "PROCEDURES", "DOCUMENTS", "INSTRUCTIONS", "APPOINTMENTS", "MESSAGES"] {
             XCTAssertTrue(app.buttons["profile.tab.\(tab)"].exists, "Tab \(tab) is missing. Screen: \(screen(app))")
         }
-        // The tab strip scrolls sideways on narrow screens: drag it (no momentum) until Photos is reachable.
+        // The tab strip scrolls sideways on narrow screens: drag it (no momentum) until Photos is on
+        // screen. Frames are known even off screen; hittability is not, so this compares frames.
+        let window = app.windows.firstMatch.frame
+        let onScreen = { (element: XCUIElement) in window.contains(element.frame) }
         let tabs = ["OVERVIEW", "TIMELINE", "CONSULTATIONS", "PHOTOS"].map { app.buttons["profile.tab.\($0)"] }
-        for _ in 0..<6 where !photos.isHittable {
-            guard let handle = tabs.first(where: \.isHittable) else { break }
+        for _ in 0..<6 where !onScreen(photos) {
+            guard let handle = tabs.first(where: onScreen) else { break }
             let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -150, dy: 0)))
         }
-        XCTAssertTrue(photos.isHittable, "The Photos tab cannot be reached. Screen: \(screen(app))")
+        XCTAssertTrue(onScreen(photos), "The Photos tab cannot be reached. Screen: \(screen(app))")
         photos.tap()
         XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 5), "Photos empty state. Screen: \(screen(app))")
 
         // Search finds the patient by name prefix.
-        if app.navigationBars.buttons.firstMatch.exists, !app.searchFields.firstMatch.isHittable {
+        // On iPhone the profile covers the list: go back. On iPad the list stays beside it.
+        let searchVisible = app.searchFields.firstMatch.exists && onScreen(app.searchFields.firstMatch)
+        if !searchVisible, app.navigationBars.buttons.firstMatch.exists {
             app.navigationBars.buttons.firstMatch.tap()
         }
         let search = app.searchFields.firstMatch
