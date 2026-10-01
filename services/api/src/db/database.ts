@@ -13,19 +13,29 @@ export type Tx = Prisma.TransactionClient;
 
 const TX_OPTIONS = { maxWait: 5_000, timeout: 15_000 } as const;
 
+type DatabaseConfig = Pick<Config, "DATABASE_URL" | "DATABASE_POOL_SIZE"> & {
+  readonly PLATFORM_DATABASE_URL?: string;
+};
+
 @Injectable()
 export class Database implements OnModuleDestroy {
   readonly app: PrismaClient;
-  readonly platform: PrismaClient;
+  private platformClient?: PrismaClient;
 
-  constructor(@Inject(CONFIG) config: Config) {
+  constructor(@Inject(CONFIG) private readonly config: DatabaseConfig) {
     // The application client adds the explicit tenant filter inside tenant transactions.
     this.app = createPrismaClient(config.DATABASE_URL, { poolSize: config.DATABASE_POOL_SIZE }).$extends(
       tenantFilter,
     ) as unknown as PrismaClient;
-    this.platform = createPrismaClient(config.PLATFORM_DATABASE_URL, {
-      poolSize: Math.max(2, Math.floor(config.DATABASE_POOL_SIZE / 4)),
+  }
+
+  /** The platform role's client; the worker never has one (it holds no platform credentials). */
+  get platform(): PrismaClient {
+    if (this.config.PLATFORM_DATABASE_URL === undefined) throw new Error("No platform database configured");
+    this.platformClient ??= createPrismaClient(this.config.PLATFORM_DATABASE_URL, {
+      poolSize: Math.max(2, Math.floor(this.config.DATABASE_POOL_SIZE / 4)),
     });
+    return this.platformClient;
   }
 
   /** A transaction in one organization: every tenant table shows only its rows. */
@@ -61,6 +71,6 @@ export class Database implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    await Promise.all([this.app.$disconnect(), this.platform.$disconnect()]);
+    await Promise.all([this.app.$disconnect(), this.platformClient?.$disconnect()]);
   }
 }

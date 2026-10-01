@@ -9,6 +9,7 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import type { DestinationStream, Logger } from "pino";
 import { AuditController } from "./audit/audit.controller.ts";
 import { AuditWriter } from "./audit/audit-writer.ts";
+import { OfflineAuditService } from "./audit/offline-audit.service.ts";
 import { AuthController } from "./auth/auth.controller.ts";
 import { AuthService } from "./auth/auth.service.ts";
 import { Catalog } from "./auth/catalog.ts";
@@ -17,6 +18,7 @@ import { keyProviders } from "./auth/keys.provider.ts";
 import { preloadPasswordList } from "./auth/passwords.ts";
 import { SessionFactory } from "./auth/session-factory.ts";
 import { SessionLoader } from "./auth/session-loader.ts";
+import { AwsClients } from "./aws/clients.ts";
 import { ErrorEnvelopeFilter, registerHttpHooks } from "./common/http.ts";
 import { Idempotency } from "./common/idempotency.ts";
 import { createLogger, NestPinoLogger } from "./common/logging.ts";
@@ -26,10 +28,20 @@ import { CONFIG, type Config } from "./config.ts";
 import { Database } from "./db/database.ts";
 import { EmailService } from "./email/email.ts";
 import { HealthController } from "./health/health.controller.ts";
+import { ObjectStore } from "./media/object-store.ts";
 import { OrganizationsController } from "./organizations/organizations.controller.ts";
 import { OrganizationsService } from "./organizations/organizations.service.ts";
+import { Outbox } from "./outbox/outbox.ts";
 import { PatientsController } from "./patients/patients.controller.ts";
 import { PatientsService } from "./patients/patients.service.ts";
+import { PhotoIntake } from "./photos/intake.ts";
+import { PermissionLedger } from "./photos/permission-ledger.ts";
+import { PermissionsService } from "./photos/permissions.service.ts";
+import { PhotographyController } from "./photos/photography.controller.ts";
+import { PhotosService } from "./photos/photos.service.ts";
+import { ProtocolsService } from "./photos/protocols.service.ts";
+import { ConfigurationController } from "./settings/configuration.controller.ts";
+import { ConfigurationService } from "./settings/configuration.service.ts";
 import { SettingsController } from "./settings/settings.controller.ts";
 import { RolesController } from "./users/roles.controller.ts";
 import { UsersController } from "./users/users.controller.ts";
@@ -49,6 +61,8 @@ class AppModule {
         PatientsController,
         AuditController,
         SettingsController,
+        PhotographyController,
+        ConfigurationController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -65,6 +79,16 @@ class AppModule {
         OrganizationsService,
         UsersService,
         PatientsService,
+        AwsClients,
+        ObjectStore,
+        Outbox,
+        PhotoIntake,
+        ProtocolsService,
+        PhotosService,
+        PermissionLedger,
+        PermissionsService,
+        ConfigurationService,
+        OfflineAuditService,
         OperationPipeline,
       ],
     };

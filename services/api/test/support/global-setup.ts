@@ -1,6 +1,9 @@
 // Builds one migrated template database for the run, the way a deployed
 // environment does it: migrations applied by a non-superuser migration user,
-// and the api connecting as login users of aestara_app and aestara_platform.
+// and the api connecting as login users of aestara_app and aestara_platform
+// (the worker also as one of aestara_worker). Each test app provisions its own
+// buckets, queues and event bus on the local AWS emulator (moto, ADR-0023
+// K2-08) named by TEST_AWS_ENDPOINT_URL, so parallel files never share a queue.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
@@ -8,17 +11,22 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import type { TestProject } from "vitest/node";
 
+
 const databasePackage = join(dirname(fileURLToPath(import.meta.url)), "../../../../packages/database");
 
 export const LOGINS = {
   migrator: "aestara_api_test_migrator",
   app: "aestara_api_test_app",
   platform: "aestara_api_test_platform",
+  worker: "aestara_api_test_worker",
 } as const;
 
 export default async function setup(project: TestProject): Promise<(() => Promise<void>) | undefined> {
   const adminUrl = process.env.TEST_ADMIN_DATABASE_URL;
   if (!adminUrl) return undefined;
+  const awsEndpoint = process.env.TEST_AWS_ENDPOINT_URL;
+  if (!awsEndpoint)
+    throw new Error("Set TEST_AWS_ENDPOINT_URL to the local AWS emulator (moto) as well as TEST_ADMIN_DATABASE_URL");
   const suffix = `${Date.now()}_${process.pid}`;
   const template = `aestara_api_template_${suffix}`;
   const password = randomBytes(12).toString("hex");
@@ -31,7 +39,13 @@ export default async function setup(project: TestProject): Promise<(() => Promis
     END IF;
   END $$`);
   await admin.query(`ALTER ROLE ${LOGINS.migrator} PASSWORD '${password}'`);
-  for (const role of ["aestara_app", "aestara_platform", "aestara_signin"])
+  for (const role of [
+    "aestara_app",
+    "aestara_platform",
+    "aestara_signin",
+    "aestara_worker",
+    "aestara_protocol_seed",
+  ])
     await admin.query(`DO $$ BEGIN
       IF EXISTS (SELECT FROM pg_roles WHERE rolname = '${role}') THEN
         EXECUTE format('GRANT %I TO ${LOGINS.migrator} WITH ADMIN OPTION', '${role}');
@@ -54,6 +68,7 @@ export default async function setup(project: TestProject): Promise<(() => Promis
   for (const [login, role] of [
     [LOGINS.app, "aestara_app"],
     [LOGINS.platform, "aestara_platform"],
+    [LOGINS.worker, "aestara_worker"],
   ] as const) {
     await admin.query(`DO $$ BEGIN
       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${login}') THEN
@@ -65,6 +80,7 @@ export default async function setup(project: TestProject): Promise<(() => Promis
   }
   await admin.end();
 
+  project.provide("awsEndpoint", awsEndpoint);
   project.provide("database", {
     adminUrl,
     template,
@@ -87,5 +103,6 @@ export default async function setup(project: TestProject): Promise<(() => Promis
 declare module "vitest" {
   export interface ProvidedContext {
     database: { adminUrl: string; template: string; host: string; password: string };
+    awsEndpoint: string;
   }
 }

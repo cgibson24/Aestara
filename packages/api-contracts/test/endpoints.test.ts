@@ -1,4 +1,4 @@
-// Invariants of the Layer 1 endpoint registry (spec §6.1, §6.3, §6.4).
+// Invariants of the endpoint registry (spec §6.1, §6.3, §6.4; ADR-0023).
 import { AuditAction } from "@aestara/shared-types";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,12 +6,20 @@ import {
   ENDPOINTS,
   type EndpointDefinition,
   errorStatuses,
+  GUIDANCE_CODES,
+  GuidanceCode,
   NOT_FOUND_PATTERN,
   Npi,
+  OfflineCachePolicy,
   PatientCreate,
   PatientSearchRequest,
   PatientUpdate,
+  PHOTO_MAX_BYTES,
+  PhotoPermissionChange,
+  PhotoUploadRequest,
+  POSITION_MATCH_LABEL,
   RoleAssignmentCreate,
+  renderOpenApiDocument,
   routePath,
   SessionPolicy,
 } from "../src/index.ts";
@@ -164,5 +172,126 @@ describe("Layer 1 request schemas", () => {
 
   it("requires names and a date of birth for a duplicate check", () => {
     expect(DuplicateCheckRequest.safeParse({ firstName: "Ana", lastName: "Reyes" }).success).toBe(false);
+  });
+});
+
+describe("Layer 2 contracts (ADR-0023)", () => {
+  const op = (id: string) => all.find((e) => e.operationId === id) as EndpointDefinition;
+
+  it("covers the Layer 2 photography and administration rows of spec §6.3", () => {
+    const paths = new Set(all.map((e) => `${e.method} ${e.path}`));
+    for (const p of [
+      "GET /photography-protocols",
+      "POST /photography-protocols",
+      "GET /photography-protocols/{id}",
+      "PATCH /photography-protocols/{id}",
+      "POST /photography-protocols/{id}/activate",
+      "POST /photography-protocols/{id}/retire",
+      "GET /patients/{patientId}/photo-sessions",
+      "POST /patients/{patientId}/photo-sessions",
+      "GET /patients/{patientId}/photo-sessions/{sessionId}",
+      "POST /patients/{patientId}/photo-sessions/{sessionId}/complete",
+      "GET /patients/{patientId}/photos",
+      "POST /patients/{patientId}/photos/uploads",
+      "POST /patients/{patientId}/photos/{photoId}/complete-upload",
+      "GET /patients/{patientId}/photos/{photoId}",
+      "POST /patients/{patientId}/photos/{photoId}/access-urls",
+      "PUT /patients/{patientId}/photos/{photoId}/tags",
+      "POST /patients/{patientId}/photos/{photoId}/archive",
+      "GET /patients/{patientId}/photo-permissions",
+      "GET /patients/{patientId}/photo-permissions/history",
+      "POST /patients/{patientId}/photo-permissions",
+      "GET /patients/{patientId}/media-releases",
+      "POST /patients/{patientId}/media-releases",
+      "POST /patients/{patientId}/media-releases/{releaseId}/revoke",
+      "POST /audit/offline-events",
+      "GET /feature-flags/{key}",
+      "PUT /feature-flags/{key}",
+      "GET /settings/practices/{practiceId}/{key}",
+      "PUT /settings/practices/{practiceId}/{key}",
+      "GET /retention-policies",
+      "POST /retention-policies",
+    ])
+      expect(paths, p).toContain(p);
+  });
+
+  it("requires an Idempotency-Key where spec §6.1.8 does", () => {
+    for (const id of [
+      "createPhotoSession",
+      "createPhotoUpload",
+      "completePhotoUpload",
+      "recordPhotoPermission",
+      "createMediaRelease",
+      "recordOfflineAuditEvents",
+    ])
+      expect(op(id).idempotency, id).toBe("required");
+  });
+
+  it("never exposes a storage key, bucket or object ID in a response (spec §6.1.9)", () => {
+    const forbidden = /^(objectKey|bucket|storageObjectId|originalObjectId|kmsKeyAlias)$/;
+    const walk = (schema: unknown, path: string): void => {
+      const s = schema as {
+        shape?: Record<string, unknown>;
+        unwrap?: () => unknown;
+        element?: unknown;
+        def?: { innerType?: unknown; element?: unknown; in?: unknown };
+      };
+      if (s?.shape) {
+        for (const [key, child] of Object.entries(s.shape)) {
+          expect(key, `${path}.${key}`).not.toMatch(forbidden);
+          walk(child, `${path}.${key}`);
+        }
+      }
+      const inner = s?.def?.innerType ?? s?.def?.element ?? s?.def?.in;
+      if (inner) walk(inner, path);
+    };
+    for (const e of all) if (e.response.schema) walk(e.response.schema, e.operationId);
+  });
+
+  it("publishes exactly the 13 Bible §6.4 guidance codes", () => {
+    expect(GUIDANCE_CODES).toHaveLength(13);
+    expect(GuidanceCode.options).toEqual([...GUIDANCE_CODES]);
+  });
+
+  it("labels the position-match score as photographic, never as medical accuracy (Bible §6.5)", () => {
+    expect(POSITION_MATCH_LABEL).toBe("Photographic position match, not a medical measurement.");
+    expect(JSON.stringify(renderOpenApiDocument()).toLowerCase()).not.toContain("medical accuracy");
+  });
+
+  it("accepts JPEG and PNG originals within the limits, never HEIC (ADR-0023 K2-02)", () => {
+    const base = {
+      photoSessionId: "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f",
+      viewKey: "LEFT_45",
+      contentType: "image/jpeg",
+      byteSize: 4_821_933,
+      sha256: "a".repeat(64),
+      capturedAt: "2026-10-01T14:05:02.000Z",
+    };
+    expect(PhotoUploadRequest.safeParse(base).success).toBe(true);
+    expect(PhotoUploadRequest.safeParse({ ...base, contentType: "image/heic" }).success).toBe(false);
+    expect(PhotoUploadRequest.safeParse({ ...base, byteSize: PHOTO_MAX_BYTES + 1 }).success).toBe(false);
+    expect(PhotoUploadRequest.safeParse({ ...base, widthPx: 20_000, heightPx: 10_000 }).success).toBe(false);
+    expect(PhotoUploadRequest.safeParse({ ...base, sha256: "A".repeat(64) }).success).toBe(false);
+  });
+
+  it("checks the scope shape of a permission change and never lets a client set EXPIRED", () => {
+    const photoId = "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f";
+    expect(PhotoPermissionChange.safeParse({ category: "WEBSITE", state: "REQUESTED" }).success).toBe(true);
+    expect(PhotoPermissionChange.safeParse({ category: "WEBSITE", state: "EXPIRED" }).success).toBe(false);
+    expect(
+      PhotoPermissionChange.safeParse({ category: "WEBSITE", state: "GRANTED", scope: "PHOTO" }).success,
+    ).toBe(false);
+    expect(
+      PhotoPermissionChange.safeParse({ category: "WEBSITE", state: "GRANTED", scope: "PHOTO", photoId })
+        .success,
+    ).toBe(true);
+    expect(PhotoPermissionChange.safeParse({ category: "WEBSITE", state: "GRANTED", photoId }).success).toBe(
+      false,
+    );
+  });
+
+  it("caps the offline cache at the session's absolute lifetime (7 days)", () => {
+    expect(OfflineCachePolicy.safeParse({ maxPatients: 25, maxAgeDays: 7 }).success).toBe(true);
+    expect(OfflineCachePolicy.safeParse({ maxPatients: 25, maxAgeDays: 8 }).success).toBe(false);
   });
 });

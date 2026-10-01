@@ -155,6 +155,73 @@ export class Fixtures {
     return id;
   }
 
+  /**
+   * Photography data that already exists for a patient (ADR-0023): an ACTIVE
+   * one-view protocol, a session, an accepted photo whose original is stored and
+   * scanned clean, a patient-wide PATIENT_APP grant, and a release pinning it.
+   */
+  async photography(
+    organizationId: string,
+    patientId: string,
+    options: { capturedByUserId: string; objectKey?: string; sha256?: string; byteSize?: number },
+  ): Promise<{
+    protocolId: string;
+    photoSessionId: string;
+    photoId: string;
+    releaseId: string;
+    permissionId: string;
+    objectKey: string;
+  }> {
+    const protocolId = uuidv7();
+    const photoSessionId = uuidv7();
+    const objectId = uuidv7();
+    const photoId = uuidv7();
+    const permissionId = uuidv7();
+    const releaseId = uuidv7();
+    const objectKey = options.objectKey ?? `CLINICAL_ORIGINAL/${uuidv7()}`;
+    const q = (sql: string, values: unknown[]) => this.api.db.query(sql, values);
+    await q(
+      `INSERT INTO "PhotographyProtocol" (id, "organizationId", name, "bodyRegion", status, "createdById", "updatedAt")
+       VALUES ($1, $2, 'Fixture face', 'FACE', 'DRAFT', $3, now())`,
+      [protocolId, organizationId, options.capturedByUserId],
+    );
+    await q(
+      `INSERT INTO "PhotographyProtocolView" (id, "organizationId", "protocolId", "viewKey", name, "sortOrder", "isRequired")
+       VALUES ($1, $2, $3, 'FRONT', 'Front', 1, true)`,
+      [uuidv7(), organizationId, protocolId],
+    );
+    await q(`UPDATE "PhotographyProtocol" SET status = 'ACTIVE' WHERE id = $1`, [protocolId]);
+    await q(
+      `INSERT INTO "PhotoSession" (id, "organizationId", "patientId", "protocolId", source, "capturedByUserId", "startedAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, 'PROVIDER_CAPTURE', $5, now(), now())`,
+      [photoSessionId, organizationId, patientId, protocolId, options.capturedByUserId],
+    );
+    await q(
+      `INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", "byteSize", sha256, status, "scanStatus", "verifiedAt")
+       VALUES ($1, $2, 'CLINICAL_ORIGINAL', 'aestara-test-media', $3, 'image/jpeg', $4, $5, 'AVAILABLE', 'CLEAN', now())`,
+      [objectId, organizationId, objectKey, options.byteSize ?? 4, options.sha256 ?? "a".repeat(64)],
+    );
+    await q(
+      `INSERT INTO "PatientPhoto" (id, "organizationId", "patientId", "photoSessionId", "viewKey", source, status, "originalObjectId", "capturedByUserId", "capturedAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, 'FRONT', 'PROVIDER_CAPTURE', 'ACCEPTED', $5, $6, now(), now())`,
+      [photoId, organizationId, patientId, photoSessionId, objectId, options.capturedByUserId],
+    );
+    await q(
+      `INSERT INTO "PhotoPermission" (id, "organizationId", "patientId", category, scope, state, "versionNumber", "effectiveAt", evidence)
+       VALUES ($1, $2, $3, 'PATIENT_APP', 'PATIENT_WIDE', 'GRANTED', 1, now(), 'STAFF_ATTESTATION')`,
+      [permissionId, organizationId, patientId],
+    );
+    await q(
+      `WITH r AS (
+         INSERT INTO "MediaRelease" (id, "organizationId", "patientId", purpose, "photoId", "releasedById")
+         VALUES ($1, $2, $3, 'PATIENT_APP', $4, $5) RETURNING id)
+       INSERT INTO "MediaReleasePermission" ("organizationId", "patientId", "mediaReleaseId", "permissionId")
+       SELECT $2, $3, r.id, $6 FROM r`,
+      [releaseId, organizationId, patientId, photoId, options.capturedByUserId, permissionId],
+    );
+    return { protocolId, photoSessionId, photoId, releaseId, permissionId, objectKey };
+  }
+
   /** A member of an organization holding one role, signed in to the provider app (with MFA when needed). */
   async staff(
     organizationId: string,

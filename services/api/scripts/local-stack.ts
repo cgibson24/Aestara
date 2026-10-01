@@ -72,7 +72,13 @@ export async function startStack(options: {
     END IF;
   END $$`);
   await admin.query(`ALTER ROLE ${LOGINS.migrator} PASSWORD '${password}'`);
-  for (const role of ["aestara_app", "aestara_platform", "aestara_signin"])
+  for (const role of [
+    "aestara_app",
+    "aestara_platform",
+    "aestara_signin",
+    "aestara_worker",
+    "aestara_protocol_seed",
+  ])
     await admin.query(`DO $$ BEGIN
       IF EXISTS (SELECT FROM pg_roles WHERE rolname = '${role}') THEN
         EXECUTE format('GRANT %I TO ${LOGINS.migrator} WITH ADMIN OPTION', '${role}');

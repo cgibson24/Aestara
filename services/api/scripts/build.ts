@@ -21,7 +21,7 @@ const external = Object.entries(pkg.dependencies)
 external.push("@prisma/client", "@prisma/adapter-pg", "pg", "@asteasolutions/zod-to-openapi");
 
 await build({
-  input: { main: join(root, "src/main.ts") },
+  input: { main: join(root, "src/main.ts"), worker: join(root, "src/worker-main.ts") },
   platform: "node",
   external: (id) =>
     id.startsWith("node:") || external.some((name) => id === name || id.startsWith(`${name}/`)),
@@ -30,4 +30,4 @@ await build({
 });
 // Data files the code loads next to itself (new URL("./…", import.meta.url)).
 copyFileSync(join(root, "src/auth/common-passwords.txt.gz"), join(root, "dist/common-passwords.txt.gz"));
-console.log("built dist/main.js");
+console.log("built dist/main.js and dist/worker.js");

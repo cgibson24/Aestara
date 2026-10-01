@@ -28,7 +28,26 @@ const TENANT_MODELS = new Set([
   "PatientContact",
   "AuditEvent",
   "IdempotencyKey",
+  // Layer 2 (ADR-0023)
+  "StorageObject",
+  "PhotographyProtocol",
+  "PhotographyProtocolView",
+  "PhotoSession",
+  "PatientPhoto",
+  "PhotoDerivative",
+  "PhotoTag",
+  "PhotoPermission",
+  "MediaRelease",
+  "MediaReleasePermission",
+  "AIJob",
+  "FeatureFlag",
+  "PracticeSetting",
+  "RetentionPolicy",
+  "OutboxEvent",
 ]);
+
+/** System tables whose rows may belong to no organization (platform-level). */
+const NULLABLE_TENANT = new Set(["AuditEvent", "OutboxEvent"]);
 
 const FILTERED = new Set([
   "findUnique",
@@ -57,8 +76,8 @@ function withCondition(where: Record<string, unknown> | undefined, condition: Re
 function checkCreate(data: unknown, organizationId: string, model: string): void {
   for (const row of Array.isArray(data) ? data : [data]) {
     const value = (row as { organizationId?: unknown } | null)?.organizationId;
-    // Audit events may be platform-level (null) and are refused by RLS otherwise.
-    if (model === "AuditEvent" && value === null) continue;
+    // Audit and outbox rows may be platform-level (null); RLS refuses them otherwise.
+    if (NULLABLE_TENANT.has(model) && value === null) continue;
     if (value !== organizationId) throw new Error(`Tenant mismatch on create in ${model}`);
   }
 }

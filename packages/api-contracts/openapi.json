@@ -234,7 +234,7 @@
         }
       },
       "Error422": {
-        "description": "Error envelope. Codes: UPLOAD_VERIFICATION_FAILED, INPUT_QUALITY_INSUFFICIENT, UNSUPPORTED_SIMULATION_INPUT.",
+        "description": "Error envelope. Codes: UPLOAD_VERIFICATION_FAILED, REQUIRED_VIEWS_MISSING, INPUT_QUALITY_INSUFFICIENT, UNSUPPORTED_SIMULATION_INPUT.",
         "headers": {
           "X-Request-Id": {
             "$ref": "#/components/headers/X-Request-Id"
@@ -2642,6 +2642,1353 @@
         "additionalProperties": false,
         "description": "null clears an optional field."
       },
+      "PhotographyProtocol": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "bodyRegion": {
+            "$ref": "#/components/schemas/BodyRegion"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProtocolStatus"
+          },
+          "practiceId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Absent for an organization-wide protocol.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          },
+          "supersedesId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "supersededById": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "standard": {
+            "type": "boolean",
+            "description": "One of the Bible §6.2 standard protocols seeded for every organization."
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProtocolView"
+            }
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "bodyRegion",
+          "status",
+          "standard",
+          "views",
+          "createdAt",
+          "updatedAt",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "BodyRegion": {
+        "type": "string",
+        "enum": [
+          "FACE",
+          "BREAST",
+          "ABDOMEN_BODY",
+          "OTHER"
+        ]
+      },
+      "ProtocolStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "ACTIVE",
+          "RETIRED"
+        ]
+      },
+      "ProtocolView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "viewKey": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,39}$",
+            "example": "LEFT_45"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "isRequired": {
+            "type": "boolean"
+          },
+          "captureInstructions": {
+            "type": "string"
+          },
+          "poseTarget": {
+            "$ref": "#/components/schemas/PoseTarget"
+          }
+        },
+        "required": [
+          "id",
+          "viewKey",
+          "name",
+          "sortOrder",
+          "isRequired"
+        ],
+        "additionalProperties": false
+      },
+      "PoseTarget": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "enum": [
+              "FACE",
+              "TORSO"
+            ]
+          },
+          "yawDeg": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "The subject's turn from facing the camera; positive shows the left side."
+          },
+          "yawToleranceDeg": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 45
+          },
+          "pitchToleranceDeg": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 45
+          },
+          "rollToleranceDeg": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 45
+          },
+          "centerToleranceFraction": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 0.5
+          },
+          "frameFill": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 1,
+            "description": "Subject height as a fraction of the frame."
+          },
+          "frameFillTolerance": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 0.5
+          }
+        },
+        "required": [
+          "subject",
+          "yawDeg",
+          "yawToleranceDeg",
+          "pitchToleranceDeg",
+          "rollToleranceDeg",
+          "centerToleranceFraction",
+          "frameFill",
+          "frameFillTolerance"
+        ],
+        "additionalProperties": false,
+        "description": "Target pose and framing tolerances used by live guidance."
+      },
+      "PhotographyProtocolCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "bodyRegion": {
+            "$ref": "#/components/schemas/BodyRegion"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "practiceId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "supersedesId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The protocol this draft replaces; activating the draft retires it.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProtocolViewInput"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "name",
+          "bodyRegion",
+          "views"
+        ],
+        "additionalProperties": false,
+        "description": "Creates a DRAFT."
+      },
+      "ProtocolViewInput": {
+        "type": "object",
+        "properties": {
+          "viewKey": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,39}$",
+            "example": "LEFT_45"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "isRequired": {
+            "type": "boolean"
+          },
+          "captureInstructions": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "poseTarget": {
+            "$ref": "#/components/schemas/PoseTarget"
+          }
+        },
+        "required": [
+          "viewKey",
+          "name",
+          "isRequired"
+        ],
+        "additionalProperties": false,
+        "description": "Views are captured in the order given."
+      },
+      "PhotographyProtocolUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "bodyRegion": {
+            "$ref": "#/components/schemas/BodyRegion"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "practiceId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Uuid"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProtocolViewInput"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          }
+        },
+        "additionalProperties": false,
+        "description": "DRAFT protocols only; views are replaced as a set."
+      },
+      "PhotoSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "patientId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "protocolId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "protocolName": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PhotoSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PhotoSessionStatus"
+          },
+          "capturedByUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "practiceId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "locationId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "startedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "completedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhotoSessionView"
+            }
+          },
+          "missingRequiredViews": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{0,39}$",
+              "example": "LEFT_45"
+            }
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "patientId",
+          "protocolId",
+          "protocolName",
+          "source",
+          "status",
+          "startedAt",
+          "views",
+          "missingRequiredViews",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PhotoSource": {
+        "type": "string",
+        "enum": [
+          "PROVIDER_CAPTURE",
+          "PATIENT_UPLOAD",
+          "IMPORT"
+        ]
+      },
+      "PhotoSessionStatus": {
+        "type": "string",
+        "enum": [
+          "IN_PROGRESS",
+          "COMPLETED",
+          "ABANDONED"
+        ]
+      },
+      "PhotoSessionView": {
+        "type": "object",
+        "properties": {
+          "viewKey": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,39}$",
+            "example": "LEFT_45"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "isRequired": {
+            "type": "boolean"
+          },
+          "captured": {
+            "type": "boolean",
+            "description": "A verified photo of this view exists (accepted or being checked)."
+          },
+          "photoCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "viewKey",
+          "name",
+          "sortOrder",
+          "isRequired",
+          "captured",
+          "photoCount"
+        ],
+        "additionalProperties": false
+      },
+      "PhotoSessionCreate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Client-generated UUIDv7 for offline capture."
+          },
+          "protocolId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "practiceId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "locationId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+            "description": "When capture began on the device (offline sessions); defaults to now. Never in the future.",
+            "example": "2026-09-25T14:03:11.412Z"
+          }
+        },
+        "required": [
+          "protocolId"
+        ],
+        "additionalProperties": false
+      },
+      "PhotoSessionComplete": {
+        "type": "object",
+        "properties": {
+          "acknowledgeMissingRequiredViews": {
+            "type": "boolean",
+            "default": false,
+            "description": "Complete although required views are missing (422 REQUIRED_VIEWS_MISSING otherwise)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Photo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "patientId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "photoSessionId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "viewKey": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,39}$",
+            "example": "LEFT_45"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PhotoSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PhotoStatus"
+          },
+          "capturedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "capturedByUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "byteSize": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Lower-case hex SHA-256 of the exact bytes uploaded."
+          },
+          "widthPx": {
+            "type": "integer"
+          },
+          "heightPx": {
+            "type": "integer"
+          },
+          "captureMetadata": {
+            "$ref": "#/components/schemas/CaptureMetadata"
+          },
+          "qualityChecks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualityCheck"
+            }
+          },
+          "positionMatchScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Photographic position match, not a medical measurement."
+          },
+          "scanStatus": {
+            "$ref": "#/components/schemas/MalwareScanStatus"
+          },
+          "rejectionReason": {
+            "$ref": "#/components/schemas/PhotoRejectionReason"
+          },
+          "derivatives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DerivativeAvailability"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "archivedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "patientId",
+          "source",
+          "status",
+          "capturedAt",
+          "contentType",
+          "scanStatus",
+          "derivatives",
+          "tags",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PhotoStatus": {
+        "type": "string",
+        "enum": [
+          "UPLOAD_PENDING",
+          "QUARANTINED",
+          "PENDING_REVIEW",
+          "ACCEPTED",
+          "RETAKE_REQUESTED",
+          "REJECTED",
+          "ARCHIVED"
+        ]
+      },
+      "CaptureMetadata": {
+        "type": "object",
+        "properties": {
+          "deviceModel": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9,._ -]{1,40}$",
+            "example": "iPad16,3"
+          },
+          "lens": {
+            "type": "string",
+            "enum": [
+              "WIDE",
+              "ULTRA_WIDE",
+              "TELEPHOTO",
+              "FRONT"
+            ]
+          },
+          "yawDeg": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "pitchDeg": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "rollDeg": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "frameFill": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "exposureDurationSeconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 10
+          },
+          "iso": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100000
+          },
+          "positionMatchScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Photographic position match, not a medical measurement. Present when a ghost overlay was used."
+          },
+          "referencePhotoId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The earlier photo used as the ghost overlay.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Device and pose estimates only; never free text."
+      },
+      "QualityCheck": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/GuidanceCode"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "number",
+            "description": "The measured value behind the check, when it has one."
+          }
+        },
+        "required": [
+          "code",
+          "passed"
+        ],
+        "additionalProperties": false
+      },
+      "GuidanceCode": {
+        "type": "string",
+        "enum": [
+          "MOVE_LEFT",
+          "MOVE_RIGHT",
+          "MOVE_CLOSER",
+          "MOVE_BACK",
+          "CAMERA_TOO_HIGH",
+          "CAMERA_TOO_LOW",
+          "LEVEL_CAMERA",
+          "PATIENT_TURN_LEFT",
+          "PATIENT_TURN_RIGHT",
+          "RAISE_CHIN",
+          "LOWER_CHIN",
+          "LIGHTING_TOO_DARK",
+          "RETAKE_MOTION_BLUR"
+        ],
+        "description": "Live capture guidance [B §6.4]. Clients turn each code into one plain instruction."
+      },
+      "MalwareScanStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_REQUIRED",
+          "PENDING",
+          "CLEAN",
+          "INFECTED",
+          "ERROR"
+        ]
+      },
+      "PhotoRejectionReason": {
+        "type": "string",
+        "enum": [
+          "MALWARE_DETECTED",
+          "SCAN_FAILED"
+        ]
+      },
+      "DerivativeAvailability": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DerivativeKind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "AVAILABLE",
+              "FAILED"
+            ]
+          },
+          "widthPx": {
+            "type": "integer"
+          },
+          "heightPx": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "DerivativeKind": {
+        "type": "string",
+        "enum": [
+          "THUMBNAIL",
+          "DISPLAY_PREVIEW",
+          "ANNOTATED_DERIVATIVE",
+          "BEFORE_AFTER_DERIVATIVE",
+          "AI_SIMULATION_DERIVATIVE",
+          "MARKETING_DERIVATIVE",
+          "EXPORT_DERIVATIVE"
+        ]
+      },
+      "PhotoUploadIntent": {
+        "type": "object",
+        "properties": {
+          "photoId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PhotoStatus"
+          },
+          "upload": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "PUT"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "expiresAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Send exactly these headers with the PUT."
+              }
+            },
+            "required": [
+              "method",
+              "url",
+              "expiresAt",
+              "headers"
+            ],
+            "additionalProperties": false,
+            "description": "Present while the photo waits for its bytes."
+          }
+        },
+        "required": [
+          "photoId",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "PhotoUploadRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Client-generated UUIDv7 for offline capture."
+          },
+          "photoSessionId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "viewKey": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,39}$",
+            "example": "LEFT_45"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png"
+            ],
+            "description": "JPEG or PNG (ADR-0023 K2-02)."
+          },
+          "byteSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52428800
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Lower-case hex SHA-256 of the exact bytes uploaded."
+          },
+          "capturedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "widthPx": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "heightPx": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "captureMetadata": {
+            "$ref": "#/components/schemas/CaptureMetadata"
+          },
+          "qualityChecks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualityCheck"
+            },
+            "maxItems": 13
+          }
+        },
+        "required": [
+          "photoSessionId",
+          "viewKey",
+          "contentType",
+          "byteSize",
+          "sha256",
+          "capturedAt"
+        ],
+        "additionalProperties": false
+      },
+      "AccessUrl": {
+        "type": "object",
+        "properties": {
+          "photoId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/PhotoVariant"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "photoId",
+          "variant",
+          "url",
+          "expiresAt"
+        ],
+        "additionalProperties": false,
+        "description": "A signed GET, valid 120 seconds; private, no-store."
+      },
+      "PhotoVariant": {
+        "type": "string",
+        "enum": [
+          "ORIGINAL",
+          "THUMBNAIL",
+          "DISPLAY_PREVIEW"
+        ],
+        "description": "ORIGINAL needs photo.export and is always audited."
+      },
+      "AccessUrlRequest": {
+        "type": "object",
+        "properties": {
+          "variant": {
+            "$ref": "#/components/schemas/PhotoVariant"
+          }
+        },
+        "required": [
+          "variant"
+        ],
+        "additionalProperties": false
+      },
+      "BatchAccessUrls": {
+        "type": "object",
+        "properties": {
+          "urls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessUrl"
+            }
+          },
+          "unavailable": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "photoId": {
+                  "$ref": "#/components/schemas/Uuid"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "NOT_FOUND",
+                    "NOT_READY"
+                  ],
+                  "description": "NOT_FOUND covers absent and not visible alike; NOT_READY means no such derivative yet."
+                }
+              },
+              "required": [
+                "photoId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "urls",
+          "unavailable"
+        ],
+        "additionalProperties": false
+      },
+      "BatchAccessUrlRequest": {
+        "type": "object",
+        "properties": {
+          "photoIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "minItems": 1,
+            "maxItems": 60
+          },
+          "variant": {
+            "type": "string",
+            "enum": [
+              "THUMBNAIL",
+              "DISPLAY_PREVIEW"
+            ]
+          }
+        },
+        "required": [
+          "photoIds",
+          "variant"
+        ],
+        "additionalProperties": false
+      },
+      "PhotoTagsPut": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[\\p{L}\\p{N}][\\p{L}\\p{N} _-]*$/u"
+            },
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "tags"
+        ],
+        "additionalProperties": false,
+        "description": "Replaces the photo's tags."
+      },
+      "PhotoPermissionSummary": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhotoPermissionCategorySummary"
+            }
+          }
+        },
+        "required": [
+          "categories"
+        ],
+        "additionalProperties": false
+      },
+      "PhotoPermissionCategorySummary": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/MediaPermissionCategory"
+          },
+          "patientWideState": {
+            "type": "string",
+            "enum": [
+              "NOT_REQUESTED",
+              "REQUESTED",
+              "GRANTED",
+              "DECLINED",
+              "REVOKED",
+              "EXPIRED"
+            ],
+            "description": "The current patient-wide state; NOT_REQUESTED when nothing is recorded; expiry applied."
+          },
+          "patientWide": {
+            "$ref": "#/components/schemas/PhotoPermission"
+          },
+          "exceptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhotoPermission"
+            },
+            "description": "Current photo- and session-scoped rows; the most specific row wins (ADR-0023 K2-15)."
+          }
+        },
+        "required": [
+          "category",
+          "patientWideState",
+          "exceptions"
+        ],
+        "additionalProperties": false
+      },
+      "MediaPermissionCategory": {
+        "type": "string",
+        "enum": [
+          "CLINICAL_USE",
+          "PATIENT_APP",
+          "EDUCATION",
+          "WEBSITE",
+          "SOCIAL_MEDIA",
+          "PAID_ADVERTISING",
+          "RESEARCH",
+          "AI_TRAINING",
+          "INTERNAL_AI_EVALUATION"
+        ],
+        "description": "Independent categories [B §7.1]; none implies another."
+      },
+      "PhotoPermission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "category": {
+            "$ref": "#/components/schemas/MediaPermissionCategory"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MediaPermissionScope"
+          },
+          "photoSessionId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "photoId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PhotoPermissionState"
+          },
+          "versionNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "effectiveAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PermissionEvidence"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recordedByUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "supersededAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "scope",
+          "state",
+          "versionNumber",
+          "effectiveAt",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "description": "One version of a media permission (append-only, Bible §7.2)."
+      },
+      "MediaPermissionScope": {
+        "type": "string",
+        "enum": [
+          "PATIENT_WIDE",
+          "PHOTO_SESSION",
+          "PHOTO"
+        ]
+      },
+      "PhotoPermissionState": {
+        "type": "string",
+        "enum": [
+          "NOT_REQUESTED",
+          "REQUESTED",
+          "GRANTED",
+          "DECLINED",
+          "REVOKED",
+          "EXPIRED"
+        ]
+      },
+      "PermissionEvidence": {
+        "type": "string",
+        "enum": [
+          "SIGNED_CONSENT",
+          "PATIENT_APP_ACTION",
+          "STAFF_ATTESTATION",
+          "INTEGRATION_IMPORT"
+        ]
+      },
+      "PhotoPermissionChange": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/MediaPermissionCategory"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MediaPermissionScope"
+          },
+          "photoSessionId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "photoId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "GRANTED",
+              "DECLINED",
+              "REVOKED"
+            ],
+            "description": "The new state; EXPIRED is set only by the system at expiresAt."
+          },
+          "evidence": {
+            "type": "string",
+            "enum": [
+              "SIGNED_CONSENT",
+              "PATIENT_APP_ACTION",
+              "STAFF_ATTESTATION",
+              "INTEGRATION_IMPORT"
+            ],
+            "description": "Required for GRANTED. STAFF_ATTESTATION until signed consents arrive (Layer 4)."
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "category",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "MediaRelease": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/MediaPermissionCategory"
+          },
+          "photoId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "derivativeId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "releasedByUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "releasedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "revokedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "revokedByUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "revocationReason": {
+            "type": "string"
+          },
+          "pinnedPermissionIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "minItems": 1
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "releasedByUserId",
+          "releasedAt",
+          "pinnedPermissionIds",
+          "active"
+        ],
+        "additionalProperties": false
+      },
+      "MediaReleaseCreate": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "$ref": "#/components/schemas/MediaPermissionCategory"
+          },
+          "photoId": {
+            "$ref": "#/components/schemas/Uuid"
+          }
+        },
+        "required": [
+          "purpose",
+          "photoId"
+        ],
+        "additionalProperties": false,
+        "description": "PATIENT_APP needs consultation.complete; other purposes need photo.export."
+      },
+      "MediaReleaseRevoke": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "OfflineAuditResult": {
+        "type": "object",
+        "properties": {
+          "recorded": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "alreadyRecorded": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "recorded",
+          "alreadyRecorded"
+        ],
+        "additionalProperties": false
+      },
+      "OfflineAuditBatch": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfflineAuditEvent"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "OfflineAuditEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Generated on the device; replays are recognised by it."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "PATIENT_VIEWED",
+              "PHOTO_VIEWED"
+            ]
+          },
+          "patientId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "photoId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "variant": {
+            "type": "string",
+            "enum": [
+              "THUMBNAIL",
+              "DISPLAY_PREVIEW"
+            ]
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "patientId",
+          "occurredAt"
+        ],
+        "additionalProperties": false
+      },
       "AuditEvent": {
         "type": "object",
         "properties": {
@@ -2766,6 +4113,8 @@
           "CONSULTATION_STATUS_CHANGED",
           "PHOTO_ANNOTATED",
           "PHOTO_INTAKE_REVIEWED",
+          "PHOTO_REJECTED",
+          "PHOTO_ARCHIVED",
           "BEFORE_AFTER_CREATED",
           "MEDIA_RELEASED",
           "MEDIA_RELEASE_REVOKED",
@@ -2829,6 +4178,245 @@
         },
         "additionalProperties": false,
         "description": "Validated against the key's schema."
+      },
+      "FeatureFlag": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/FeatureFlagKey"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "DEFAULT",
+              "ORGANIZATION",
+              "PRACTICE"
+            ],
+            "description": "Where the value comes from: a practice row wins over an organization row over the default."
+          },
+          "practiceId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "description": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "key",
+          "enabled",
+          "source",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "FeatureFlagKey": {
+        "type": "string",
+        "enum": [
+          "photography.ghostOverlay",
+          "photography.liveGuidance"
+        ]
+      },
+      "FeatureFlagPut": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "practiceId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Set the practice's value; absent sets the organization's.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
+      "EffectiveOfflineCachePolicy": {
+        "type": "object",
+        "properties": {
+          "maxPatients": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "maxAgeDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "At most 7: offline use ends with the session's absolute lifetime (ADR-0023 K2-17)."
+          },
+          "practiceIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "The practices whose policies were combined."
+          }
+        },
+        "required": [
+          "maxPatients",
+          "maxAgeDays",
+          "practiceIds"
+        ],
+        "additionalProperties": false,
+        "description": "The strictest cache policy among the practices the caller's grants cover."
+      },
+      "PracticeSetting": {
+        "type": "object",
+        "properties": {
+          "practiceId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "key": {
+            "$ref": "#/components/schemas/PracticeSettingKey"
+          },
+          "value": {
+            "description": "Shape depends on the key; see the setting schemas."
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0 while the default applies."
+          }
+        },
+        "required": [
+          "practiceId",
+          "key",
+          "isDefault",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "PracticeSettingKey": {
+        "type": "string",
+        "enum": [
+          "offline.cachePolicy"
+        ]
+      },
+      "PracticeSettingPut": {
+        "type": "object",
+        "properties": {
+          "value": {}
+        },
+        "additionalProperties": false,
+        "description": "Validated against the key's schema."
+      },
+      "RetentionPolicy": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "recordCategory": {
+            "$ref": "#/components/schemas/RetentionRecordCategory"
+          },
+          "retentionDays": {
+            "type": "integer",
+            "description": "Absent: retain indefinitely."
+          },
+          "action": {
+            "$ref": "#/components/schemas/RetentionAction"
+          },
+          "basis": {
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "createdByUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "recordCategory",
+          "action",
+          "basis",
+          "effectiveFrom",
+          "createdByUserId",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "description": "Recorded only: no retention job runs before production readiness (ADR-0023 K2-19)."
+      },
+      "RetentionRecordCategory": {
+        "type": "string",
+        "enum": [
+          "CLINICAL_PHOTO",
+          "CLINICAL_RECORD",
+          "CONSENT_DOCUMENT",
+          "MESSAGE",
+          "AUDIT_EVENT",
+          "LOGIN_EVENT",
+          "AI_ARTIFACT",
+          "DATA_EXPORT",
+          "TELEHEALTH_METADATA",
+          "INTEGRATION_PAYLOAD"
+        ]
+      },
+      "RetentionAction": {
+        "type": "string",
+        "enum": [
+          "ARCHIVE",
+          "DELETE",
+          "REVIEW"
+        ]
+      },
+      "RetentionPolicyCreate": {
+        "type": "object",
+        "properties": {
+          "recordCategory": {
+            "$ref": "#/components/schemas/RetentionRecordCategory"
+          },
+          "retentionDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 36500
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "ARCHIVE",
+              "DELETE",
+              "REVIEW"
+            ],
+            "description": "DELETE is refused until legal hold is modelled (UD-24)."
+          },
+          "basis": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The customer's policy or legal basis, e.g. a records schedule reference."
+          },
+          "effectiveFrom": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "recordCategory",
+          "action",
+          "basis",
+          "effectiveFrom"
+        ],
+        "additionalProperties": false
       },
       "HealthStatus": {
         "type": "object",
@@ -7156,6 +8744,2300 @@
         }
       }
     },
+    "/photography-protocols": {
+      "get": {
+        "operationId": "listPhotographyProtocols",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "The organization's photography protocols with their views.",
+        "description": "Permission: `photo.view` (organization scope).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ProtocolStatus"
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/BodyRegion"
+            },
+            "required": false,
+            "name": "bodyRegion",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PhotographyProtocol"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPhotographyProtocol",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Create a custom protocol as a DRAFT, optionally superseding another.",
+        "description": "Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotographyProtocolCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotographyProtocol"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/photography-protocols/{id}": {
+      "get": {
+        "operationId": "getPhotographyProtocol",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "One protocol and its views.",
+        "description": "Permission: `photo.view` (organization scope).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotographyProtocol"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updatePhotographyProtocol",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Edit a DRAFT protocol; views are replaced as a set. Active protocols are frozen.",
+        "description": "Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotographyProtocolUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotographyProtocol"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/photography-protocols/{id}/activate": {
+      "post": {
+        "operationId": "activatePhotographyProtocol",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Activate a DRAFT. A successor retires the protocol it supersedes in the same step.",
+        "description": "Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotographyProtocol"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/photography-protocols/{id}/retire": {
+      "post": {
+        "operationId": "retirePhotographyProtocol",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Retire an ACTIVE protocol, or discard a DRAFT. Sessions already started continue.",
+        "description": "Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotographyProtocol"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photo-sessions": {
+      "get": {
+        "operationId": "listPhotoSessions",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "The patient's photo sessions, newest first.",
+        "description": "Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/PhotoSessionStatus"
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PhotoSession"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPhotoSession",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Start a session under an ACTIVE protocol. A client UUIDv7 is accepted for offline capture.",
+        "description": "Permission: `photo.capture` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoSessionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotoSession"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photo-sessions/{sessionId}": {
+      "get": {
+        "operationId": "getPhotoSession",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "One session, with each view's capture state and the required views still missing.",
+        "description": "Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "sessionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotoSession"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photo-sessions/{sessionId}/complete": {
+      "post": {
+        "operationId": "completePhotoSession",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Complete a session. Missing required views need acknowledgeMissingRequiredViews.",
+        "description": "Permission: `photo.capture` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "sessionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoSessionComplete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotoSession"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos": {
+      "get": {
+        "operationId": "listPhotos",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "The patient's photos, newest capture first. Archived photos only on request.",
+        "description": "Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": false,
+            "description": "Resource identifier (UUID).",
+            "name": "photoSessionId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{0,39}$",
+              "example": "LEFT_45"
+            },
+            "required": false,
+            "name": "viewKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "QUARANTINED",
+                "ACCEPTED",
+                "REJECTED",
+                "ARCHIVED"
+              ],
+              "description": "Default: accepted photos and those being checked."
+            },
+            "required": false,
+            "description": "Default: accepted photos and those being checked.",
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "includeArchived",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Photo"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/uploads": {
+      "post": {
+        "operationId": "createPhotoUpload",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Upload intent: registers the photo and returns a presigned PUT for its original.",
+        "description": "Permission: `photo.capture` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotoUploadIntent"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/{photoId}/complete-upload": {
+      "post": {
+        "operationId": "completePhotoUpload",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Verify the uploaded original (size, checksum, type) and hand it to the malware scan.",
+        "description": "Permission: `photo.capture` (organization scope). Audit: PHOTO_CAPTURED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Photo"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/{photoId}": {
+      "get": {
+        "operationId": "getPhoto",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Photo metadata, scan state and derivative availability. No image bytes.",
+        "description": "Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Photo"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/{photoId}/access-urls": {
+      "post": {
+        "operationId": "createPhotoAccessUrl",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "A signed GET for one variant, valid 120 seconds. ORIGINAL needs photo.export.",
+        "description": "Permission: `photo.view` (organization scope). Audit: PHOTO_VIEWED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessUrlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AccessUrl"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/access-urls": {
+      "post": {
+        "operationId": "createPhotoAccessUrls",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Signed thumbnail or preview URLs for up to 60 photos (galleries). One PHOTO_VIEWED per photo.",
+        "description": "Permission: `photo.view` (organization scope). Audit: PHOTO_VIEWED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchAccessUrlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/BatchAccessUrls"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/{photoId}/tags": {
+      "put": {
+        "operationId": "replacePhotoTags",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Replace the photo's tags.",
+        "description": "Permission: `photo.annotate` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoTagsPut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Photo"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/{photoId}/archive": {
+      "post": {
+        "operationId": "archivePhoto",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Archive an accepted photo. The original is kept; archived photos are never reused.",
+        "description": "Permission: `photo.capture` (organization scope). Audit: PHOTO_ARCHIVED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Photo"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photo-permissions": {
+      "get": {
+        "operationId": "getPhotoPermissions",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "The current media permission per category, with per-photo and per-session exceptions.",
+        "description": "Permission: `photo.permission.read` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotoPermissionSummary"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "recordPhotoPermission",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Record a media permission transition. Online only; ending a grant revokes the releases on it.",
+        "description": "Permission: `photo.permission.manage` (organization scope). Audit: PHOTO_PERMISSION_CHANGED, MEDIA_RELEASE_REVOKED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoPermissionChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotoPermission"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photo-permissions/history": {
+      "get": {
+        "operationId": "listPhotoPermissionHistory",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Every version of the patient's media permissions, newest first.",
+        "description": "Permission: `photo.permission.read` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/MediaPermissionCategory"
+            },
+            "required": false,
+            "description": "Independent categories [B §7.1]; none implies another.",
+            "name": "category",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PhotoPermission"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/media-releases": {
+      "get": {
+        "operationId": "listMediaReleases",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Releases of the patient's media, newest first.",
+        "description": "Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/MediaPermissionCategory"
+            },
+            "required": false,
+            "description": "Independent categories [B §7.1]; none implies another.",
+            "name": "purpose",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "activeOnly",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MediaRelease"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMediaRelease",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Release a photo for one purpose, pinning the permission version it relies on.",
+        "description": "Permission: `photo.export` (organization scope). Audit: MEDIA_RELEASED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaReleaseCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MediaRelease"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/media-releases/{releaseId}/revoke": {
+      "post": {
+        "operationId": "revokeMediaRelease",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Revoke a release. It stays on record with its pins.",
+        "description": "Permission: `photo.export` (organization scope). Audit: MEDIA_RELEASE_REVOKED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "releaseId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaReleaseRevoke"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MediaRelease"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/audit/offline-events": {
+      "post": {
+        "operationId": "recordOfflineAuditEvents",
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Replay views recorded offline, with their original times (spec §8 rule 8). Own views only.",
+        "description": "Any signed-in session; acts on the caller's own account. Audit: PATIENT_VIEWED, PHOTO_VIEWED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfflineAuditBatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/OfflineAuditResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
     "/audit/events": {
       "get": {
         "operationId": "listAuditEvents",
@@ -7549,6 +11431,658 @@
           },
           "428": {
             "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/feature-flags": {
+      "get": {
+        "operationId": "listFeatureFlags",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Every registered flag's value for the organization, or for one practice.",
+        "description": "Any signed-in session; acts on the caller's own account.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Resolve the flag for this practice.",
+              "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+            },
+            "required": false,
+            "description": "Resolve the flag for this practice.",
+            "name": "practiceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FeatureFlag"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/feature-flags/{key}": {
+      "get": {
+        "operationId": "getFeatureFlag",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "One flag's value and where it comes from.",
+        "description": "Permission: `configuration.manage` (organization scope).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": true,
+            "name": "key",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Resolve the flag for this practice.",
+              "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+            },
+            "required": false,
+            "description": "Resolve the flag for this practice.",
+            "name": "practiceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/FeatureFlag"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putFeatureFlag",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Turn a flag on or off for the organization or one practice. A flag never grants access.",
+        "description": "Permission: `configuration.manage` (organization scope). Audit: CONFIGURATION_CHANGED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": true,
+            "name": "key",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeatureFlagPut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/FeatureFlag"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/settings/offline-cache-policy": {
+      "get": {
+        "operationId": "getOfflineCachePolicy",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "The offline cache policy the provider app applies: the strictest of the caller's practices.",
+        "description": "Any signed-in session; acts on the caller's own account.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EffectiveOfflineCachePolicy"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/settings/practices/{practiceId}/{key}": {
+      "get": {
+        "operationId": "getPracticeSetting",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "A practice setting, or its default.",
+        "description": "Permission: `configuration.manage` (organization scope).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "practiceId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": true,
+            "name": "key",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PracticeSetting"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putPracticeSetting",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Set a practice setting. If-Match is required; a setting still at its default has ETag \"v0\".",
+        "description": "Permission: `configuration.manage` (organization scope). Audit: CONFIGURATION_CHANGED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "practiceId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": true,
+            "name": "key",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PracticeSettingPut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PracticeSetting"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/retention-policies": {
+      "get": {
+        "operationId": "listRetentionPolicies",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "The organization's retention policies, newest first. Recorded only; nothing runs them yet.",
+        "description": "Permission: `configuration.manage` (organization scope).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/RetentionRecordCategory"
+            },
+            "required": false,
+            "name": "recordCategory",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RetentionPolicy"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRetentionPolicy",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Record a retention policy. DELETE is refused until legal hold exists (UD-24).",
+        "description": "Permission: `configuration.manage` (organization scope). Audit: CONFIGURATION_CHANGED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionPolicyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/RetentionPolicy"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
           },
           "500": {
             "$ref": "#/components/responses/Error500"

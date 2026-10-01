@@ -41,6 +41,10 @@ export const ERROR_CATALOG = {
   PAYLOAD_TOO_LARGE: { status: 413, when: "Upload exceeds the size limit." },
   UNSUPPORTED_MEDIA_TYPE: { status: 415, when: "File type not allowed." },
   UPLOAD_VERIFICATION_FAILED: { status: 422, when: "Size or checksum mismatch on upload completion." },
+  REQUIRED_VIEWS_MISSING: {
+    status: 422,
+    when: "Completing a photo session with required views missing; details.viewKeys lists them.",
+  },
   INPUT_QUALITY_INSUFFICIENT: {
     status: 422,
     when: "AI input fails quality checks; details.reasons holds actionable codes.",

@@ -37,7 +37,7 @@ import { ApiError, notFound } from "./errors.ts";
 import { Idempotency } from "./idempotency.ts";
 import { OPERATION_KEY, type OperationResult } from "./operation.ts";
 import { parseInput } from "./validation.ts";
-import { readPermissionFor, resourceVisible } from "./visibility.ts";
+import { readPermissionsFor, resourceVisible } from "./visibility.ts";
 
 export const STEP_UP_WINDOW_MS = 15 * 60 * 1000;
 
@@ -189,10 +189,9 @@ export class OperationPipeline implements NestInterceptor {
     if (op.auth.kind !== "permission") return;
     if (auth.scope === "none")
       throw new ApiError("PERMISSION_DENIED", "Choose an organization first.", { reason: "NO_ORGANIZATION" });
-    if (auth.permissions.has(op.auth.permission)) return;
+    if (holdsOperationPermission(op, auth)) return;
     if (op.notFound !== undefined) {
-      const read = readPermissionFor(op);
-      const canSee = read !== undefined && auth.permissions.has(read);
+      const canSee = readPermissionsFor(op).some((p) => auth.permissions.has(p));
       if (!canSee || !(await resourceVisible(op, ctx.params, auth, tx, this.catalog)))
         throw notFound(op.notFound);
     }
@@ -220,7 +219,7 @@ export class OperationPipeline implements NestInterceptor {
     if (!op.patientData || !(error instanceof ApiError) || op.auth.kind !== "permission") return;
     const refused =
       error.code === "PERMISSION_DENIED" ||
-      (error.status === 404 && ctx.auth !== undefined && !ctx.auth.permissions.has(op.auth.permission));
+      (error.status === 404 && ctx.auth !== undefined && !holdsOperationPermission(op, ctx.auth));
     if (!refused) return;
     await this.audit.recordDenial(ctx, {
       permission: op.auth.permission,
@@ -257,6 +256,15 @@ export class OperationPipeline implements NestInterceptor {
     }
     return body;
   }
+}
+
+/** The operation's permission, or one of its listed alternatives (EndpointAuth.orPermissions). */
+export function holdsOperationPermission(op: EndpointDefinition, auth: AuthContext): boolean {
+  if (op.auth.kind !== "permission") return true;
+  return (
+    auth.permissions.has(op.auth.permission) ||
+    (op.auth.orPermissions ?? []).some((permission) => auth.permissions.has(permission))
+  );
 }
 
 function fieldError(path: string, message: string): ApiError {

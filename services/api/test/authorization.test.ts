@@ -6,7 +6,7 @@
 //   - with another organization's identifiers: the generic 404, never data
 //   - required Idempotency-Key and If-Match headers are enforced
 import { ENDPOINTS, type EndpointDefinition, errorStatuses, RequestId } from "@aestara/api-contracts";
-import { catalogId, uuidv7 } from "@aestara/database";
+import { catalogId, ROLE_PERMISSIONS, uuidv7 } from "@aestara/database";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
@@ -59,6 +59,7 @@ async function world(
   const admin = await fx.staff(organizationId, "ORGANIZATION_ADMIN");
   await fx.grant(admin.userId, "SURGEON_PHYSICIAN", { organizationId });
   await fx.grant(admin.userId, "PRACTICE_ADMIN", { organizationId });
+  const photography = await fx.photography(organizationId, patientId, { capturedByUserId: admin.userId });
   return {
     admin,
     member,
@@ -73,6 +74,10 @@ async function world(
       auditEventId,
       sessionId: member.sessionId,
       factorId,
+      protocolId: photography.protocolId,
+      photoSessionId: photography.photoSessionId,
+      photoId: photography.photoId,
+      releaseId: photography.releaseId,
     },
   };
 }
@@ -83,6 +88,7 @@ describe.runIf(databaseAvailable())("authorization generated from the endpoint r
   let a: Awaited<ReturnType<typeof world>>;
   let b: Awaited<ReturnType<typeof world>>;
   let marketing: StaffMember;
+  let frontDesk: StaffMember;
   let operator: StaffMember;
 
   beforeAll(async () => {
@@ -91,6 +97,7 @@ describe.runIf(databaseAvailable())("authorization generated from the endpoint r
     a = await world(api, fx);
     b = await world(api, fx);
     marketing = await fx.staff(a.refs.organizationId, "MARKETING");
+    frontDesk = a.member;
     operator = await fx.platformOperator();
   });
   afterAll(async () => api?.close());
@@ -122,9 +129,19 @@ describe.runIf(databaseAvailable())("authorization generated from the endpoint r
   });
 
   describe("by a member without the permission", () => {
+    // A member whose role holds none of the permissions that admit the operation.
+    const lacking = (e: EndpointDefinition): StaffMember => {
+      const admitting =
+        e.auth.kind === "permission" ? [e.auth.permission, ...(e.auth.orPermissions ?? [])] : [];
+      const holds = (role: keyof typeof ROLE_PERMISSIONS) =>
+        admitting.some((p) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(p));
+      if (!holds("MARKETING")) return marketing;
+      if (!holds("FRONT_DESK")) return frontDesk;
+      throw new Error(`No fixture member lacks the permissions of ${e.operationId}`);
+    };
     for (const e of organizationScoped)
       it(`${e.operationId} → 403 or 404, never success`, async () => {
-        const res = await call(e, a.refs, marketing);
+        const res = await call(e, a.refs, lacking(e));
         expect([403, 404], res.body).toContain(res.statusCode);
         if (res.statusCode === 404) expect(res.json().error.code).toBe(e.notFound);
         else expect(res.json().error.code).toBe("PERMISSION_DENIED");
@@ -139,8 +156,13 @@ describe.runIf(databaseAvailable())("authorization generated from the endpoint r
   });
 
   describe("with another organization's identifiers", () => {
+    // Roles, setting keys and flag keys are not tenant resources: the same key exists everywhere.
     const crossTenant = organizationScoped.filter(
-      (e) => e.params !== undefined && !e.path.startsWith("/roles") && !e.path.startsWith("/settings"),
+      (e) =>
+        e.params !== undefined &&
+        !e.path.startsWith("/roles") &&
+        !e.path.startsWith("/settings") &&
+        !e.path.startsWith("/feature-flags"),
     );
     for (const e of crossTenant)
       it(`${e.operationId} → ${e.notFound}`, async () => {

@@ -8,8 +8,10 @@ import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from "fas
 import pg from "pg";
 import { inject } from "vitest";
 import { createApp } from "../../src/app.ts";
-import { type Config, loadConfig } from "../../src/config.ts";
+import { type Config, loadConfig, loadWorkerConfig } from "../../src/config.ts";
+import { createWorker, type Worker } from "../../src/worker/module.ts";
 import { EmailService } from "../../src/email/email.ts";
+import { awsEnv, type LocalAwsResources, provisionLocalAws } from "../../src/aws/local-resources.ts";
 import { LOGINS } from "./global-setup.ts";
 
 export const ADMIN_ORIGIN = "https://admin.aestara.test";
@@ -17,6 +19,8 @@ export const ADMIN_ORIGIN = "https://admin.aestara.test";
 export function databaseAvailable(): boolean {
   return Boolean(process.env.TEST_ADMIN_DATABASE_URL);
 }
+
+
 
 export interface TestApi {
   readonly app: NestFastifyApplication;
@@ -31,8 +35,10 @@ export interface TestApi {
   databaseUrl(login: string): string;
   /** The configuration the app was started with. */
   readonly config: Config;
+  /** This app's own buckets, queues and event bus on the emulator. */
+  readonly aws: LocalAwsResources;
   /** A connection as one of the api's runtime login users. */
-  connectAs(role: "app" | "platform"): Promise<pg.Client>;
+  connectAs(role: "app" | "platform" | "worker"): Promise<pg.Client>;
   close(): Promise<void>;
 }
 
@@ -53,6 +59,7 @@ export async function startApi(
   const db = new pg.Client({ connectionString: adminUrl.toString() });
   await db.connect();
 
+  const aws = await provisionLocalAws(inject("awsEndpoint"), `t${name.replaceAll("_", "-").slice(-36)}`);
   const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const sealKey = randomBytes(32);
   const config = loadConfig({
@@ -72,6 +79,7 @@ export async function startApi(
     ADMIN_WEB_URL: ADMIN_ORIGIN,
     EMAIL_TRANSPORT: "memory",
     LOG_LEVEL: "silent",
+    ...awsEnv(aws),
     ...env,
   });
   const { app } = await createApp(
@@ -88,6 +96,7 @@ export async function startApi(
     databaseName: name,
     databaseUrl: url,
     config,
+    aws,
     request: (options) => fastify.inject(options),
     connectAs: async (role) => {
       const client = new pg.Client({ connectionString: url(LOGINS[role]) });
@@ -108,4 +117,19 @@ export function configAsEnv(api: TestApi): Record<string, string> {
       .filter(([k, v]) => /^[A-Z_]+$/.test(k) && v !== undefined)
       .map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : String(v)]),
   );
+}
+
+/**
+ * The worker for a test app, created but not started: tests drive it one step
+ * at a time (relay a batch, poll a queue), so every hop is observable.
+ */
+export async function startWorker(api: TestApi): Promise<Worker> {
+  const config = loadWorkerConfig({
+    NODE_ENV: "test",
+    DATABASE_URL: api.databaseUrl(LOGINS.app),
+    WORKER_DATABASE_URL: api.databaseUrl(LOGINS.worker),
+    LOG_LEVEL: "silent",
+    ...awsEnv(api.aws),
+  });
+  return createWorker(config);
 }

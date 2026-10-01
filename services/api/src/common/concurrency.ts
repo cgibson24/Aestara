@@ -47,6 +47,14 @@ const LOCKABLE = new Set([
   "ProviderProfile",
   "StaffProfile",
   "OrganizationSetting",
+  "PhotographyProtocol",
+  "PhotoSession",
+  "PatientPhoto",
+  "PhotoPermission",
+  "MediaRelease",
+  "AIJob",
+  "PracticeSetting",
+  "StorageObject",
 ]);
 
 /**

@@ -10,10 +10,11 @@ import type { Config } from "../config.ts";
 export function createLogger(
   config: Pick<Config, "LOG_LEVEL" | "NODE_ENV">,
   destination?: DestinationStream,
+  service = "api",
 ): Logger {
   const options = {
     level: config.LOG_LEVEL,
-    base: { service: "api" },
+    base: { service },
     messageKey: "msg",
     timestamp: pino.stdTimeFunctions.isoTime,
     // Defence in depth: these keys are never passed, but are censored if they are.

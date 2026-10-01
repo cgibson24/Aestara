@@ -157,12 +157,16 @@ export class OrganizationsService implements OnModuleInit {
     if (await tx.organization.findUnique({ where: { slug: body.slug }, select: { id: true } }))
       throw new ApiError("CONFLICT", "This slug is already in use.");
     const organization = await tx.organization.create({ data: { name: body.name, slug: body.slug } });
+    // The Bible §6.2 standard photography protocols (ADR-0023 K2-11), through the
+    // one definer function that may write them for the platform role.
+    const seeded = await tx.$queryRaw<{ n: number }[]>`
+      SELECT app_seed_standard_protocols(${organization.id}::uuid) AS n`;
     await this.audit.write(tx, ctx, {
       action: "CONFIGURATION_CHANGED",
       organizationId: organization.id,
       resourceType: "Organization",
       resourceId: organization.id,
-      metadata: { change: "ORGANIZATION_CREATED" },
+      metadata: { change: "ORGANIZATION_CREATED", standardProtocols: Number(seeded[0]?.n ?? 0) },
     });
     const firstAdmin = await this.inviteFirstAdmin(tx, ctx, organization, body.firstAdmin, auth.userId);
     return {

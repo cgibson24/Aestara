@@ -2,7 +2,7 @@
 // the tenant policy shows only its events; at platform scope the platform
 // role's policy shows only platform-level events (spec §4.5 note 4). Filtering
 // by patientId is the per-patient access report.
-import type { AuditEvent } from "@aestara/api-contracts";
+import type { AuditEvent, OfflineAuditBatch } from "@aestara/api-contracts";
 import type { AuditAction } from "@aestara/shared-types";
 import { Controller } from "@nestjs/common";
 import type { z } from "zod";
@@ -11,6 +11,7 @@ import { type RequestContext, requireTx } from "../common/context.ts";
 import { CursorCodec, paginate } from "../common/cursor.ts";
 import { notFound } from "../common/errors.ts";
 import { Ctx, Operation, type OperationResult } from "../common/operation.ts";
+import { OfflineAuditService } from "./offline-audit.service.ts";
 
 type Row = {
   id: string;
@@ -58,7 +59,15 @@ function auditDto(e: Row): z.input<typeof AuditEvent> {
 
 @Controller()
 export class AuditController {
-  constructor(private readonly cursors: CursorCodec) {}
+  constructor(
+    private readonly cursors: CursorCodec,
+    private readonly offline: OfflineAuditService,
+  ) {}
+
+  @Operation("recordOfflineAuditEvents")
+  replayOffline(@Ctx() ctx: RequestContext): Promise<OperationResult> {
+    return this.offline.replay(ctx, ctx.body as z.output<typeof OfflineAuditBatch>);
+  }
 
   @Operation("listAuditEvents")
   async list(@Ctx() ctx: RequestContext): Promise<OperationResult> {
