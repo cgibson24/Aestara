@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   collectionEnvelope,
+  ENDPOINTS,
   ERROR_CATALOG,
   ErrorEnvelope,
   etagFor,
@@ -60,7 +61,12 @@ describe("error code catalog (spec §6.2)", () => {
     const expected: Record<number, string[]> = {
       400: ["VALIDATION_FAILED", "MALFORMED_REQUEST"],
       401: ["UNAUTHENTICATED", "SESSION_INVALID", "MFA_REQUIRED"],
-      403: ["PERMISSION_DENIED", "REAUTHENTICATION_REQUIRED", "MEDIA_PERMISSION_NOT_GRANTED"],
+      403: [
+        "PERMISSION_DENIED",
+        "REAUTHENTICATION_REQUIRED",
+        "SEPARATION_OF_DUTIES",
+        "MEDIA_PERMISSION_NOT_GRANTED",
+      ],
       409: [
         "INVALID_STATE_TRANSITION",
         "IMMUTABLE_RECORD",
@@ -152,9 +158,10 @@ describe("value formats (spec §6.1.2)", () => {
 describe("OpenAPI document (spec §6.8)", () => {
   const doc = generateOpenApiDocument();
 
-  it("is OpenAPI 3.1 with the shared components and no paths yet", () => {
+  it("is OpenAPI 3.1 with the shared components and one path per registry entry", () => {
     expect(doc.openapi).toBe("3.1.0");
-    expect(Object.keys(doc.paths ?? {})).toEqual([]);
+    const operations = Object.values(doc.paths ?? {}).flatMap((item) => Object.keys(item ?? {}));
+    expect(operations).toHaveLength(ENDPOINTS.length);
     expect(Object.keys(doc.components?.schemas ?? {})).toEqual(
       expect.arrayContaining(["ErrorEnvelope", "ErrorCode", "PageInfo", "Money", "Timestamp", "RequestId"]),
     );

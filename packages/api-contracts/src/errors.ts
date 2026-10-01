@@ -19,6 +19,10 @@ export const ERROR_CATALOG = {
     status: 403,
     when: "Step-up needed (recent MFA or biometric) for a sensitive action.",
   },
+  SEPARATION_OF_DUTIES: {
+    status: 403,
+    when: "The grant, membership or user-management action breaks a separation-of-duties rule.",
+  },
   MEDIA_PERMISSION_NOT_GRANTED: {
     status: 403,
     when: "Export or release without a current purpose-specific media grant.",

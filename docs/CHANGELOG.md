@@ -2,6 +2,21 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-01: Layer 1 API implementation decisions (ADR-0021)
+
+- The owner asked for Layer 1 (M1.2 to M1.12) to be completed before Layer 2. ADR-0021 records the decisions the documentation leaves to those micro-prompts:
+  - token formats and keys
+  - TOTP and passkeys, factor confirmation, step-up
+  - lockout, reset, change and invitation rules
+  - tenant transactions, the permission guard, `ACCESS_DENIED` collapsing, cursors and idempotency
+  - the organization settings registered in code
+- **Spec additions:**
+  - error code `SEPARATION_OF_DUTIES`
+  - `POST /auth/mfa/enrollments/{id}/confirm`
+  - the JWKS path
+  - `UserCredential.confirmedAt`
+- **Layer 1 contracts:** `packages/api-contracts` now defines every Layer 1 request and response, and an endpoint registry that generates the 62 OpenAPI operations. ADR-0021 records the contract rules: platform reach, If-Match coverage, account edits, shorter-only session policies, probable-duplicate matching, name search and profile tabs.
+
 ## 2026-10-01: Patient search under RLS decided (ADR-0020)
 
 - The owner's decision on UD-35. No patient query bypasses Row-Level Security.

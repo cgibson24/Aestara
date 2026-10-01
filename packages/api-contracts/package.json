@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aestara/shared-types": "workspace:*",
     "@asteasolutions/zod-to-openapi": "9.1.0",
     "zod": "4.6.5"
   },

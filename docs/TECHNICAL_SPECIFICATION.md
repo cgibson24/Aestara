@@ -993,6 +993,7 @@ Keys are scoped per actor and retained **7 days** [P], long enough to cover the 
 | 401 | `MFA_REQUIRED` | Login step needs a second factor |
 | 403 | `PERMISSION_DENIED` | Resource visible, action not permitted |
 | 403 | `REAUTHENTICATION_REQUIRED` | Step-up needed (recent MFA/biometric) for a sensitive action |
+| 403 | `SEPARATION_OF_DUTIES` | A role grant, membership or user-management action breaks a §4.5 separation-of-duties rule (ADR-0021) |
 | 403 | `MEDIA_PERMISSION_NOT_GRANTED` | Export/release without a current purpose-specific grant [B §7.3, §8.3] |
 | 404 | `<RESOURCE>_NOT_FOUND` | e.g. `PATIENT_NOT_FOUND`, `PHOTO_NOT_FOUND`: not visible (generic message) |
 | 409 | `INVALID_STATE_TRANSITION` | Action not allowed from current state [B §5.2] |
@@ -1030,8 +1031,9 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `POST /auth/password/forgot` · `POST /auth/password/reset` | Reset flow (identical response for unknown accounts; token in the body; a completed reset revokes all sessions) | public | – | SECURITY_CREDENTIAL_CHANGED*, SECURITY_SESSION_REVOKED | 1 |
 | `POST /auth/password/change` | Change password (current password and a recent MFA) | authenticated + step-up | – | SECURITY_CREDENTIAL_CHANGED* | 1 |
 | `POST /auth/invitations/accept` | Accept a staff invitation (token in the body): set the password, enroll a second factor where policy requires it, activate the membership | invitation token | – | SECURITY_CREDENTIAL_CHANGED* | 1 |
-| `POST /auth/mfa/enrollments` · `DELETE /auth/mfa/enrollments/{id}` | Enroll/remove TOTP or passkey | authenticated + step-up | R | SECURITY_CREDENTIAL_CHANGED* | 1 |
-| `GET /.well-known/jwks.json` | Public signing keys (OIDC-compatible) | public | – | – | 1 |
+| `POST /auth/mfa/enrollments` · `DELETE /auth/mfa/enrollments/{id}` | Enroll/remove TOTP or passkey. During sign-in, a user who must use MFA but has none enrolls TOTP with the sign-in challenge in the body (ADR-0021) | authenticated + step-up, or MFA challenge | R | SECURITY_CREDENTIAL_CHANGED* | 1 |
+| `POST /auth/mfa/enrollments/{id}/confirm` | Confirm a pending factor (TOTP code or passkey registration); only confirmed factors count (ADR-0021) | authenticated + step-up | – | SECURITY_CREDENTIAL_CHANGED* | 1 |
+| `GET /.well-known/jwks.json` | Public signing keys (OIDC-compatible), served under `/api/v1` | public | – | – | 1 |
 
 #### Organizations, practices, locations (`/organizations`, `/practices`, `/locations`) [B §17.1, §20.2]
 

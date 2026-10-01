@@ -1,5 +1,12 @@
+export * from "./audit.ts";
+export * from "./auth.ts";
+export * from "./endpoints.ts";
 export * from "./errors.ts";
 export * from "./headers.ts";
 export { buildRegistry, generateOpenApiDocument, renderOpenApiDocument, sharedSchemas } from "./openapi.ts";
+export * from "./organizations.ts";
 export * from "./pagination.ts";
+export * from "./patients.ts";
 export * from "./primitives.ts";
+export * from "./settings.ts";
+export * from "./users.ts";

@@ -229,6 +229,10 @@ model UserCredential {
   webauthnSignCount    BigInt?
   label                String?
   createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  /// A TOTP or passkey counts as a second factor only once confirmed (a valid
+  /// code or a verified registration); passwords are confirmed on creation (ADR-0021).
+  confirmedAt          DateTime?      @db.Timestamptz(3)
+  /// TOTP: the start of the last accepted time step, so a code is used only once.
   lastUsedAt           DateTime?      @db.Timestamptz(3)
   revokedAt            DateTime?      @db.Timestamptz(3)
 

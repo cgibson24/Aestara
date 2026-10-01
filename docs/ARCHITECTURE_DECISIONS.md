@@ -32,6 +32,7 @@ Status values:
 | [0018](#adr-0018) | Layer 1 kickoff decisions | Accepted | 2026-09-29 |
 | [0019](#adr-0019) | Layer 1 database foundation: generated schema, roles, Row-Level Security, catalog | Adopted (delegated) | 2026-09-29 |
 | [0020](#adr-0020) | Patient search under Row-Level Security: leakproof search keys (UD-35) | Accepted | 2026-10-01 |
+| [0021](#adr-0021) | Layer 1 API implementation decisions | Adopted (delegated) | 2026-10-01 |
 
 ---
 
@@ -386,3 +387,92 @@ Status values:
   - Staff search by the start of a name, or by an exact identifier. Typo-tolerant search is not offered; duplicate detection still catches near-matches before a patient is created.
   - Because nothing has been applied to a shared environment, the Layer 1 migrations are amended in place rather than followed by a corrective migration.
   - Spec §2.1, §5.2, §5.6 and §6.3 are corrected. UD-35 is closed.
+
+## ADR-0021
+
+**Layer 1 API implementation decisions**
+
+- **Status:** Adopted (delegated), 2026-10-01. These settle the points that `AUTHENTICATION_ARCHITECTURE.md`, `AUTHORIZATION_RBAC.md` and the spec leave to micro-prompts M1.2 to M1.8, inside ADR-0002, ADR-0004, ADR-0018 and ADR-0020. The owner asked for Layer 1 to be completed before Layer 2.
+- **Decision, build and test:**
+  - **Runtime:** `services/api` is NestJS 12 on Fastify 5, ES modules, Node 24.
+    - Bundling: rolldown, with legacy decorators and emitted decorator metadata.
+    - Tests: Vitest 5, whose oxc transformer supports the same.
+    - Type-checking: `tsc`.
+  - **Test database:** API tests run against a real PostgreSQL.
+    - Each test file builds a fresh database from the migrations through a superuser URL (`TEST_ADMIN_DATABASE_URL`) and connects as login users of `aestara_app` and `aestara_platform`.
+    - CI provides PostgreSQL 18 as a service container.
+    - Testcontainers (spec §2.3) is not used: this repository's CI and cloud sessions have no Docker daemon. The rule it served, a real database and never mocks for authorization, holds.
+- **Decision, tokens and keys:**
+  - **Access token:** an ES256 JWT with issuer `aestara-api` and audience `aestara`. It carries `sub`, `sid`, `org` (absent when no organization is selected), `app`, `amr` and `kid`, and lasts 10 minutes.
+    - Signing: a KMS asymmetric key in AWS; a PEM key from configuration locally and in tests. Both sit behind one signer interface.
+    - Public keys are published at `GET /api/v1/.well-known/jwks.json`.
+  - **Refresh token:** `<sessionId>.<generation>.<HMAC-SHA256(server refresh key, sessionId.generation)>`.
+    - A valid MAC proves the server issued that generation, so presenting an older generation is provable reuse: the session is revoked as `REFRESH_TOKEN_REUSE`.
+    - A token with a bad MAC is simply rejected, so a forged token cannot revoke anyone's session.
+    - `Session.refreshTokenHash` stores the SHA-256 of the current token.
+    - There is no grace window: clients serialize refreshes.
+  - **Admin web refresh:**
+    - The refresh token lives only in the cookie `aestara_rt`: `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/api/v1/auth/token/refresh`.
+    - A cookie refresh needs an allow-listed `Origin`. The response body never carries the token for `ADMIN_WEB`.
+  - **Second factors:**
+    - TOTP: RFC 6238, SHA-1, 6 digits, 30 s, ±1 step. The seed is sealed with KMS in AWS and AES-256-GCM with a configured key locally. A code's time step can be used only once: `UserCredential.lastUsedAt` records the start of the last accepted step.
+    - Passkeys: `@simplewebauthn/server`. Relying-party ID and origins come from configuration.
+  - **Factor confirmation:** a new column `UserCredential.confirmedAt`. A TOTP or passkey counts as a factor only once confirmed, by a valid code or a verified registration.
+    - The enrollment endpoint gains a confirmation step: `POST /auth/mfa/enrollments/{id}/confirm`.
+    - A user who must use MFA but has no confirmed factor receives `MFA_REQUIRED` with `enrollmentRequired`. They enroll TOTP using the sign-in challenge, then complete sign-in with `POST /auth/mfa/verify`.
+  - **Challenges:**
+    - The sign-in MFA challenge expires in 5 minutes and allows 5 attempts.
+    - Step-up means `mfaVerifiedAt` within the last 15 minutes. A user with no confirmed factor can also meet it with a session created in the last 15 minutes. Otherwise the API answers `403 REAUTHENTICATION_REQUIRED` and the client signs in again.
+- **Decision, accounts:**
+  - **Lockout:**
+    - **Keying:** keyed on an HMAC of the normalized identifier, so known and unknown identifiers behave identically.
+    - **What counts:** `INVALID_CREDENTIALS` and `MFA_FAILED` failures from the last 24 hours, since the later of the last success and the current password.
+    - **Lock periods:** 5 failures lock for 15 minutes, and each further 5 doubles the lock, up to 24 hours.
+    - **Response:** while locked, sign-in answers `429 RATE_LIMITED` with `Retry-After`, without checking the password. The attempt is ledgered as `ACCOUNT_LOCKED`.
+    - **Status and unlock:** lockout never sets `User.status`. It ends when it expires or on a password reset.
+  - **Password reset:**
+    - It does not require the second factor, because the next sign-in still does.
+    - A forgot-password request answers `202` identically for every input. At most one reset email per account per minute.
+  - **Password change:** ends the user's other sessions (`CREDENTIAL_CHANGED`) and keeps the current one.
+  - **Email verification:** accepting an invitation, whose token arrives by email, sets `User.emailVerifiedAt`. There is no separate verification flow in Layer 1.
+  - **Email links:** invitation and reset emails link to the admin web with the token in the URL fragment (`#token=…`). Fragments never reach a server or a log, and the page posts the token in the request body (K-09).
+  - **Platform operators:** their sessions have no organization and use the admin web lifetimes.
+  - **Choosing an organization at sign-in:**
+    - With exactly one active membership, the session binds to it.
+    - With several, the login body may name one of them; otherwise the session starts without an organization and the client calls `PUT /auth/session/organization`.
+    - Switching re-applies the target organization's MFA rule: if it requires MFA and the session has none, the switch answers `403 REAUTHENTICATION_REQUIRED`.
+  - **Invitations:**
+    - The staff invitation token lasts 72 hours.
+    - An administrator MFA reset requires the administrator to state how the requester's identity was verified (`IN_PERSON`, `VIDEO_CALL` or `KNOWN_CALLBACK`). The method is audited, and the revoked sessions use `CREDENTIAL_CHANGED`.
+  - **Password list:** passwords are checked against a bundled list of common passwords (SecLists, MIT licence), with no external call.
+- **Decision, API behaviour:**
+  - **Tenant transactions:** every tenant request runs in one Prisma interactive transaction on the `aestara_app` connection.
+    - Its first statement is `set_config('app.organization_id', …, true)`.
+    - Platform routes use a separate `aestara_platform` connection.
+    - Sign-in uses the application connection without a tenant, plus `auth_sign_in_memberships`.
+  - **Permissions:** `@RequirePermission(key)` on each route.
+    - The guard reads the caller's grants in the organization (or platform grants on platform routes) inside the request transaction.
+    - Services enforce practice and location scope on practice-owned writes (spec §4.6) and separation-of-duties rule 3 on user management.
+    - A new error code, `403 SEPARATION_OF_DUTIES`, reports a rule 1–3 violation.
+  - **`ACCESS_DENIED`:** written for denials on patient routes. Identical denials from one actor on one route within 60 seconds are suppressed in memory. The next written event carries `metadata.suppressedRepeats`.
+  - **Cursors:** cursor pagination uses an HMAC-signed cursor holding the last sort key and ID, valid 24 hours.
+  - **Idempotency:** `Idempotency-Key` records the SHA-256 of the method, route template and canonical body, and replays the stored outcome reference (spec §6.1.8).
+- **Decision, settings registered in code (`OrganizationSetting`, spec §5.2):**
+  - `security.mfaPolicy`: `ADMINS_ONLY` (default) or `ALL_STAFF`. Admin roles and the admin web always need MFA either way.
+  - `security.sessionPolicy`: idle and absolute lifetimes per client, defaulting to spec §4.2.
+  - `patients.primaryPracticeRequired`: default `false`.
+  - Automatic MRN assignment is not specified, so Layer 1 accepts an MRN from staff and keeps it unique per organization.
+- **Decision, contracts (recorded with the Layer 1 contracts, before their implementation):**
+  - **Endpoint registry:** `packages/api-contracts/src/endpoints.ts` lists every Layer 1 operation with its permission, scope, step-up, idempotency, If-Match, not-found code and audit actions. It generates the OpenAPI paths, and the api checks at start-up that its routes equal the registry.
+  - **Platform reach (K-06):** platform-scope grants work only on `GET/POST /organizations`, `GET/PATCH /organizations/{id}`, `POST /organizations/{id}/admin-bootstrap`, `POST /users/{id}/sessions/revoke`, `POST /users/{id}/mfa-reset`, `GET /roles`, `GET /permissions` and `GET /audit/events` (platform-level events only). Every other route needs an organization in the session.
+  - **If-Match:** required on every `PATCH` (organizations, practices, locations, users, patients, contacts), on patient archive and on settings. Create-or-replace profile `PUT`s need it once the profile exists. A setting still at its default has ETag `"v0"`.
+  - **Account edits:** `PATCH /users/{id}` changes the person's platform-level account, so an organization may make it only when the person belongs to no other organization (as for the MFA reset); otherwise `403 PERMISSION_DENIED`.
+  - **Session policy:** organizations may shorten the spec §4.2 lifetimes, never extend them.
+  - **Probable duplicates:** a candidate shares the email, the phone or the MRN, or shares the date of birth and has a similar first or last name (same search key, one key a prefix of the other, or an edit distance of at most 1 per 4 characters, minimum 1). At most 10 candidates. The 409 body carries only IDs and match reasons; the duplicate-check response adds a summary when the caller holds `patient.read`.
+  - **Name search:** one word matches the start of the last, first or preferred name. Two or more words match a first (or preferred) name prefix plus a last-name prefix, in either order. Patient search is limited to 60 requests per user per minute (`429 RATE_LIMITED`).
+  - **Profile tabs:** `GET /patients/{id}` returns the twelve tabs with `readable` from the tab's read permission in spec §6.3. Counts appear once each domain's layer is built.
+- **Consequences:**
+  - Spec §6.2 gains `SEPARATION_OF_DUTIES`; spec §6.3 gains the enrollment confirmation endpoint and the `GET /.well-known/jwks.json` path under `/api/v1`. `UserCredential.confirmedAt` is added by a new migration.
+  - The open items in `AUTHENTICATION_ARCHITECTURE.md` §14 for M1.3 and M1.6 are closed.
+  - The factor-confirmation migration also grants the platform role `SELECT ("confirmedAt")` on `UserCredential` (the step-up check before an MFA reset) and `UPDATE ("consumedAt")` on `UserToken` (a re-invitation supersedes the earlier one).
+  - Passkey sign-in on iOS needs associated domains, so it waits for UD-34 and the domain names (F-32). The api and the admin web support passkeys in Layer 1.

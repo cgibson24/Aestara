@@ -21,3 +21,7 @@ minimumReleaseAgeExclude:
   - '@vitest/spy@5.0.2'
   - turbo@2.11.4
   - vitest@5.0.2
+  - '@nestjs/common@12.1.2'
+  - '@nestjs/core@12.1.2'
+  - '@nestjs/platform-fastify@12.1.2'
+  - '@nestjs/testing@12.1.2'

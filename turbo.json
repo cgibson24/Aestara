@@ -9,7 +9,8 @@
       "dependsOn": ["^build"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "env": ["TEST_ADMIN_DATABASE_URL"]
     },
     "dev": {
       "dependsOn": ["^build"],
@@ -25,6 +26,13 @@
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "!generated/**"],
       "outputs": ["generated/**"]
+    },
+    "@aestara/database#typecheck": {
+      "dependsOn": ["^build", "build"]
+    },
+    "@aestara/database#test": {
+      "dependsOn": ["^build", "build"],
+      "env": ["TEST_ADMIN_DATABASE_URL"]
     }
   }
 }

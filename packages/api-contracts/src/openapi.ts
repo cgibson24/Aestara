@@ -1,13 +1,22 @@
-// Builds the OpenAPI 3.1 document from the Zod schemas (spec §6.8). Layer 0
-// registers only the shared components; each layer adds its paths here.
+// Builds the OpenAPI 3.1 document from the Zod schemas (spec §6.8): the shared
+// components, then one path per entry of the endpoint registry (endpoints.ts).
 import { OpenAPIRegistry, OpenApiGeneratorV31 } from "@asteasolutions/zod-to-openapi";
 import pkg from "../package.json" with { type: "json" };
+import { ENDPOINTS, type EndpointDefinition, errorStatuses } from "./endpoints.ts";
 import { ErrorCode, ErrorDetails, ErrorEnvelope, errorCodesByStatus, FieldError } from "./errors.ts";
 import { Header } from "./headers.ts";
-import { PAGE_LIMIT_DEFAULT, PAGE_LIMIT_MAX, PageInfo } from "./pagination.ts";
+import {
+  collectionEnvelope,
+  PAGE_LIMIT_DEFAULT,
+  PAGE_LIMIT_MAX,
+  PageInfo,
+  resourceEnvelope,
+} from "./pagination.ts";
 import { Currency, DateOnly, Money, RequestId, Timestamp, Uuid } from "./primitives.ts";
 
-const ref = (kind: "schemas" | "headers", name: string) => ({ $ref: `#/components/${kind}/${name}` });
+const ref = (kind: "schemas" | "headers" | "parameters" | "responses", name: string) => ({
+  $ref: `#/components/${kind}/${name}`,
+});
 
 /** Shared schemas, registered under the component name in their `.meta({ id })`. */
 export const sharedSchemas = {
@@ -63,6 +72,13 @@ export function buildRegistry(): OpenAPIRegistry {
     description: 'The resource ETag, e.g. "v7" (spec §6.1.7).',
     schema: { type: "string", pattern: '^"v[0-9]+"$' },
   });
+  registry.registerComponent("parameters", "IfMatchWhenExists", {
+    name: Header.ifMatch,
+    in: "header",
+    required: false,
+    description: "Required once the resource exists; omit it to create (spec §6.1.7).",
+    schema: { type: "string", pattern: '^"v[0-9]+"$' },
+  });
   registry.registerComponent("parameters", "ClientRequestId", {
     name: Header.clientRequestId,
     in: "header",
@@ -97,7 +113,70 @@ export function buildRegistry(): OpenAPIRegistry {
     });
   }
 
+  for (const e of ENDPOINTS) registerEndpoint(registry, e);
+
   return registry;
+}
+
+function successResponse(e: EndpointDefinition) {
+  const { shape, schema, etag } = e.response;
+  const headers = {
+    [Header.requestId]: ref("headers", Header.requestId),
+    ...(etag ? { [Header.etag]: ref("headers", Header.etag) } : {}),
+  };
+  if (shape === "none" || schema === undefined) return { description: "No content.", headers };
+  const body =
+    shape === "collection"
+      ? collectionEnvelope(schema)
+      : shape === "resource"
+        ? resourceEnvelope(schema)
+        : schema;
+  return { description: "Success.", headers, content: { "application/json": { schema: body } } };
+}
+
+function registerEndpoint(registry: OpenAPIRegistry, e: EndpointDefinition): void {
+  const parameters = [
+    ref("parameters", "ClientRequestId"),
+    ...(e.idempotency === "required" ? [ref("parameters", "IdempotencyKey")] : []),
+    ...(e.ifMatch === "required" ? [ref("parameters", "IfMatch")] : []),
+    ...(e.ifMatch === "when-exists" ? [ref("parameters", "IfMatchWhenExists")] : []),
+  ];
+  const auth = e.auth;
+  const notes = [
+    auth.kind === "permission"
+      ? `Permission: \`${auth.permission}\` (${auth.scopes.join(" or ")} scope).`
+      : auth.kind === "token"
+        ? `Authorized by the ${auth.token} token.`
+        : auth.kind === "session"
+          ? "Any signed-in session; acts on the caller's own account."
+          : "Public.",
+    e.stepUp ? "Needs a recent MFA (step-up)." : "",
+    e.audit ? `Audit: ${e.audit.join(", ")}.` : "",
+    e.patientData ? "Denials are audited as ACCESS_DENIED." : "",
+  ].filter((n) => n !== "");
+  registry.registerPath({
+    method: e.method.toLowerCase() as "get" | "post" | "put" | "patch" | "delete",
+    path: e.path,
+    operationId: e.operationId,
+    tags: [e.tag],
+    summary: e.summary,
+    description: notes.join(" "),
+    ...(auth.kind === "public" || (auth.kind === "token" && auth.token !== "challenge-or-session")
+      ? { security: [] }
+      : {}),
+    parameters,
+    request: {
+      ...(e.params ? { params: e.params } : {}),
+      ...(e.query ? { query: e.query } : {}),
+      ...(e.body ? { body: { required: true, content: { "application/json": { schema: e.body } } } } : {}),
+    },
+    responses: {
+      [String(e.response.status)]: successResponse(e),
+      ...Object.fromEntries(
+        errorStatuses(e).map((status) => [String(status), ref("responses", `Error${status}`)]),
+      ),
+    },
+  });
 }
 
 export function generateOpenApiDocument() {
