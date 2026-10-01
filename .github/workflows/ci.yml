@@ -170,9 +170,9 @@ jobs:
         run: pnpm --filter @aestara/database bench:rls | tee -a "$GITHUB_STEP_SUMMARY"
 
   api:
-    name: API · tests on PostgreSQL 18 (auth, tenancy, cross-tenant, patients)
+    name: API · tests on PostgreSQL 18 (auth, tenancy, cross-tenant, patients) · admin portal e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:18
@@ -219,6 +219,28 @@ jobs:
         env:
           RLS_GATE: "1"
         run: npx vitest run test/rls-gate.test.ts
+
+      # M1.11: the admin portal against the real api and a fresh database
+      # (apps/admin-web/e2e/stack.ts): invitation, authenticator enrollment,
+      # sign-in, inviting a user with a role, the audit log, cookie restore.
+      - name: Build the api and the admin portal
+        run: pnpm turbo run build --filter=@aestara/api --filter=@aestara/admin-web
+
+      - name: Install Chromium for Playwright
+        working-directory: apps/admin-web
+        run: npx playwright install --with-deps chromium
+
+      - name: Admin portal end-to-end tests (Playwright)
+        working-directory: apps/admin-web
+        run: npx playwright test
+
+      - name: Keep the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: apps/admin-web/playwright-report
+          retention-days: 7
 
   terraform:
     name: Terraform · fmt · validate · tflint · checkov
