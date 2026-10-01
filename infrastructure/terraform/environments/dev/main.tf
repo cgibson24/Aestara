@@ -8,4 +8,6 @@ module "platform" {
   db_instance_class      = "db.t4g.medium"
   trail_object_lock_mode = "GOVERNANCE"
   db_multi_az            = false
+  audit_object_lock_mode = "GOVERNANCE"
+  audit_object_lock_days = 1
 }

@@ -1,5 +1,5 @@
 # One environment's platform: keys, account guardrails, network, storage,
-# container platform and database. Environment roots call this module with
+# messaging, container platform and database. Environment roots call this module with
 # their sizing; the architecture is identical everywhere (Bible §28.1).
 
 module "kms" {
@@ -29,9 +29,23 @@ module "network" {
 module "storage" {
   source = "../storage"
 
+  name_prefix            = var.name_prefix
+  media_kms_key_arn      = module.kms.key_arns["media"]
+  audit_kms_key_arn      = module.kms.key_arns["logs"]
+  access_log_bucket      = module.account_baseline.access_log_bucket
+  s3_endpoint_id         = module.network.s3_endpoint_id
+  audit_object_lock_mode = var.audit_object_lock_mode
+  audit_object_lock_days = var.audit_object_lock_days
+  malware_scanner        = var.malware_scanner
+}
+
+module "messaging" {
+  source = "../messaging"
+
   name_prefix       = var.name_prefix
-  media_kms_key_arn = module.kms.key_arns["media"]
-  access_log_bucket = module.account_baseline.access_log_bucket
+  kms_key_arn       = module.kms.key_arns["messaging"]
+  media_bucket_name = module.storage.bucket_names["clinical-media"]
+  malware_scanner   = var.malware_scanner
 }
 
 module "compute" {

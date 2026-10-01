@@ -8,4 +8,6 @@ module "platform" {
   db_instance_class      = "db.t4g.large"
   trail_object_lock_mode = "COMPLIANCE"
   db_multi_az            = true
+  audit_object_lock_mode = "COMPLIANCE"
+  audit_object_lock_days = 2190
 }

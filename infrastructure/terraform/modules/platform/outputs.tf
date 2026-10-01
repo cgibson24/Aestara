@@ -25,3 +25,23 @@ output "database_endpoint" {
 output "database_master_secret_arn" {
   value = module.database.master_user_secret_arn
 }
+
+output "audit_archive_bucket" {
+  value = module.storage.audit_archive_bucket
+}
+
+output "presign_role_arn" {
+  value = module.storage.presign_role_arn
+}
+
+output "event_bus_name" {
+  value = module.messaging.event_bus_name
+}
+
+output "queue_urls" {
+  value = module.messaging.queue_urls
+}
+
+output "alerts_topic_arn" {
+  value = module.messaging.alerts_topic_arn
+}

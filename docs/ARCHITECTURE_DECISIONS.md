@@ -628,6 +628,19 @@ Status values:
     - Built on `python:3.13-slim` pinned by digest, with the locked virtual environment installed by uv.
     - Runs as UID 10001 with a read-only root filesystem and a tmpfs `/tmp`.
     - The health check reads a heartbeat that the consumer loop writes.
+- **Decision, infrastructure** (`modules/storage`, `modules/messaging`; K2-04, K2-07, K2-09):
+  - **Storage.** The clinical-media policy refuses a `PUT` without `If-None-Match: *`. Only GuardDuty's validation object is exempt.
+    - Object reads and writes must come through the VPC's S3 endpoint, except for the presigning role and GuardDuty.
+    - An object GuardDuty tagged `THREATS_FOUND` cannot be read.
+  - **Presigning role.** It may put and get only `CLINICAL_ORIGINAL/` and `CLINICAL_DERIVATIVE/` objects, with a signature at most 10 minutes old (`s3:signatureAge`). It trusts the task roles named `<prefix>-api-task` and `<prefix>-worker-task`, which the compute module creates with the services.
+  - **Audit archive.** It is encrypted with the logs key and Object Locked: compliance for 2190 days in staging and production, governance for 1 day in dev. It also refuses overwrites and allows object access only through the endpoint.
+  - **Malware scanning.** The GuardDuty Malware Protection plan scans `CLINICAL_ORIGINAL/` and tags each result. Setting `malware_scanner = "clamav"` removes the plan and its rule.
+  - **Messaging:**
+    - a custom event bus, and a messaging KMS key that EventBridge and CloudWatch may use;
+    - the four work queues of the local layout, each with a dead-letter queue after 5 receives;
+    - an undeliverable-events queue for the rules' targets;
+    - alarms on every dead-letter queue and on any work-queue message older than 15 minutes, published to an encrypted alerts topic whose subscriptions are set at deployment.
+  - **Verification.** The modules are checked by `terraform fmt`, checkov (0 failed), and `validate` and tflint in CI. They are not applied (ADR-0014).
 - **Decision, tests and CI:**
   - **api tests:** each api test file provisions its own emulator resources, so parallel files never consume each other's messages.
   - **Python tests:** they run moto in-process, so they need no Docker.

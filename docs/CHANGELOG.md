@@ -25,6 +25,7 @@ All material changes to the architecture, contracts and repository. Newest first
 - **Spec corrected (ADR-0024):**
   - §3.4 flow A: the storage object is `QUARANTINED` at verification and becomes `AVAILABLE` on a clean scan.
   - §6.3: a flag `PUT` is a replace; practice settings keep `If-Match`.
+- **Infrastructure (not applied, ADR-0014):** `modules/storage` gains the K2-09 controls (overwrite denial, endpoint-only object access, the presigning role, unreadable infected objects), the Object Lock `audit-archive` bucket and the GuardDuty Malware Protection plan. The new `modules/messaging` adds the event bus, the work queues with dead-letter queues, the routing rules, alarms and an alerts topic. `modules/kms` adds a messaging key.
 - **Local and CI:**
   - moto joins `docker-compose.yml`.
   - `local-stack.ts` provisions its own emulator resources and starts the worker and image-processing, for `pnpm dev:stack`, the admin portal end-to-end tests and the iOS UI tests (moto from pip on the macOS runner).

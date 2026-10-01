@@ -11,9 +11,10 @@ locals {
   region       = data.aws_region.current.region
 
   purposes = {
-    data  = "RDS storage, snapshots, Performance Insights and Secrets Manager"
-    media = "Clinical media, export and integration-payload buckets"
-    logs  = "CloudWatch Logs and CloudTrail"
+    data      = "RDS storage, snapshots, Performance Insights and Secrets Manager"
+    media     = "Clinical media, export and integration-payload buckets"
+    logs      = "CloudWatch Logs, CloudTrail and the audit archive"
+    messaging = "SQS queues, the event bus and the alerts topic"
   }
 }
 
@@ -72,6 +73,29 @@ data "aws_iam_policy_document" "key" {
         test     = "StringLike"
         variable = "kms:EncryptionContext:aws:cloudtrail:arn"
         values   = ["arn:${data.aws_partition.current.partition}:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"]
+      }
+    }
+  }
+
+  # EventBridge encrypts what it delivers to the queues and reads the bus with this key;
+  # CloudWatch alarms publish to the encrypted alerts topic (ADR-0023 K2-07).
+  dynamic "statement" {
+    for_each = each.key == "messaging" ? [1] : []
+
+    content {
+      sid       = "EventBridgeAndAlarms"
+      actions   = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
+      resources = ["*"]
+
+      principals {
+        type        = "Service"
+        identifiers = ["events.amazonaws.com", "cloudwatch.amazonaws.com"]
+      }
+
+      condition {
+        test     = "StringEquals"
+        variable = "aws:SourceAccount"
+        values   = [data.aws_caller_identity.current.account_id]
       }
     }
   }

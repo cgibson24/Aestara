@@ -17,3 +17,8 @@ output "private_subnet_ids" {
 output "isolated_subnet_ids" {
   value = aws_subnet.isolated[*].id
 }
+
+output "s3_endpoint_id" {
+  description = "The S3 gateway endpoint; service roles reach the data buckets only through it (ADR-0023 K2-09)."
+  value       = aws_vpc_endpoint.s3.id
+}
