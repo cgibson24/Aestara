@@ -209,6 +209,14 @@ jobs:
       - name: API tests against real PostgreSQL (ADR-0021)
         run: pnpm turbo run test --filter=@aestara/api
 
+      # ADR-0004 / ADR-0020: login, patient search and patient open through the
+      # whole api, RLS versus BYPASSRLS; fails above 10% or 5 ms added p95.
+      - name: RLS gate, end to end (M1.8)
+        working-directory: services/api
+        env:
+          RLS_GATE: "1"
+        run: npx vitest run test/rls-gate.test.ts
+
   terraform:
     name: Terraform · fmt · validate · tflint · checkov
     runs-on: ubuntu-latest

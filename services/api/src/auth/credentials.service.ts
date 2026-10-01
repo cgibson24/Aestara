@@ -69,7 +69,7 @@ export class CredentialsService implements OnModuleInit {
   // ---------------------------------------------------------------------------
   // Passwords
   // ---------------------------------------------------------------------------
-  async forgot(ctx: RequestContext, body: z.output<typeof PasswordForgotRequest>): Promise<OperationResult> {
+  async forgot(_ctx: RequestContext, body: z.output<typeof PasswordForgotRequest>): Promise<OperationResult> {
     const email = body.email.trim().toLowerCase();
     const message = await this.db.identity(async (tx) => {
       const user = await tx.user.findUnique({ where: { kind_email: { kind: "WORKFORCE", email } } });

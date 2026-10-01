@@ -8,8 +8,11 @@
 import { ENDPOINTS, type EndpointDefinition, errorStatuses, RequestId } from "@aestara/api-contracts";
 import { catalogId, uuidv7 } from "@aestara/database";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { databaseAvailable, startApi, type TestApi } from "./support/app.ts";
+import { createApp } from "../src/app.ts";
+import { loadConfig } from "../src/config.ts";
+import { configAsEnv, databaseAvailable, startApi, type TestApi } from "./support/app.ts";
 import { bearer, Fixtures, type StaffMember } from "./support/fixtures.ts";
+import { LOGINS } from "./support/global-setup.ts";
 import { bodyFor, headersFor, pathFor, type ResourceRefs } from "./support/requests.ts";
 
 const all: readonly EndpointDefinition[] = ENDPOINTS;
@@ -237,6 +240,47 @@ describe.runIf(databaseAvailable())("authorization generated from the endpoint r
         expect(res.statusCode, res.body).toBe(428);
         expect(res.json().error.code).toBe("PRECONDITION_REQUIRED");
       });
+  });
+
+  describe("defence in depth", () => {
+    it("isolates tenants by the explicit filter alone, with RLS bypassed", async () => {
+      const login = "aestara_api_test_bypass";
+      const password = new URL(api.databaseUrl(LOGINS.app)).password;
+      await api.db.query(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${login}') THEN CREATE ROLE ${login} LOGIN BYPASSRLS; END IF;
+      END $$`);
+      await api.db.query(`ALTER ROLE ${login} PASSWORD '${password}'`);
+      await api.db.query(`GRANT aestara_app TO ${login}`);
+      const { app } = await createApp(
+        loadConfig({ ...configAsEnv(api), DATABASE_URL: api.databaseUrl(login) }),
+      );
+      try {
+        const inject = app.getHttpAdapter().getInstance();
+        const open = await inject.inject({
+          method: "GET",
+          url: `/api/v1/patients/${b.refs.patientId}`,
+          headers: bearer(a.admin),
+        });
+        expect(open.statusCode).toBe(404);
+        const search = await inject.inject({
+          method: "POST",
+          url: "/api/v1/patients/search",
+          headers: bearer(a.admin),
+          payload: { name: "Synthetic" },
+        });
+        const ids = search.json().data.map((p: { id: string }) => p.id);
+        expect(ids).toContain(a.refs.patientId);
+        expect(ids).not.toContain(b.refs.patientId);
+        const user = await inject.inject({
+          method: "GET",
+          url: `/api/v1/users/${b.refs.userId}`,
+          headers: bearer(a.admin),
+        });
+        expect(user.statusCode).toBe(404);
+      } finally {
+        await app.close();
+      }
+    });
   });
 
   describe("ACCESS_DENIED (ADR-0018 K-10)", () => {

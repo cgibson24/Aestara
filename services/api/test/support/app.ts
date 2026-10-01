@@ -8,7 +8,7 @@ import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from "fas
 import pg from "pg";
 import { inject } from "vitest";
 import { createApp } from "../../src/app.ts";
-import { loadConfig } from "../../src/config.ts";
+import { type Config, loadConfig } from "../../src/config.ts";
 import { EmailService } from "../../src/email/email.ts";
 import { LOGINS } from "./global-setup.ts";
 
@@ -26,6 +26,11 @@ export interface TestApi {
   readonly email: EmailService;
   readonly sealKey: Buffer;
   request(options: InjectOptions): Promise<LightMyRequestResponse>;
+  readonly databaseName: string;
+  /** Connection URL of this test's database for a login user. */
+  databaseUrl(login: string): string;
+  /** The configuration the app was started with. */
+  readonly config: Config;
   /** A connection as one of the api's runtime login users. */
   connectAs(role: "app" | "platform"): Promise<pg.Client>;
   close(): Promise<void>;
@@ -80,6 +85,9 @@ export async function startApi(
     db,
     email: app.get(EmailService),
     sealKey,
+    databaseName: name,
+    databaseUrl: url,
+    config,
     request: (options) => fastify.inject(options),
     connectAs: async (role) => {
       const client = new pg.Client({ connectionString: url(LOGINS[role]) });
@@ -91,4 +99,13 @@ export async function startApi(
       await db.end();
     },
   };
+}
+
+/** A running test app's configuration as environment variables, to start a second instance with the same keys. */
+export function configAsEnv(api: TestApi): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(api.config)
+      .filter(([k, v]) => /^[A-Z_]+$/.test(k) && v !== undefined)
+      .map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : String(v)]),
+  );
 }

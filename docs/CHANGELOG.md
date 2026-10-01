@@ -15,6 +15,8 @@ All material changes to the architecture, contracts and repository. Newest first
   - `POST /auth/mfa/enrollments/{id}/confirm`
   - the JWKS path
   - `UserCredential.confirmedAt`
+- **Defence in depth:** the api adds an explicit tenant filter to every tenant query, on top of Row-Level Security.
+- **RLS gate, end to end:** measured through the api, as ADR-0020 decided. Locally on PostgreSQL 16, with 1,500 rounds, patient open adds 0.1 to 0.7 ms p95 (0.8% to 5.8%); login and patient search add nothing measurable. CI runs the gate on PostgreSQL 18 and publishes the table.
 - **Layer 1 contracts:** `packages/api-contracts` now defines every Layer 1 request and response, and an endpoint registry that generates the 62 OpenAPI operations. ADR-0021 records the contract rules: platform reach, If-Match coverage, account edits, shorter-only session policies, probable-duplicate matching, name search and profile tabs.
 
 ## 2026-10-01: Patient search under RLS decided (ADR-0020)

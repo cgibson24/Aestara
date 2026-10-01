@@ -7,6 +7,7 @@
 import { createPrismaClient, type Prisma, type PrismaClient } from "@aestara/database";
 import { Inject, Injectable, type OnModuleDestroy } from "@nestjs/common";
 import { CONFIG, type Config } from "../config.ts";
+import { tenantFilter, withTenantFilter } from "./tenant-filter.ts";
 
 export type Tx = Prisma.TransactionClient;
 
@@ -18,7 +19,10 @@ export class Database implements OnModuleDestroy {
   readonly platform: PrismaClient;
 
   constructor(@Inject(CONFIG) config: Config) {
-    this.app = createPrismaClient(config.DATABASE_URL, { poolSize: config.DATABASE_POOL_SIZE });
+    // The application client adds the explicit tenant filter inside tenant transactions.
+    this.app = createPrismaClient(config.DATABASE_URL, { poolSize: config.DATABASE_POOL_SIZE }).$extends(
+      tenantFilter,
+    ) as unknown as PrismaClient;
     this.platform = createPrismaClient(config.PLATFORM_DATABASE_URL, {
       poolSize: Math.max(2, Math.floor(config.DATABASE_POOL_SIZE / 4)),
     });
@@ -26,10 +30,12 @@ export class Database implements OnModuleDestroy {
 
   /** A transaction in one organization: every tenant table shows only its rows. */
   tenant<T>(organizationId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.app.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.organization_id', ${organizationId}, true)`;
-      return fn(tx);
-    }, TX_OPTIONS);
+    return withTenantFilter(organizationId, () =>
+      this.app.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.organization_id', ${organizationId}, true)`;
+        return fn(tx);
+      }, TX_OPTIONS),
+    );
   }
 
   /**
@@ -37,12 +43,12 @@ export class Database implements OnModuleDestroy {
    * tokens, the login ledger) only. Every tenant table returns no rows.
    */
   identity<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.app.$transaction(fn, TX_OPTIONS);
+    return withTenantFilter(null, () => this.app.$transaction(fn, TX_OPTIONS));
   }
 
   /** A transaction on the platform role: organization metadata across tenants, never patient data. */
   platformTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.platform.$transaction(fn, TX_OPTIONS);
+    return withTenantFilter(null, () => this.platform.$transaction(fn, TX_OPTIONS));
   }
 
   async ping(): Promise<boolean> {

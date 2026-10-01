@@ -3,6 +3,7 @@
 // Used where one action writes to several organizations' records (revoking a
 // user's sessions everywhere, reading a session's organization at sign-in).
 import type { Tx } from "./database.ts";
+import { withTenantFilter } from "./tenant-filter.ts";
 
 export async function inTenant<T>(tx: Tx, organizationId: string | null, fn: () => Promise<T>): Promise<T> {
   const rows = await tx.$queryRaw<{ current: string | null }[]>`
@@ -10,7 +11,8 @@ export async function inTenant<T>(tx: Tx, organizationId: string | null, fn: () 
   const previous = rows[0]?.current ?? "";
   await tx.$executeRaw`SELECT set_config('app.organization_id', ${organizationId ?? ""}, true)`;
   // On failure the transaction is aborted and rolls back, so there is nothing to restore.
-  const result = await fn();
+  // The explicit query filter follows the same tenant.
+  const result = await withTenantFilter(organizationId, fn);
   await tx.$executeRaw`SELECT set_config('app.organization_id', ${previous}, true)`;
   return result;
 }

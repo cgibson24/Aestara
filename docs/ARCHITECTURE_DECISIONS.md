@@ -449,6 +449,7 @@ Status values:
   - **Tenant transactions:** every tenant request runs in one Prisma interactive transaction on the `aestara_app` connection.
     - Its first statement is `set_config('app.organization_id', …, true)`.
     - Platform routes use a separate `aestara_platform` connection.
+    - Every Prisma query on a tenant table inside a tenant transaction also carries `organizationId = <tenant>`, and every create must name the tenant (spec §4.6 "load resource WITH organizationId = org"). The api therefore isolates tenants even with RLS bypassed, and RLS isolates them even if this filter were missing; a test proves the first with a `BYPASSRLS` login.
     - Sign-in uses the application connection without a tenant, plus `auth_sign_in_memberships`.
   - **Permissions:** `@RequirePermission(key)` on each route.
     - The guard reads the caller's grants in the organization (or platform grants on platform routes) inside the request transaction.
@@ -475,4 +476,5 @@ Status values:
   - Spec §6.2 gains `SEPARATION_OF_DUTIES`; spec §6.3 gains the enrollment confirmation endpoint and the `GET /.well-known/jwks.json` path under `/api/v1`. `UserCredential.confirmedAt` is added by a new migration.
   - The open items in `AUTHENTICATION_ARCHITECTURE.md` §14 for M1.3 and M1.6 are closed.
   - The factor-confirmation migration also grants the platform role `SELECT ("confirmedAt")` on `UserCredential` (the step-up check before an MFA reset) and `UPDATE ("consumedAt")` on `UserToken` (a re-invitation supersedes the earlier one).
+  - **RLS gate, end to end (M1.8):** CI runs login, patient search and patient open through the whole api, as the application role and as an identical role with `BYPASSRLS`, 1,000 alternating rounds each (login 200), and fails if any adds more than 10% or 5 ms p95. Fewer rounds are dominated by noise at p95.
   - Passkey sign-in on iOS needs associated domains, so it waits for UD-34 and the domain names (F-32). The api and the admin web support passkeys in Layer 1.
