@@ -50,18 +50,23 @@ final class ProviderFlowTests: XCTestCase {
         let newPatient = app.buttons["patients.new"]
         XCTAssertTrue(newPatient.waitForExistence(timeout: 20), "The patient list did not appear. Screen: \(screen(app))")
         newPatient.tap()
-        let lastName = "Quill" + String((0..<6).map { _ in "abcdefghijklmnopqrstuvwxyz".randomElement()! })
+        // Each run (each device) gets its own synthetic person, so the duplicate check, which
+        // matches the same date of birth with a similar name, never links two test runs.
+        let letters = { (count: Int) in String((0..<count).map { _ in "abcdefghijklmnopqrstuvwxyz".randomElement()! }) }
+        let givenName = "Ana" + letters(5)
+        let lastName = "Quill" + letters(6)
+        let birthYear = String(Int.random(in: 1940...1999))
         let firstName = app.textFields["patient.firstName"]
         XCTAssertTrue(firstName.waitForExistence(timeout: 10), "The new-patient form did not appear. Screen: \(screen(app))")
         firstName.tap()
-        firstName.typeText("Ana")
+        firstName.typeText(givenName)
         let lastNameField = app.textFields["patient.lastName"]
         lastNameField.tap()
         lastNameField.typeText(lastName)
         // Date of birth: month, day, year wheels (en_US).
         let year = app.pickerWheels.element(boundBy: 2)
         XCTAssertTrue(year.waitForExistence(timeout: 5), "The date-of-birth picker did not appear. Screen: \(screen(app))")
-        year.adjust(toPickerWheelValue: "1988")
+        year.adjust(toPickerWheelValue: birthYear)
         let create = app.buttons["patient.create"]
         XCTAssertTrue(waitUntil(timeout: 5) { create.isEnabled }, "Create stayed disabled. Screen: \(screen(app))")
         create.tap()
