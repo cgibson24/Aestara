@@ -2,6 +2,12 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-01: Layer 1 accepted; Layer 2 kickoff proposed
+
+- The owner accepted the Layer 1 acceptance review (`ACCEPTANCE_CRITERIA.md` §6) and authorized Layer 2.
+- `LAYER_2_KICKOFF.md` proposes K2-01 to K2-22: one recommendation for each Layer 2 decision (UD-06, UD-21, UD-22, UD-24, UD-25), each carried finding (F-34, F-35, F-36, F-61, F-63, F-66, F-67) and each Layer 2 open item in the documentation pack. Nothing is adopted until the owner confirms it; no Layer 2 code exists yet.
+- Found while preparing it: LocalStack no longer starts without an account token, so K2-08 proposes moto for the local AWS emulators (amending ADR-0010).
+
 ## 2026-10-01: Layer 1 clients (ADR-0022)
 
 - **iOS provider app** (M1.9–M1.10):

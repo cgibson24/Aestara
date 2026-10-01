@@ -360,4 +360,4 @@ cd apps/ios-provider && tuist generate                       # Xcode workspace (
 
 The owner authorized Layer 1 (Bible Appendix B #38). Its kickoff, confirmed on 2026-09-29 (ADR-0018), resolved or scheduled the Layer 1 findings in §5.2 (F-13 to F-33, F-59) together with the decisions the roadmap lists for Layer 1.
 
-**Layer 1: built; awaiting the owner's sign-off** on the review in §6. Work has stopped; Layer 2 starts only after that sign-off (Bible §30, Appendix B).
+**Layer 1: accepted by the owner on 2026-10-01**, with the go-ahead for Layer 2. The Layer 2 kickoff decisions are proposed in [LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md) and await the owner's confirmation before any Layer 2 code (Bible §0.1).

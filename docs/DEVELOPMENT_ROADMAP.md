@@ -18,8 +18,8 @@
 | 1 | Environment & repository | Layer 0 (part) | Initialized monorepo, local development, cloud IDE, Claude Code web setup, CI | ✅ Done |
 | 2 | Design prototype | Owner request (ADR-0009) | Static, clickable front-end shell with hard-coded data for the core scenes on iPad, iPhone, patient app and admin web | ✅ Built; awaiting your review |
 | 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | ✅ Accepted 2026-09-28 |
-| 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell; admin web shell | ✅ Built 2026-10-01; acceptance review in `ACCEPTANCE_CRITERIA.md` §6, awaiting your sign-off |
-| 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | — |
+| 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell; admin web shell | ✅ Accepted 2026-10-01 (`ACCEPTANCE_CRITERIA.md` §6) |
+| 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | Kickoff proposed ([LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md)); awaiting your confirmation |
 | 6 | Layer 3: Consultations & before/after | Layer 3 | Consultation lifecycle, annotations, comparison viewer, timeline | — |
 | 7 | Layer 4: Documents, consent, education, plans | Layer 4 | Plans A/B/C + estimates, consent builder + signing, education, instructions | — |
 | 8 | Layer 5: Patient app & messaging | Layer 5 | Patient iOS app, released content, secure messaging, notifications | — |
@@ -118,11 +118,11 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 | M1.9 | iOS provider shell: Tuist app, DesignSystem module, generated API client, Keychain + Face ID, iPad split view / iPhone tabs, login UI | iOS builds; login works. **Built 2026-10-01** (ADR-0022) |
 | M1.10 | iOS patients: list/search/create, profile shell with all 12 tabs (empty states) | Patient flows on device. **Built 2026-10-01**; UI tests on iPhone and iPad against the real api |
 | M1.11 | Admin web shell (K-23): login, users & roles, audit viewer | Admin flows run against the Layer 1 API. **Built 2026-10-01**; Playwright against the real api |
-| M1.12 | **Layer 1 acceptance:** the 15 Bible §32 criteria, then STOP | `ACCEPTANCE_CRITERIA.md` §6; awaiting the owner |
+| M1.12 | **Layer 1 acceptance:** the 15 Bible §32 criteria, then STOP | `ACCEPTANCE_CRITERIA.md` §6; **accepted by the owner 2026-10-01** |
 
 ### Step 5: Layer 2, Photography Core
 
-**Kickoff:** UD-06 image-processing language · UD-21 permission granularity · UD-22 malware scanning · UD-25 offline cache.
+**Kickoff:** UD-06 image-processing language · UD-21 permission granularity · UD-22 malware scanning · UD-25 offline cache. **Proposed 2026-10-01:** one recommendation per decision and per carried finding in [LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md) (K2-01 to K2-22), awaiting the owner's confirmation.
 
 | # | Micro-prompt |
 |---|---|
