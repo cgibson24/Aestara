@@ -1,6 +1,6 @@
 # Local development services. Start: pnpm services:up · Stop: pnpm services:down
 # Services are added by the layer that first needs them (docs/DEVELOPMENT_ROADMAP.md):
-# PostgreSQL now (Layer 1); S3/SQS emulation and a local mail catcher arrive with Layers 2 and 5.
+# PostgreSQL and Mailpit now (Layer 1; ADR-0018 K-14); S3/SQS emulation arrives with Layer 2.
 name: aestara
 
 services:
@@ -20,6 +20,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # Catches the api's transactional email locally (EMAIL_TRANSPORT=mailpit). UI: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 
 volumes:
   pgdata:

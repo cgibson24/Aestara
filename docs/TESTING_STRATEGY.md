@@ -210,7 +210,7 @@ A coverage check lists every `AuditAction` value whose layer exists and fails if
 | Kind | Tool | What it covers |
 |---|---|---|
 | Unit and domain | Swift Testing | ViewModels, domain rules, the generated client against a stub transport, Keychain and session service, the offline queue |
-| Snapshot | Tool chosen in M1.9, with an ADR (open item 2) | Every data-backed view in all six states (DESIGN_SYSTEM.md §6), light and dark, iPad landscape and iPhone portrait, default and accessibility text sizes |
+| Snapshot | Tool chosen with the first clinical screens in Layer 2 (ADR-0022; open item 2) | Every data-backed view in all six states (DESIGN_SYSTEM.md §6), light and dark, iPad landscape and iPhone portrait, default and accessibility text sizes |
 | UI | XCUITest | Critical flows per layer, deep-link re-authorization [B §24.5], the consent hand-off lock (DESIGN_SYSTEM.md §2, C13), offline banners and disabled actions |
 
 **Accessibility (DESIGN_SYSTEM.md §5):**
@@ -219,7 +219,7 @@ A coverage check lists every `AuditAction` value whose layer exists and fails if
 |---|---|
 | Contrast: text 4.5:1, UI 3:1, both themes | `packages/design-tokens` contrast test (63 pair checks) in the `workspace` job (ADR-0011) |
 | Dynamic Type | Snapshots at accessibility sizes; nothing truncates a patient name |
-| VoiceOver | UI tests find controls by accessibility label, so an unlabeled control fails the test; an automated accessibility audit on critical screens is decided in M1.9 (open item 2) |
+| VoiceOver | UI tests find controls by accessibility label, so an unlabeled control fails the test; an automated accessibility audit on critical screens arrives with the snapshot tool in Layer 2 (ADR-0022; open item 2) |
 | 44 pt targets, Reduce Motion | UI and snapshot tests on critical screens |
 | Admin web semantics | Biome's recommended rules, which include its accessibility group, run repo-wide (`pnpm lint`); Playwright checks labels on critical flows |
 
@@ -316,17 +316,17 @@ Planned locations follow §2. Numbers are the Bible's own.
 |---|---|---|---|
 | 1 | Local database starts | `pnpm services:up` health check; Testcontainers starts PostgreSQL 18 | `docker-compose.yml`; CI |
 | 2 | Migrations execute | Layer 1 migrations on an empty database, then the Layer 1 behaviour checks | `packages/database`; `spec` job |
-| 3 | Seed creates an organization and admin | Seed test asserts the organization, the first ORGANIZATION_ADMIN and its audit rows, and the complete permission catalog and role matrix (ADR-0018 K-01) | `packages/database` |
-| 4 | Admin can authenticate | Login and MFA integration tests; Playwright login | `services/api/test/integration/auth/`; `apps/admin-web/e2e/` |
-| 5 | Authorized staff can create a patient | Duplicate check, idempotent create, `PATIENT_CREATED` | `services/api/test/integration/patients/` |
-| 6 | Authorized provider can open an allowed patient | Profile read writes `PATIENT_VIEWED`; demographics only | `services/api/test/integration/patients/` |
-| 7 | Cross-tenant access is rejected server-side | Generated cross-tenant suite; RLS tests | `services/api/test/cross-tenant/` |
-| 8 | Patient search works | `POST /patients/search`: tenant-scoped name-prefix and exact-identifier search on leakproof keys (ADR-0020), no PHI in the URL; the RLS suite proves the index is used under the tenant policy (S21) | `services/api/test/integration/patients/`; `packages/database/test/sql/rls.sql` |
-| 9 | Patient profile shell opens | XCUITest: profile with all 12 tabs in empty state | Provider app UI test target |
-| 10 | Audit events are written | Audit assertions for the 11 Bible §32 events and the Layer 1 additions (spec §6.4) | `services/api/test/audit/` |
+| 3 | Seed creates an organization and admin | Seed test asserts the organization, the first ORGANIZATION_ADMIN and its audit rows, and the complete permission catalog and role matrix (ADR-0018 K-01) | `packages/database/scripts/test-database.sh` (step 4) |
+| 4 | Admin can authenticate | Login and MFA integration tests; Playwright login | `services/api/test/auth.test.ts`; `apps/admin-web/e2e/portal.spec.ts` |
+| 5 | Authorized staff can create a patient | Duplicate check, idempotent create, `PATIENT_CREATED` | `services/api/test/patients.test.ts` |
+| 6 | Authorized provider can open an allowed patient | Profile read writes `PATIENT_VIEWED`; demographics only | `services/api/test/patients.test.ts` |
+| 7 | Cross-tenant access is rejected server-side | Generated cross-tenant suite; RLS tests | `services/api/test/authorization.test.ts`; `packages/database/test/sql/rls.sql` |
+| 8 | Patient search works | `POST /patients/search`: tenant-scoped name-prefix and exact-identifier search on leakproof keys (ADR-0020), no PHI in the URL; the RLS suite proves the index is used under the tenant policy (S21) | `services/api/test/patients.test.ts`; `packages/database/test/sql/rls.sql` |
+| 9 | Patient profile shell opens | XCUITest: profile with all 12 tabs in empty state | `apps/ios-provider/UITests/ProviderFlowTests.swift` |
+| 10 | Audit events are written | Audit assertions for the 11 Bible §32 events and the Layer 1 additions (spec §6.4) | `services/api/test/` (auth, administration, patients) |
 | 11 | Provider iOS app builds | `ios` job | CI |
-| 12 | Login UI works | XCUITest login, MFA and error states | Provider app UI test target |
-| 13 | Patient list, search and create work | XCUITest on iPad and iPhone | Provider app UI test target |
+| 12 | Login UI works | XCUITest login, MFA and error states | `apps/ios-provider/UITests/ProviderFlowTests.swift`; `apps/admin-web/e2e/portal.spec.ts` |
+| 13 | Patient list, search and create work | XCUITest on iPad and iPhone | `apps/ios-provider/UITests/ProviderFlowTests.swift` |
 | 14 | Required tests pass | All CI jobs green | CI |
 | 15 | Run, test and migration commands are documented | The documented commands are the ones CI runs; reviewed in the acceptance table | `CLAUDE.md`, README |
 
@@ -383,7 +383,7 @@ Planned locations follow §2. Numbers are the Bible's own.
 | # | Item | Decide at |
 |---|---|---|
 | 1 | Test runner for the Python services (`image-processing`, inference) | Layer 2 kickoff (UD-06) |
-| 2 | iOS snapshot-testing tool and automated accessibility audit | M1.9, with an ADR for the snapshot tool |
+| 2 | iOS snapshot-testing tool and automated accessibility audit | Layer 2, with the first clinical screens (ADR-0022) |
 | 3 | Closed by ADR-0018 K-21: GitHub CodeQL for SAST and gitleaks for secret scanning, added in M1.2 | Closed |
 | 4 | Which CI job runs the Testcontainers API suites | M1.2 |
 | 5 | Lint rules that reject focused or skipped tests | M1.2 |

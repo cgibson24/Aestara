@@ -1,18 +1,20 @@
-// A complete local Layer 1 stack for end-to-end tests: a fresh database
-// migrated by a non-superuser (as in a deployed environment), the synthetic
-// development seed (one organization, an invited administrator), and the api
-// from dist/ connecting as login users of aestara_app and aestara_platform.
+// A complete local Layer 1 stack: a fresh database migrated by a non-superuser
+// (as in a deployed environment), the synthetic development seed (one
+// organization, an invited administrator), and the api from dist/ connecting
+// as login users of aestara_app and aestara_platform. The database is dropped
+// when the stack stops. Synthetic data only; local databases only. Needs a
+// prior `pnpm build`.
 //
-// Used by the admin portal's Playwright suite (apps/admin-web/e2e) and, from
-// the command line, by the iOS UI tests:
+// Used by the admin portal's Playwright suite (apps/admin-web/e2e), and from
+// the command line:
 //
-//   TEST_ADMIN_DATABASE_URL=… node scripts/test-stack.ts --ios <out.json> [users…]
-//
-// The --ios mode also prepares one clinician per named user through the api
-// (the administrator invites them with the SURGEON_PHYSICIAN role and each
-// sets up an authenticator), writes their sign-in details to <out.json>, and
-// serves on port 3000 until stopped. Synthetic data only; local databases only.
-// Needs a prior `pnpm build`.
+//   ADMIN_DATABASE_URL=… node scripts/local-stack.ts --dev
+//     Local development: the api on port 3000 with email to Mailpit, and the
+//     administrator's invitation link printed for the portal on port 5174.
+//   TEST_ADMIN_DATABASE_URL=… node scripts/local-stack.ts --ios <out.json> <user>…
+//     The iOS UI tests: also prepares one clinician per named user through the
+//     api (the administrator invites them with the SURGEON_PHYSICIAN role and
+//     each sets up an authenticator) and writes their sign-in details.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
@@ -49,9 +51,13 @@ async function waitFor(url: string, child: ChildProcess, name: string): Promise<
   throw new Error(`${name} did not start`);
 }
 
-export async function startStack(options: { apiPort: number; origins: string[] }): Promise<Stack> {
-  const adminUrl = process.env.TEST_ADMIN_DATABASE_URL;
-  if (!adminUrl) throw new Error("Set TEST_ADMIN_DATABASE_URL to a local PostgreSQL superuser URL");
+export async function startStack(options: {
+  apiPort: number;
+  origins: string[];
+  env?: Record<string, string>;
+}): Promise<Stack> {
+  const adminUrl = process.env.TEST_ADMIN_DATABASE_URL ?? process.env.ADMIN_DATABASE_URL;
+  if (!adminUrl) throw new Error("Set ADMIN_DATABASE_URL to a local PostgreSQL superuser URL");
   if (!LOCAL_HOSTS.has(new URL(adminUrl).hostname))
     throw new Error("The test stack runs only on a local database");
   const database = `aestara_e2e_${Date.now()}`;
@@ -128,6 +134,7 @@ export async function startStack(options: { apiPort: number; origins: string[] }
       ADMIN_WEB_URL: options.origins[0] ?? "http://localhost:5174",
       WEBAUTHN_ORIGINS: options.origins.join(","),
       LOG_LEVEL: "warn",
+      ...options.env,
     },
     stdio: ["ignore", "inherit", "inherit"],
     detached: true,
@@ -279,15 +286,28 @@ async function prepareClinicians(stack: Stack, names: string[]) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [mode, out, ...names] = process.argv.slice(2);
-  if (mode !== "--ios" || !out || names.length === 0)
-    throw new Error("Usage: node scripts/test-stack.ts --ios <out.json> <user> [user…]");
-  const stack = await startStack({ apiPort: 3000, origins: ["http://localhost:5174"] });
+  const ios = mode === "--ios" && out !== undefined && names.length > 0;
+  if (mode !== "--dev" && !ios)
+    throw new Error("Usage: node scripts/local-stack.ts --dev | --ios <out.json> <user> [user…]");
+  const portal = "http://localhost:5174";
+  const stack = await startStack({
+    apiPort: 3000,
+    origins: [portal],
+    ...(mode === "--dev" ? { env: { EMAIL_TRANSPORT: "mailpit", LOG_LEVEL: "info" } } : {}),
+  });
   const shutdown = () => void stack.stop().finally(() => process.exit(0));
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
   try {
-    writeFileSync(out, JSON.stringify(await prepareClinicians(stack, names), null, 2));
-    console.log(`test stack ready on ${stack.apiUrl}; users in ${out}`);
+    if (ios && out) {
+      writeFileSync(out, JSON.stringify(await prepareClinicians(stack, names), null, 2));
+      console.log(`local stack ready on ${stack.apiUrl}; users in ${out}`);
+    } else {
+      console.log(`api: ${stack.apiUrl} · email: http://localhost:8025 (Mailpit)`);
+      console.log(`Accept the administrator invitation (${stack.adminEmail}), then sign in:`);
+      console.log(`  ${portal}/accept-invitation#token=${stack.invitationToken}`);
+      console.log("Stop with Ctrl+C; the database is dropped.");
+    }
   } catch (error) {
     await stack.stop();
     throw error;

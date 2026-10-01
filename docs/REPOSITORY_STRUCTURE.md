@@ -46,13 +46,15 @@ This document explains where everything lives, what state each part is in, and t
 | Path | State | Proven by |
 |---|---|---|
 | `packages/design-tokens` | Implemented: one token source compiled to CSS, TS and Swift | 63 contrast tests; CI drift check |
-| `packages/api-contracts` | Implemented: platform-wide primitives only, with no endpoints | 18 schema tests; OpenAPI drift check; oasdiff gate |
-| `apps/ios-provider`, `apps/ios-patient` | Skeleton. Tuist projects; 20 module packages with a checked tier graph; DesignSystem ships the tokens and has tests. The other modules hold their documented boundary only. | `check_module_graph.py`; CI `ios` job (generate, build both apps, test DesignSystem) |
+| `packages/api-contracts` | Implemented: platform primitives and the 62 Layer 1 operations (endpoint registry) | Schema and registry tests; OpenAPI drift check (including the iOS and web client copies); oasdiff gate |
+| `apps/ios-provider`, `apps/ios-patient` | Provider app: Layer 1 sign-in, patients and profile shell across CoreNetworking, CoreSecurity, Authentication, PatientDomain, Settings and AppShell (ADR-0022). Other modules hold their documented boundary only. Patient app: skeleton until Layer 5. | `check_module_graph.py`; CI `ios` job (build both apps, module tests, hosted Keychain tests, UI tests on iPhone and iPad against the real api) |
 | `infrastructure/terraform` | Skeleton. Real, minimal modules (KMS, account baseline, network, storage, database, compute) and three environment roots. **Not applied** to any account yet. | CI `terraform` job: fmt, validate, tflint, checkov |
 | `apps/design-prototype` | Static mock-up of the core scenes | 173 scene × state tests |
 | `packages/database` | Layer 1 tables (21), generated from the design schema; migrations for tables, constraints (including patient search keys), security (roles, forced RLS, sign-in lookup) and the permission catalog; ownership classification; local seed; RLS benchmark | 45 unit tests; `schema:check` drift gate; CI `database` job: migrations as a non-superuser, drift, `check-rls.ts`, 61 database checks |
 | `packages/shared-types` | Enum values generated from `packages/database/prisma/schema.prisma` | 2 tests; CI drift check |
-| `apps/admin-web`, `services/*`, `packages/security` | Placeholder README only. Each names the layer that builds it. | Bible §31: "no fake business implementation" |
+| `services/api` | Layer 1 API: authentication, tenancy and authorization, organizations, users and roles, patients, audit, settings (ADR-0021) | Unit and HTTP tests on PostgreSQL 18, generated authorization and cross-tenant tests, end-to-end RLS gate |
+| `apps/admin-web` | Layer 1 admin portal: sign-in, users and roles, audit, account (ADR-0022) | Vitest; Playwright against the real api |
+| Other `services/*`, `packages/security` | Placeholder README only. Each names the layer that builds it. | Bible §31: "no fake business implementation" |
 | `docs/` | Layer 0 documentation pack | `check_docs.py`, `check_traceability.py` |
 
 ## 3. Toolchain

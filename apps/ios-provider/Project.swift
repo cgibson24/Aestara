@@ -73,7 +73,7 @@ let project = Project(
             dependencies: [.target(name: "AestaraProvider"), .package(product: "CoreSecurity")]
         ),
         // End-to-end UI tests against the real api (Bible §32 #9, #12, #13); CI starts
-        // the api with services/api/scripts/test-stack.ts.
+        // the api with services/api/scripts/local-stack.ts.
         .target(
             name: "AestaraProviderUITests",
             destinations: [.iPhone, .iPad],

@@ -15,6 +15,27 @@ let authenticator: Authenticator;
 // test may wait up to one 30-second step for the clock.
 test.describe.configure({ mode: "serial", timeout: 90_000 });
 
+// The Content Security Policy must never block the portal itself.
+let violations: string[] = [];
+test.beforeEach(({ page }) => {
+  violations = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /Content Security Policy/i.test(message.text()))
+      violations.push(message.text());
+  });
+});
+test.afterEach(() => expect(violations).toEqual([]));
+
+test("serves the portal with its security headers", async ({ request }) => {
+  const response = await request.get("/");
+  const csp = response.headers()["content-security-policy"] ?? "";
+  expect(csp).toContain("default-src 'none'");
+  expect(csp).toContain("script-src 'self'");
+  expect(csp).toContain("frame-ancestors 'none'");
+  expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(await response.text()).toContain('http-equiv="Content-Security-Policy"');
+});
+
 async function signIn(page: Page) {
   await page.goto("/");
   await page.getByLabel("Email", { exact: true }).fill(stack.email);
@@ -100,7 +121,7 @@ test("restores the session from the cookie, keeps no token in storage, and signs
   expect(refresh?.path).toBe("/api/v1/auth/token/refresh");
   expect(refresh?.sameSite).toBe("Strict");
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
@@ -111,4 +132,36 @@ test("lists this browser among the account's devices", async ({ page }) => {
   await page.getByRole("link", { name: /Demo Admin|admin@synthetic-demo.test/ }).click();
   await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
   await expect(page.getByText("This browser")).toBeVisible();
+});
+
+test("adds a passkey and signs in with it", async ({ page }) => {
+  // Chromium's virtual authenticator stands in for Touch ID or a security key.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("WebAuthn.enable");
+  const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+    },
+  });
+
+  await signIn(page);
+  await page.getByRole("link", { name: /Demo Admin|admin@synthetic-demo.test/ }).click();
+  await page.getByRole("button", { name: "Add a passkey" }).click();
+  await expect(page.getByText("Passkey added.")).toBeVisible();
+  const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
+  expect(credentials).toHaveLength(1);
+
+  // The next sign-in offers the passkey instead of a code.
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByLabel("Email", { exact: true }).fill(stack.email);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Use a passkey" }).click();
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  const after = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
+  expect(after.credentials[0]?.signCount).toBeGreaterThan(0);
 });

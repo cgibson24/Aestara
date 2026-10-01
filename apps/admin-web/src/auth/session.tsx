@@ -14,6 +14,7 @@ import {
   unwrap,
   whenSignedOut,
 } from "../api/client.ts";
+import { queryClient } from "../api/queries.ts";
 
 export type Session = Schemas["SessionInfo"];
 export type Challenge = Schemas["MfaChallengeDetails"];
@@ -63,6 +64,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   useEffect(() => {
     whenSignedOut(() => {
       setAccessToken(undefined);
+      queryClient.clear();
       setState({ status: "signedOut", notice: "Your session has ended. Sign in again." });
     });
     void (async () => {
@@ -147,12 +149,15 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const chooseOrganization = useCallback(async (organizationId: string) => {
     const result = unwrap(await api.PUT("/auth/session/organization", { body: { organizationId } })).data;
     setAccessToken(result.accessToken);
+    // Another organization is another tenant: nothing cached may carry over.
+    queryClient.clear();
     setState({ status: "signedIn", session: result.session });
   }, []);
 
   const signOut = useCallback(async () => {
     await api.POST("/auth/logout").catch(() => undefined);
     setAccessToken(undefined);
+    queryClient.clear();
     setState({ status: "signedOut" });
   }, []);
 

@@ -5,13 +5,8 @@ import { apiError, installFetch, json, tokens } from "./support.ts";
 
 async function renderApp() {
   vi.resetModules();
-  const { App } = await import("../src/App.tsx");
-  const { AuthProvider } = await import("../src/auth/session.tsx");
-  render(
-    <AuthProvider>
-      <App />
-    </AuthProvider>,
-  );
+  const { Portal } = await import("../src/App.tsx");
+  render(<Portal />);
 }
 
 const challenge = (factors: string[], webauthnOptions?: object) =>

@@ -267,9 +267,9 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 | T6.4 | R | Offline views never reach the audit trail | SR-DEV-07, SR-AUD-10, SR-MON-06 | spec §8 | M: a device that never reconnects keeps its records | Offline audit replay test |
 | T6.5 | E | Patient escapes the staff-assisted signing hand-off | SR-DEV-08 | spec §6.3; UD-31 | L | XCUITest hand-off test |
 | T6.6 | E | Deep link opens a record without authorization | SR-AUZ-13 | B §24.5 | L | XCUITest deep-link tests |
-| T6.7 | I | PHI visible in the app-switcher snapshot or screenshots | Not specified; decided in M1.9 with an ADR (open item 4) | — | M | — |
+| T6.7 | I | PHI visible in the app-switcher snapshot or screenshots | Privacy cover whenever the scene is not active (ADR-0022) | spec §4.2 | M | UI review; ADR-0022 |
 | T6.8 | I | PHI in crash reports or analytics | SR-PHI-05, SR-PHI-06 | spec §2.4, §7.2 | L | Dependency review |
-| T6.9 | T | App tampering on a jailbroken device | Not specified; decided in M1.9 with an ADR (open item 5) | — | M | — |
+| T6.9 | T | App tampering on a jailbroken device | Accepted: server-side enforcement of every rule; no jailbreak detection (ADR-0022); App Attest reconsidered in Layer 5 | spec §4.6 | M | Cross-tenant and authorization suites |
 | T6.10 | D | Sync conflict silently discards clinical data | SR-DEV-03 | B §23.3; spec §8 | L | Conflict tests |
 
 ### TB7 Patient iOS app
@@ -470,11 +470,11 @@ Each is a gap in the sources, not a decided control. Closed items keep their row
 
 | # | Gap | Threats | Decide at |
 |---|---|---|---|
-| 1 | Content Security Policy for the admin SPA | T8.1 | M1.11 (admin web shell) |
+| 1 | Closed: the admin SPA's Content Security Policy is decided in ADR-0022 | T8.1 | M1.11 |
 | 2 | Lifetime of staff and patient invitation tokens. Reset tokens are single use and valid 30 minutes, and every token travels in the request body (ADR-0018 K-09, K-15) | T7.7, T10.3 | M1.6 (staff invitations); Layer 5 (patient invitations) |
 | 3 | Device passcode enforcement, device management and remote wipe for clinical devices | AS4, T6.1, AC-03 | Layer 2 kickoff, with UD-25 |
-| 4 | Hiding PHI in the iOS app-switcher snapshot and screenshots | T6.7 | M1.9 (provider iOS shell), with an ADR |
-| 5 | Jailbreak detection or app attestation | T6.9 | M1.9 (provider iOS shell), with an ADR |
+| 4 | Closed: a privacy cover hides the app-switcher snapshot; screenshots are not blockable on iOS (ADR-0022) | T6.7 | M1.9 |
+| 5 | Closed for Layer 1: no jailbreak detection; App Attest is reconsidered with the patient app (ADR-0022) | T6.9 | M1.9; Layer 5 |
 | 6 | Runtime sandboxing of image decoding and inference | T5.2, AC-05 | Layer 2 (UD-06), Layer 7 (UD-04) |
 | 7 | Dead-letter and poison-message handling for imaging and AI queues | T5.8 | Layer 2, Layer 7 |
 | 8 | Egress allow-list for `integration-service` (SSRF) | T11.6 | Layer 10 kickoff |

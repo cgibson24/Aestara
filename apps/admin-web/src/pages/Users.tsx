@@ -1,8 +1,10 @@
 // Users and roles (spec §6.3 "Users, roles, permissions"; §4.5 rules 1–4).
 // Every action goes to the api, which enforces permissions and separation of
 // duties; the buttons only hide what the caller cannot do.
-import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { ApiError, api, type Schemas, unwrap } from "../api/client.ts";
+import { queryClient, rolesQuery, usersQuery } from "../api/queries.ts";
 import { useAuth } from "../auth/session.tsx";
 import {
   Badge,
@@ -27,32 +29,27 @@ function statusTone(status: StaffUser["status"]) {
 
 export function UsersPage() {
   const { can } = useAuth();
-  const [users, setUsers] = useState<StaffUser[]>();
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [error, setError] = useState<unknown>();
+  const usersResult = useQuery(usersQuery);
+  const rolesResult = useQuery(rolesQuery);
   const [selected, setSelected] = useState<string>();
   const [inviting, setInviting] = useState(false);
+  // Writes change users and their roles: read them again.
+  const load = () => queryClient.invalidateQueries({ queryKey: usersQuery.queryKey });
 
-  const load = useCallback(async () => {
-    setError(undefined);
-    try {
-      const [u, r] = await Promise.all([
-        api.GET("/users", { params: { query: { limit: 100 } } }).then(unwrap),
-        api.GET("/roles", { params: { query: { limit: 100 } } }).then(unwrap),
-      ]);
-      setUsers(u.data);
-      setRoles(r.data);
-    } catch (e) {
-      setError(e);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (error) return <ErrorState error={error} onRetry={load} />;
-  if (users === undefined) return <LoadingState label="Loading users" />;
+  const error = usersResult.error ?? rolesResult.error;
+  if (error)
+    return (
+      <ErrorState
+        error={error}
+        onRetry={() => {
+          void usersResult.refetch();
+          void rolesResult.refetch();
+        }}
+      />
+    );
+  const users = usersResult.data;
+  const roles = rolesResult.data;
+  if (users === undefined || roles === undefined) return <LoadingState label="Loading users" />;
   const current = users.find((u) => u.id === selected);
 
   return (
@@ -395,16 +392,8 @@ function UserDetail({
 }
 
 export function RolesPage() {
-  const [roles, setRoles] = useState<Role[]>();
-  const [error, setError] = useState<unknown>();
-  useEffect(() => {
-    api
-      .GET("/roles", { params: { query: { limit: 100 } } })
-      .then(unwrap)
-      .then((r) => setRoles(r.data))
-      .catch(setError);
-  }, []);
-  if (error) return <ErrorState error={error} />;
+  const { data: roles, error, refetch } = useQuery(rolesQuery);
+  if (error) return <ErrorState error={error} onRetry={() => void refetch()} />;
   if (roles === undefined) return <LoadingState label="Loading roles" />;
   return (
     <section className="page" aria-labelledby="roles-title">

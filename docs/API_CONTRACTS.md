@@ -50,7 +50,7 @@ Rule for schema files: import `z` from `src/zod.ts`, never from `zod`. That modu
 
 ## 3. What Layer 0 defines
 
-Layer 0 delivers only the primitives every endpoint shares. `openapi.json` has an empty `paths` object until Layer 1 adds endpoints.
+Layer 0 delivered the primitives every endpoint shares. Layer 1 adds the endpoint registry (`src/endpoints.ts`), which generates the 62 Layer 1 operations in `openapi.json`, the route check in the api, and the generated authorization and cross-tenant tests (ADR-0021). The iOS client (swift-openapi-generator) and the admin web types (openapi-typescript) are generated from the same file; CI fails if either copy drifts (ADR-0022).
 
 | Component | Kind | Rule | Source |
 |---|---|---|---|

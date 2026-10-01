@@ -2,8 +2,10 @@
 // sessions, password change, and adding a passkey. Changing a password or
 // adding a factor needs a recent second factor (step-up, 15 minutes).
 import { startRegistration } from "@simplewebauthn/browser";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { ApiError, api, type Schemas, unwrap } from "../api/client.ts";
+import { useQuery } from "@tanstack/react-query";
+import { type FormEvent, useState } from "react";
+import { ApiError, api, unwrap } from "../api/client.ts";
+import { queryClient, sessionsQuery } from "../api/queries.ts";
 import type { WebAuthnJson } from "../auth/session.tsx";
 import {
   Banner,
@@ -16,7 +18,6 @@ import {
   words,
 } from "../ui/kit.tsx";
 
-type SessionItem = Schemas["SessionListItem"];
 type Notice = { tone: "success" | "danger"; text: string } | undefined;
 
 function stepUpMessage(error: unknown): string {
@@ -37,22 +38,8 @@ export function AccountPage() {
 }
 
 function Sessions() {
-  const [sessions, setSessions] = useState<SessionItem[]>();
-  const [error, setError] = useState<unknown>();
+  const { data: sessions, error, refetch } = useQuery(sessionsQuery);
   const [notice, setNotice] = useState<Notice>();
-
-  const load = useCallback(async () => {
-    setError(undefined);
-    try {
-      setSessions(unwrap(await api.GET("/auth/sessions", { params: { query: { limit: 50 } } })).data);
-    } catch (err) {
-      setError(err);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const revoke = async (id: string) => {
     setNotice(undefined);
@@ -60,7 +47,7 @@ function Sessions() {
       const result = await api.DELETE("/auth/sessions/{id}", { params: { path: { id } } });
       if (!result.response.ok) unwrap(result as { data?: unknown; error?: unknown; response: Response });
       setNotice({ tone: "success", text: "That device is signed out." });
-      await load();
+      await queryClient.invalidateQueries({ queryKey: sessionsQuery.queryKey });
     } catch (err) {
       setNotice({ tone: "danger", text: messageOf(err) });
     }
@@ -70,8 +57,8 @@ function Sessions() {
     <section className="card stack" aria-labelledby="sessions-title">
       <h2 id="sessions-title">Signed-in devices</h2>
       {notice && <Banner tone={notice.tone}>{notice.text}</Banner>}
-      {error !== undefined ? (
-        <ErrorState error={error} onRetry={() => void load()} />
+      {error ? (
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : sessions === undefined ? (
         <LoadingState label="Loading devices" />
       ) : (

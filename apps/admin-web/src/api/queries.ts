@@ -1,0 +1,65 @@
+// Server state through TanStack Query (spec §2.2 D-03; ADR-0003). Reads are
+// queries keyed by resource; writes invalidate what they change. The cache is
+// cleared whenever the session or the organization changes, so one tenant's
+// data is never shown under another.
+import { infiniteQueryOptions, QueryClient, queryOptions } from "@tanstack/react-query";
+import { ApiError, api, type Schemas, unwrap } from "./client.ts";
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+      // Retry only what may pass on a second try; a 4xx is the server's answer.
+      retry: (failures, error) => failures < 2 && !(error instanceof ApiError && error.status < 500),
+    },
+  },
+});
+
+export const usersQuery = queryOptions({
+  queryKey: ["users"],
+  queryFn: async () => unwrap(await api.GET("/users", { params: { query: { limit: 100 } } })).data,
+});
+
+export const rolesQuery = queryOptions({
+  queryKey: ["roles"],
+  queryFn: async () => unwrap(await api.GET("/roles", { params: { query: { limit: 100 } } })).data,
+  staleTime: 5 * 60_000,
+});
+
+export const sessionsQuery = queryOptions({
+  queryKey: ["auth", "sessions"],
+  queryFn: async () => unwrap(await api.GET("/auth/sessions", { params: { query: { limit: 50 } } })).data,
+});
+
+export interface AuditFilters {
+  action?: Schemas["AuditAction"] | undefined;
+  actorUserId?: string | undefined;
+  patientId?: string | undefined;
+  /** ISO 8601 instants. */
+  from?: string | undefined;
+  to?: string | undefined;
+}
+
+export const auditQuery = (filters: AuditFilters) =>
+  infiniteQueryOptions({
+    queryKey: ["audit", filters],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) =>
+      unwrap(
+        await api.GET("/audit/events", {
+          params: {
+            query: {
+              limit: 50,
+              ...(pageParam ? { cursor: pageParam } : {}),
+              ...(filters.action ? { action: filters.action } : {}),
+              ...(filters.actorUserId ? { actorUserId: filters.actorUserId } : {}),
+              ...(filters.patientId ? { patientId: filters.patientId } : {}),
+              ...(filters.from ? { from: filters.from } : {}),
+              ...(filters.to ? { to: filters.to } : {}),
+            },
+          },
+        }),
+      ),
+    getNextPageParam: (last) => (last.page.hasMore ? last.page.nextCursor : undefined),
+  });

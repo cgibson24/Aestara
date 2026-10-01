@@ -25,3 +25,5 @@ minimumReleaseAgeExclude:
   - '@nestjs/core@12.1.2'
   - '@nestjs/platform-fastify@12.1.2'
   - '@nestjs/testing@12.1.2'
+  - '@tanstack/react-router@1.170.41'
+  - '@tanstack/router-core@1.171.34'

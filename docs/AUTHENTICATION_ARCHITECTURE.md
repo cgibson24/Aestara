@@ -499,14 +499,14 @@ The Layer 1 kickoff (ADR-0018) settled the MFA rule, client token handling, lock
 
 | Item | Confirmed at |
 |---|---|
-| Lockout details: whether lockout also sets `User.status = LOCKED`, any unlock path besides the lock expiring, and how a locked account is signaled without enumeration (§7) | M1.3 |
-| Whether a password reset also requires the second factor, and whether a password change ends the user's other sessions (§4.7, §8) | M1.3 |
-| Email verification: when it is required (§8) | M1.3 |
-| Refresh concurrency grace window, if any (§4.3) | M1.3 |
-| Session policy for platform operators, whose sessions have no organization | M1.3 |
-| A membership added or an MFA policy tightened during a session: whether the next organization switch needs a new second factor (§4.6) | M1.3 |
-| Lifetime of the staff invitation token (§6.6), and how an administrator verifies the requester's identity before an MFA reset (§8) | M1.6 |
-| Content Security Policy for the admin SPA (§5; [`SECURITY_REQUIREMENTS.md`](SECURITY_REQUIREMENTS.md) open items) | M1.11 |
+| ~~Lockout details (§7)~~ Closed: lockout never sets `User.status`; it ends when it expires or on a password reset; a locked sign-in answers `429 RATE_LIMITED` without checking the password (ADR-0021) | M1.3 |
+| ~~Reset and change (§4.7, §8)~~ Closed: a reset does not require the second factor (the next sign-in does); a password change ends the user's other sessions (ADR-0021) | M1.3 |
+| ~~Email verification (§8)~~ Closed: accepting an emailed invitation verifies the address; no separate flow in Layer 1 (ADR-0021) | M1.3 |
+| ~~Refresh grace window (§4.3)~~ Closed: none; clients serialize refreshes (ADR-0021) | M1.3 |
+| ~~Platform operator sessions~~ Closed: no organization, admin web lifetimes (ADR-0021) | M1.3 |
+| ~~Organization switch after a policy change (§4.6)~~ Closed: a switch re-applies the target's MFA rule and answers `403 REAUTHENTICATION_REQUIRED` when the session lacks MFA (ADR-0021) | M1.3 |
+| ~~Staff invitation lifetime and MFA-reset identity check (§6.6, §8)~~ Closed: 72 hours; the administrator records `IN_PERSON`, `VIDEO_CALL` or `KNOWN_CALLBACK` (ADR-0021) | M1.6 |
+| ~~Content Security Policy for the admin SPA (§5)~~ Closed: ADR-0022 | M1.11 |
 | Keychain access-control flags for the patient app, where biometrics are optional (§5) | L5 kickoff |
 | Service-to-service mechanism for ai-gateway: IAM-signed requests or mTLS | L7 kickoff (M7.1) |
 | Offline duration and replay after re-sign-in (§9) | L2 kickoff (UD-25) |

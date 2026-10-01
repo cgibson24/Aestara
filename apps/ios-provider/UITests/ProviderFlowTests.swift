@@ -1,6 +1,6 @@
 // End-to-end UI tests of the provider app against the real Layer 1 api
 // (Bible §32 #9, #12, #13; docs/TESTING_STRATEGY.md §18.1). CI starts the api
-// with services/api/scripts/test-stack.ts, which prepares one clinician per
+// with services/api/scripts/local-stack.ts, which prepares one clinician per
 // device, and passes the sign-in through TEST_RUNNER_* variables:
 // UITEST_EMAIL, UITEST_PASSWORD, UITEST_TOTP_SECRET, UITEST_TOTP_LAST_STEP.
 // All data is synthetic.

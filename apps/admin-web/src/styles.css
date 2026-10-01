@@ -287,7 +287,8 @@ a {
   min-height: var(--size-touch-target);
 }
 
-.sidebar a[aria-current="page"] {
+.sidebar a[aria-current="page"],
+.sidebar a[data-status="active"] {
   background: var(--color-accent-soft);
   color: var(--color-accent-text);
   font-weight: var(--text-headline-weight);

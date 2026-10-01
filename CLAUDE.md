@@ -35,14 +35,15 @@ If something conflicts, the higher source wins. If behaviour is genuinely undefi
 | Path | What |
 |---|---|
 | `apps/design-prototype` | Static design prototype (React + Vite, hard-coded data). `pnpm dev:prototype` |
-| `apps/ios-provider`, `apps/ios-patient` | Tuist projects; 20 module packages in `apps/ios-provider/Modules` with a checked tier graph (`modules.json`, ADR-0015) |
-| `apps/admin-web` | Admin SPA (placeholder until Layer 1) |
-| `services/*` | Backend services (placeholders until their layer) |
+| `apps/ios-provider`, `apps/ios-patient` | Tuist projects; 20 module packages in `apps/ios-provider/Modules` with a checked tier graph (`modules.json`, ADR-0015). Provider app: sign-in, patients, profile shell (Layer 1, ADR-0022); hosted and UI tests in `Tests/`, `UITests/` |
+| `apps/admin-web` | Admin portal (React, TanStack Router/Query): sign-in, users and roles, audit, account; CSP in `security-headers.ts`; Vitest + Playwright e2e (ADR-0022) |
+| `services/api` | Staff and admin API (NestJS on Fastify), Layer 1 (ADR-0021); `scripts/local-stack.ts` starts a throwaway local stack |
+| `services/*` (others) | Backend services (placeholders until their layer) |
 | `packages/design-tokens` | **Single source** of colours/type/spacing for iOS (Swift) and web (CSS) |
 | `packages/api-contracts` | Zod → OpenAPI 3.1 (`openapi.json`); Layer 0 holds the shared primitives only (ADR-0013) |
 | `packages/database` | Prisma schema **generated** from `docs/technical-spec/schema.prisma` for the built layers, migrations, roles and RLS, permission catalog (`src/catalog.ts`), table ownership (`src/ownership.ts`) |
 | `packages/shared-types` | Enum values generated from the Prisma schema |
-| `packages/security` | Placeholder until its Layer 1 micro-prompt |
+| `packages/security` | Placeholder: shared security code moves here when a second service needs it (Layer 2; ADR-0022) |
 | `infrastructure/terraform` | AWS baseline, checked but not applied (ADR-0014) |
 | `docs/` | Bible export, spec, ADRs, roadmap, Layer 0 documentation pack, acceptance review, changelog |
 
@@ -59,6 +60,10 @@ DATABASE_URL=… pnpm verify:schema   # design schema + all behaviour fragments 
 ADMIN_DATABASE_URL=… pnpm --filter @aestara/database db:test   # real migrations as non-superuser, drift, RLS, Layer 1 checks
 ADMIN_DATABASE_URL=… pnpm --filter @aestara/database bench:rls # RLS performance gate (ADR-0004)
 DATABASE_URL=… pnpm --filter @aestara/database db:seed:dev      # local synthetic organization + invited admin
+ADMIN_DATABASE_URL=… pnpm dev:stack       # local api on :3000 (fresh DB, seed, Mailpit email); prints the admin invitation link
+pnpm dev:admin                            # admin portal on http://localhost:5174 (proxies /api to :3000)
+TEST_ADMIN_DATABASE_URL=… pnpm --filter @aestara/api test        # api unit + HTTP tests against real PostgreSQL
+TEST_ADMIN_DATABASE_URL=… pnpm --filter @aestara/admin-web e2e   # Playwright against the real api (after pnpm build)
 python3 docs/technical-spec/verification/check_docs.py    # documentation pack, references, links
 python3 apps/ios-provider/scripts/check_module_graph.py   # iOS module architecture rules
 cd apps/ios-provider && tuist generate                    # Xcode projects (macOS; run `mise install` first)

@@ -18,7 +18,7 @@
 | 1 | Environment & repository | Layer 0 (part) | Initialized monorepo, local development, cloud IDE, Claude Code web setup, CI | ✅ Done |
 | 2 | Design prototype | Owner request (ADR-0009) | Static, clickable front-end shell with hard-coded data for the core scenes on iPad, iPhone, patient app and admin web | ✅ Built; awaiting your review |
 | 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | ✅ Accepted 2026-09-28 |
-| 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell; admin web shell | 🔄 In progress (kickoff confirmed 2026-09-29) |
+| 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell; admin web shell | ✅ Built 2026-10-01; acceptance review in `ACCEPTANCE_CRITERIA.md` §6, awaiting your sign-off |
 | 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | — |
 | 6 | Layer 3: Consultations & before/after | Layer 3 | Consultation lifecycle, annotations, comparison viewer, timeline | — |
 | 7 | Layer 4: Documents, consent, education, plans | Layer 4 | Plans A/B/C + estimates, consent builder + signing, education, instructions | — |
@@ -108,17 +108,17 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 | # | Micro-prompt | Proves |
 |---|---|---|
 | M1.1 | Database foundation: Layer 1 tables + constraint fragment + migrations, seed (permission catalog, role matrix, organization + admin), database roles, **RLS policies + performance benchmark** (ADR-0004 gate), per-layer split of the DB behaviour suite, model ownership classification (K-08, K-16, K-19) | Migrations run; seed works; RLS ≤ 10% / 5 ms. **Built 2026-09-29.** Search under RLS decided by ADR-0020 (leakproof search keys); every request is under 5 ms added; the 10% limit is judged end to end at M1.8 |
-| M1.2 | API skeleton: NestJS/Fastify, config, request IDs, error envelope, PHI-safe logging, health endpoints, OpenAPI generation, contract-test harness; CodeQL, gitleaks and SHA-pinned actions in CI (K-21) | Error model and contract tests |
-| M1.3 | Authentication: login, TOTP and passkey MFA (spec §6.3), rotating refresh, logout, sessions/devices, LoginEvent + audit, lockout, password reset and change, transactional email (SES; Mailpit locally) (K-11 to K-15) | Session revocation is immediate |
-| M1.4 | Tenancy & authorization core: tenant context, permission guard, scoped repositories, `SET LOCAL`, cross-tenant test generator, ACCESS_DENIED | Cross-tenant access rejected |
-| M1.5 | Organizations, practices, locations APIs | |
-| M1.6 | Users, memberships, invitations, roles, scoped assignments, separation-of-duties rules, admin session revocation and MFA reset, provider/staff profiles (K-05, K-07, K-12) | No self-grant; scope limits |
-| M1.7 | Audit foundation: writer, query API, per-patient access report | Required audit events written |
-| M1.8 | Patients: duplicate check, create (idempotent), POST search (name prefix, exact identifiers; ADR-0020), profile (PATIENT_VIEWED), update (If-Match), archive, contacts | Search and create work; ETag conflicts; **RLS gate end to end** on login, patient search and patient open (≤ 10% and ≤ 5 ms added p95; ADR-0004, ADR-0020) |
-| M1.9 | iOS provider shell: Tuist app, DesignSystem module, generated API client, Keychain + Face ID, iPad split view / iPhone tabs, login UI | iOS builds; login works |
-| M1.10 | iOS patients: list/search/create, profile shell with all 12 tabs (empty states) | Patient flows on device |
-| M1.11 | Admin web shell (K-23): login, users & roles, audit viewer | Admin flows run against the Layer 1 API |
-| M1.12 | **Layer 1 acceptance:** the 15 Bible §32 criteria, then STOP | |
+| M1.2 | API skeleton: NestJS/Fastify, config, request IDs, error envelope, PHI-safe logging, health endpoints, OpenAPI generation, contract-test harness; CodeQL, gitleaks and SHA-pinned actions in CI (K-21) | Error model and contract tests. **Built 2026-10-01** (ADR-0021) |
+| M1.3 | Authentication: login, TOTP and passkey MFA (spec §6.3), rotating refresh, logout, sessions/devices, LoginEvent + audit, lockout, password reset and change, transactional email (SES; Mailpit locally) (K-11 to K-15) | Session revocation is immediate. **Built 2026-10-01** |
+| M1.4 | Tenancy & authorization core: tenant context, permission guard, scoped repositories, `SET LOCAL`, cross-tenant test generator, ACCESS_DENIED | Cross-tenant access rejected. **Built 2026-10-01** |
+| M1.5 | Organizations, practices, locations APIs | **Built 2026-10-01** |
+| M1.6 | Users, memberships, invitations, roles, scoped assignments, separation-of-duties rules, admin session revocation and MFA reset, provider/staff profiles (K-05, K-07, K-12) | No self-grant; scope limits. **Built 2026-10-01** |
+| M1.7 | Audit foundation: writer, query API, per-patient access report | Required audit events written. **Built 2026-10-01** |
+| M1.8 | Patients: duplicate check, create (idempotent), POST search (name prefix, exact identifiers; ADR-0020), profile (PATIENT_VIEWED), update (If-Match), archive, contacts | Search and create work; ETag conflicts; **RLS gate end to end** on login, patient search and patient open (≤ 10% and ≤ 5 ms added p95; ADR-0004, ADR-0020). **Built 2026-10-01**; the gate passes in CI |
+| M1.9 | iOS provider shell: Tuist app, DesignSystem module, generated API client, Keychain + Face ID, iPad split view / iPhone tabs, login UI | iOS builds; login works. **Built 2026-10-01** (ADR-0022) |
+| M1.10 | iOS patients: list/search/create, profile shell with all 12 tabs (empty states) | Patient flows on device. **Built 2026-10-01**; UI tests on iPhone and iPad against the real api |
+| M1.11 | Admin web shell (K-23): login, users & roles, audit viewer | Admin flows run against the Layer 1 API. **Built 2026-10-01**; Playwright against the real api |
+| M1.12 | **Layer 1 acceptance:** the 15 Bible §32 criteria, then STOP | `ACCEPTANCE_CRITERIA.md` §6; awaiting the owner |
 
 ### Step 5: Layer 2, Photography Core
 

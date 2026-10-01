@@ -10,7 +10,13 @@ All material changes to the architecture, contracts and repository. Newest first
   - adaptive shell (iPad sidebar, iPhone tabs), patient list and search, create with the duplicate check, profile with all twelve tabs, settings
   - server address per build; Release has none until F-32 and UD-34 are decided
   - CI builds both apps and runs the DesignSystem, CoreNetworking, CoreSecurity and PatientDomain tests on a simulator
-- **Admin web portal** (M1.11): sign-in, invitation acceptance, password reset, users and roles, audit viewer, against the Layer 1 api.
+- **Admin web portal** (M1.11): sign-in (TOTP or passkey), invitation acceptance, password reset, users and roles, audit viewer, account (devices, password, passkeys), on TanStack Router and Query as spec §2.2 fixes; the cache is cleared whenever the session or organization changes.
+- **Admin portal Content Security Policy** decided and enforced (closes SECURITY_REQUIREMENTS.md open item 9); the end-to-end suite fails on any violation.
+- **App-switcher privacy and jailbreak signals** decided (THREAT_MODEL.md open items 4 and 5); the snapshot tool and accessibility audit move to Layer 2.
+- **End-to-end tests:** Playwright against the real api; iOS UI tests on iPhone and iPad against the real api on the macOS runner; CoreSecurity's Keychain tests run hosted in the app.
+- **Acceptance evidence:** the database tests now check the development seed (Bible §32 #3); a new api test asserts every Layer 1 audit event and that patient events carry no demographics (#10).
+- **Local development:** `pnpm dev:stack` and `pnpm dev:admin` run Layer 1 locally; Mailpit joins `docker-compose.yml` (ADR-0018 K-14).
+- `packages/security` stays a placeholder until a second service shares its code (ADR-0022).
 
 ## 2026-10-01: Layer 1 API implementation decisions (ADR-0021)
 

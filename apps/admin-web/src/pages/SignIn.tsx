@@ -1,6 +1,7 @@
 // Sign-in, second factor, authenticator enrollment, organization choice, and
 // the public pages reached from email links (token in the URL fragment, posted
 // in the body; ADR-0018 K-09, ADR-0021).
+import { Link } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useState } from "react";
 import { postPublic, useAuth } from "../auth/session.tsx";
 import { Banner, Button, Field, messageOf } from "../ui/kit.tsx";
@@ -60,7 +61,7 @@ export function SignInPage({ notice }: { notice?: string | undefined }) {
           {busy ? "Signing in…" : "Sign in"}
         </Button>
       </form>
-      <a href="/forgot-password">Forgot your password?</a>
+      <Link to="/forgot-password">Forgot your password?</Link>
     </AuthCard>
   );
 }
@@ -237,9 +238,9 @@ export function AcceptInvitationPage() {
     return (
       <AuthCard title="You are all set">
         <p>Your account is active. Sign in to continue.</p>
-        <a className="btn btn-primary" href="/">
+        <Link className="btn btn-primary" to="/">
           Sign in
-        </a>
+        </Link>
       </AuthCard>
     );
   return (
@@ -306,7 +307,7 @@ export function ForgotPasswordPage() {
           <Button type="submit">Email me a reset link</Button>
         </form>
       )}
-      <a href="/">Back to sign in</a>
+      <Link to="/">Back to sign in</Link>
     </AuthCard>
   );
 }
@@ -327,9 +328,9 @@ export function ResetPasswordPage() {
       {done ? (
         <>
           <Banner tone="success">Your password was changed and your other sessions were signed out.</Banner>
-          <a className="btn btn-primary" href="/">
+          <Link className="btn btn-primary" to="/">
             Sign in
-          </a>
+          </Link>
         </>
       ) : (
         <form

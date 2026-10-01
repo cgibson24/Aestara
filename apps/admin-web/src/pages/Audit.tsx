@@ -1,8 +1,10 @@
 // The audit viewer (spec §6.3 "/audit/events"; Bible §22). Read-only; the
 // api scopes it to the organization, or to platform-level events for platform
 // operators. Filtering by patient ID gives the per-patient access report.
-import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { api, type Schemas, unwrap } from "../api/client.ts";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { type FormEvent, useState } from "react";
+import type { Schemas } from "../api/client.ts";
+import { type AuditFilters, auditQuery } from "../api/queries.ts";
 import {
   Badge,
   Button,
@@ -53,49 +55,17 @@ function toIso(local: string | undefined): string | undefined {
 }
 
 export function AuditPage() {
-  const [filters, setFilters] = useState<Filters>({});
+  const [filters, setFilters] = useState<AuditFilters>({});
   const [draft, setDraft] = useState<Filters>({});
-  const [events, setEvents] = useState<AuditEvent[]>();
-  const [cursor, setCursor] = useState<string>();
-  const [error, setError] = useState<unknown>();
   const [open, setOpen] = useState<AuditEvent>();
-
-  const load = useCallback(
-    async (after?: string) => {
-      setError(undefined);
-      try {
-        const page = unwrap(
-          await api.GET("/audit/events", {
-            params: {
-              query: {
-                limit: 50,
-                ...(after ? { cursor: after } : {}),
-                ...(filters.action ? { action: filters.action } : {}),
-                ...(filters.actorUserId ? { actorUserId: filters.actorUserId } : {}),
-                ...(filters.patientId ? { patientId: filters.patientId } : {}),
-                ...(filters.from ? { from: toIso(filters.from) as string } : {}),
-                ...(filters.to ? { to: toIso(filters.to) as string } : {}),
-              },
-            },
-          }),
-        );
-        setEvents((current) => (after ? [...(current ?? []), ...page.data] : page.data));
-        setCursor(page.page.hasMore ? page.page.nextCursor : undefined);
-      } catch (e) {
-        setError(e);
-      }
-    },
-    [filters],
+  const { data, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery(
+    auditQuery(filters),
   );
-
-  useEffect(() => {
-    setEvents(undefined);
-    void load();
-  }, [load]);
+  const events = data?.pages.flatMap((p) => p.data);
 
   const apply = (e: FormEvent) => {
     e.preventDefault();
-    setFilters(draft);
+    setFilters({ ...draft, from: toIso(draft.from), to: toIso(draft.to) });
   };
   const invalidId = (value?: string) => (value && !UUID.test(value) ? "Enter a full identifier." : undefined);
 
@@ -153,7 +123,7 @@ export function AuditPage() {
         </Button>
       </form>
       {error ? (
-        <ErrorState error={error} onRetry={() => void load()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : events === undefined ? (
         <LoadingState label="Loading audit events" />
       ) : events.length === 0 ? (
@@ -191,8 +161,8 @@ export function AuditPage() {
               ))}
             </tbody>
           </table>
-          {cursor && (
-            <Button variant="secondary" onClick={() => void load(cursor)}>
+          {hasNextPage && (
+            <Button variant="secondary" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>
               Load more
             </Button>
           )}

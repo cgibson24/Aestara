@@ -1,4 +1,4 @@
-// Playwright global setup: the Layer 1 stack from services/api/scripts/test-stack.ts
+// Playwright global setup: the Layer 1 stack from services/api/scripts/local-stack.ts
 // (fresh database, seed, api from dist) on port 3100, and the built portal
 // served by `vite preview`, which proxies /api to the api as one site would.
 // Writes the seed's invitation token to e2e/.stack.json for the tests.
@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { startStack } from "../../../services/api/scripts/test-stack.ts";
+import { startStack } from "../../../services/api/scripts/local-stack.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const STACK_FILE = join(here, ".stack.json");

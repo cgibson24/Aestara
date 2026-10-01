@@ -121,7 +121,16 @@ The exact allowed dependencies of each module are in `modules.json`, and each `P
 
 **Layer 0 state.**
 - DesignSystem contains the generated tokens and their tests.
-- AppShell contains the root view, which shows only the brand name until Layer 1 adds sign-in and navigation.
+- AppShell contained the root view, which showed only the brand name.
+
+**Layer 1 state** (ADR-0022).
+- CoreNetworking: the client generated at build time from `openapi.json` (swift-openapi-generator), with correlation, token-refresh and error-envelope middleware, and `APIError`.
+- CoreSecurity: the Keychain (refresh token bound to the current biometric set, this device only), the installation ID and the biometric gate.
+- Authentication: `AuthStore` (password, TOTP, authenticator enrollment, organization choice, relock after 5 minutes in the background) and the sign-in screens.
+- PatientDomain: patient models, the meaning of a search string, and `PatientRepository`.
+- Settings: account, organization switch, sign-out.
+- AppShell: the root view switches between sign-in and the signed-in shell (a sidebar on iPad, tabs on iPhone); patient list and search, create with the duplicate check, and the profile with all twelve tabs; the privacy cover.
+- Tests: module tests per package; Keychain tests hosted in the app (`AestaraProviderTests`); UI tests (`AestaraProviderUITests`) on iPhone and iPad against the real api.
 - Every other module holds a documented boundary (its responsibility and Bible section) and no code, because Bible §30 forbids faking behaviour before its layer.
 
 ## 4. Adaptive layout and navigation
@@ -192,14 +201,14 @@ pnpm tokens                               # after editing packages/design-tokens
 | View models and domain logic | Swift Testing | each module's `Tests/` | Layer 1 |
 | Mutation queue, offline replay, conflict surfacing | Swift Testing with an in-memory store | CoreSecurity, PatientDomain, Photography | Layers 1–2 |
 | UI automation for critical flows | XCUITest | app targets | Layer 1 onward [B §27.1] |
-| Accessibility | XCUITest audits (Dynamic Type, VoiceOver labels) plus the token contrast gate | app targets | Layer 1 onward |
+| Accessibility | UI tests find controls by label (Layer 1); XCUITest audits (Dynamic Type, VoiceOver) with the snapshot tool (Layer 2, ADR-0022); the token contrast gate | app targets | Layer 1 onward |
 
-The CI `ios` job generates both projects, builds both apps for the simulator (the provider app for iPhone and iPad) and runs the DesignSystem tests on an iPhone simulator. Each layer adds its module tests to the job.
+The CI `ios` job generates both projects, builds both apps for the simulator (the provider app for iPhone and iPad), runs the module tests (DesignSystem, CoreNetworking, PatientDomain) and the hosted Keychain tests on an iPhone simulator, then starts the api with a fresh database on the runner and runs the UI tests on an iPhone and an iPad. Each layer adds its module tests to the job.
 
 ## Open items
 
 | Item | Decision point |
 |---|---|
 | Apple Developer team and bundle identifier prefix (`com.aestara.*` is provisional) | UD-34, before the first TestFlight build (end of Layer 1) |
-| Snapshot-testing tool for SwiftUI views | Layer 1 (M1.9), with an ADR |
-| App-switcher privacy screen and jailbreak signals | Layer 1 (M1.9), with an ADR; see [THREAT_MODEL.md](THREAT_MODEL.md) |
+| Snapshot-testing tool for SwiftUI views and the automated accessibility audit | Layer 2, with the first clinical screens (ADR-0022) |
+| ~~App-switcher privacy screen and jailbreak signals~~ | Closed: ADR-0022; see [THREAT_MODEL.md](THREAT_MODEL.md) |

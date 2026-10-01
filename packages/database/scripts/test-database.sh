@@ -5,6 +5,9 @@
 #   2. scripts/check-rls.ts: ownership classification, RLS, roles and grants
 #   3. the behaviour suite: harness, the fragments of the built layers, the RLS
 #      suite (test/sql/rls.sql) and the catalog audits
+#   4. the development seed (Bible §32 #3): one organization, its first
+#      ORGANIZATION_ADMIN with a pending invitation, their audit rows, the full
+#      catalog, and a second run that changes nothing
 # Everything it creates is dropped at the end.
 #
 # Usage: ADMIN_DATABASE_URL=postgresql://superuser:pw@host:5432/postgres bash scripts/test-database.sh
@@ -77,3 +80,42 @@ if ! out="$(psql "$db_admin_url" -v ON_ERROR_STOP=1 -q "${fragments[@]}" 2>&1)";
   exit 1
 fi
 echo "PASS  $(echo "$out" | tail -1 | tr -d ' ') database checks"
+
+echo "==> development seed (Bible §32 #3)"
+seed_out="$(DATABASE_URL="$db_admin_url" node scripts/seed-dev.ts)"
+grep -q "Local invitation token" <<<"$seed_out" || { echo "$seed_out"; echo "FAIL  the seed printed no invitation"; exit 1; }
+seed_checks="$(psql "$db_admin_url" -v ON_ERROR_STOP=1 -qAt <<'SQL'
+SELECT 'organizations=' || count(*) FROM "Organization" WHERE slug = 'synthetic-demo';
+SELECT 'practices=' || count(*) FROM "Practice" p JOIN "Organization" o ON o.id = p."organizationId" WHERE o.slug = 'synthetic-demo';
+SELECT 'locations=' || count(*) FROM "Location" l JOIN "Organization" o ON o.id = l."organizationId" WHERE o.slug = 'synthetic-demo';
+SELECT 'admins=' || count(*) FROM "UserRole" ur
+  JOIN "Role" r ON r.id = ur."roleId" AND r.key = 'ORGANIZATION_ADMIN'
+  JOIN "User" u ON u.id = ur."userId" AND u.email = 'admin@synthetic-demo.test'
+  JOIN "Membership" m ON m."userId" = u.id AND m."organizationId" = ur."organizationId"
+  WHERE ur.scope = 'ORGANIZATION' AND ur."revokedAt" IS NULL;
+SELECT 'invitations=' || count(*) FROM "UserToken" t JOIN "User" u ON u.id = t."userId"
+  WHERE u.email = 'admin@synthetic-demo.test' AND t.purpose = 'INVITATION' AND t."consumedAt" IS NULL AND t."expiresAt" > now();
+SELECT 'audit=' || string_agg(action::text, ',' ORDER BY action::text) FROM "AuditEvent"
+  WHERE metadata->>'source' = 'dev-seed' AND "actorType" = 'SYSTEM';
+SELECT 'permissions=' || count(*) FROM "Permission";
+SELECT 'systemRoles=' || count(*) FROM "Role" WHERE "organizationId" IS NULL;
+SELECT 'grants=' || count(*) FROM "RolePermission";
+SQL
+)"
+expected="organizations=1
+practices=1
+locations=1
+admins=1
+invitations=1
+audit=CONFIGURATION_CHANGED,ROLE_ASSIGNED,USER_CREATED
+permissions=53
+systemRoles=10
+grants=139"
+if [ "$seed_checks" != "$expected" ]; then
+  diff <(echo "$expected") <(echo "$seed_checks") || true
+  echo "FAIL  development seed"
+  exit 1
+fi
+DATABASE_URL="$db_admin_url" node scripts/seed-dev.ts | grep -q "already exists" \
+  || { echo "FAIL  a second seed run changed something"; exit 1; }
+echo "PASS  seed: organization, practice, location, invited ORGANIZATION_ADMIN, 3 audit rows, catalog 53/10/139, idempotent"
