@@ -127,7 +127,26 @@ export const TABLE_OWNERSHIP: readonly TableOwnership[] = [
     table: "OrganizationSetting",
     class: "organization",
     platform: "none",
-    note: "Organization policy; practice settings arrive in Layer 2",
+    note: "Organization policy",
+  },
+  {
+    table: "PracticeSetting",
+    class: "practice",
+    platform: "none",
+    practiceColumn: "practiceId",
+    note: "Practice policy, such as the offline cache (ADR-0023 K2-17)",
+  },
+  {
+    table: "FeatureFlag",
+    class: "system",
+    platform: "none",
+    note: "Organization or practice override of a flag registered in code; no platform rows in Layer 2 (K2-18)",
+  },
+  {
+    table: "RetentionPolicy",
+    class: "organization",
+    platform: "none",
+    note: "Recorded only; no retention job runs in Layer 2 (K2-19)",
   },
   {
     table: "Patient",
@@ -136,6 +155,52 @@ export const TABLE_OWNERSHIP: readonly TableOwnership[] = [
     note: "Shared across the organization's practices (D-01); primaryPracticeId is not ownership",
   },
   { table: "PatientContact", class: "organization", platform: "none", note: "Follows its patient" },
+  {
+    table: "StorageObject",
+    class: "organization",
+    platform: "none",
+    note: "Ledger of every stored object; the key is opaque and never returned (spec §6.1.9)",
+  },
+  {
+    table: "PhotographyProtocol",
+    class: "organization",
+    platform: "none",
+    note: "Organization-wide when practiceId is NULL; a practice-scoped admin manages only its practice's protocols (ADR-0023 K2-10)",
+  },
+  {
+    table: "PhotographyProtocolView",
+    class: "organization",
+    platform: "none",
+    note: "Follows its protocol; frozen once the protocol leaves DRAFT",
+  },
+  {
+    table: "PhotoSession",
+    class: "organization",
+    platform: "none",
+    note: "Patient data, shared across practices (D-01); practiceId records where it was captured",
+  },
+  { table: "PatientPhoto", class: "organization", platform: "none", note: "Follows its patient" },
+  { table: "PhotoDerivative", class: "organization", platform: "none", note: "Follows its source photo" },
+  { table: "PhotoTag", class: "organization", platform: "none", note: "Follows its photo" },
+  { table: "PhotoPermission", class: "organization", platform: "none", note: "Versioned media permission" },
+  {
+    table: "MediaRelease",
+    class: "organization",
+    platform: "none",
+    note: "A release of one asset for one purpose",
+  },
+  {
+    table: "MediaReleasePermission",
+    class: "organization",
+    platform: "none",
+    note: "The permission versions a release pinned",
+  },
+  {
+    table: "AIJob",
+    class: "organization",
+    platform: "none",
+    note: "Generic job record; image derivatives from Layer 2 (K2-06)",
+  },
   {
     table: "AuditEvent",
     class: "system",
@@ -147,6 +212,12 @@ export const TABLE_OWNERSHIP: readonly TableOwnership[] = [
     class: "system",
     platform: "metadata",
     note: "organizationId NULL for requests made before a tenant is chosen",
+  },
+  {
+    table: "OutboxEvent",
+    class: "system",
+    platform: "metadata",
+    note: "Append-only for the api and platform (the audit feed); relayed by aestara_worker (K2-07)",
   },
 ];
 

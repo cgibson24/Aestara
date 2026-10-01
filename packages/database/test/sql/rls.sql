@@ -328,3 +328,170 @@ SELECT pg_temp.expect_rows_as('aestara_app', NULL,
 SELECT pg_temp.expect_rows_as('aestara_app', NULL,
   $$SELECT 1 FROM "Membership"$$, 0,
   'I4 the lookup is the only pre-tenant path to memberships');
+
+-- =============================================================================
+-- M. Layer 2: photography, storage, the outbox and the worker (ADR-0023)
+-- Fixtures: an original and a photo in tenant B (the Layer 2 fragment created
+-- tenant A's), and outbox rows written by the audit feed.
+-- =============================================================================
+INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", sha256, status, "verifiedAt") VALUES
+  ('0b000000-0000-7000-8000-5c00000000b1', '0b000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL', 'clinical', 'org-b/o1', 'image/jpeg', repeat('b', 64), 'AVAILABLE', now());
+INSERT INTO "PatientPhoto" (id, "organizationId", "patientId", source, status, "originalObjectId", "capturedAt", "updatedAt") VALUES
+  ('0b000000-0000-7000-8000-5e00000000b1', '0b000000-0000-7000-8000-000000000001', '0b000000-0000-7000-8000-fd76a7158ec0', 'PROVIDER_CAPTURE', 'ACCEPTED', '0b000000-0000-7000-8000-5c00000000b1', now(), now());
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['StorageObject', 'PhotographyProtocol', 'PhotographyProtocolView', 'PhotoSession',
+                           'PatientPhoto', 'PhotoDerivative', 'PhotoTag', 'PhotoPermission', 'MediaRelease',
+                           'MediaReleasePermission', 'AIJob', 'PracticeSetting', 'RetentionPolicy'] LOOP
+    IF pg_temp.rows_as('aestara_app', NULL, format('SELECT 1 FROM %I', t)) <> 0 THEN
+      RAISE EXCEPTION 'FAIL  M1 without a tenant the application sees rows of %', t;
+    END IF;
+  END LOOP;
+  -- Platform-wide flag rows (organizationId NULL) are readable everywhere by design.
+  IF pg_temp.rows_as('aestara_app', NULL, 'SELECT 1 FROM "FeatureFlag" WHERE "organizationId" IS NOT NULL') <> 0 THEN
+    RAISE EXCEPTION 'FAIL  M1 without a tenant the application sees organization flags';
+  END IF;
+  INSERT INTO _results VALUES ('M1 without a tenant the application sees no Layer 2 tenant rows (14 tables)', true);
+  RAISE NOTICE 'PASS  M1 without a tenant the application sees no Layer 2 tenant rows (14 tables)';
+END $$;
+
+SELECT pg_temp.expect_rows_as('aestara_app', '0a000000-0000-7000-8000-000000000001',
+  $$SELECT 1 FROM "PatientPhoto" WHERE id = '0b000000-0000-7000-8000-5e00000000b1'$$, 0,
+  'M2 tenant A cannot read a photo of B by its id');
+
+SELECT pg_temp.expect_rows_as('aestara_app', '0a000000-0000-7000-8000-000000000001',
+  $$SELECT 1 FROM "StorageObject" WHERE "objectKey" = 'org-b/o1'$$, 0,
+  'M3 tenant A cannot find B''s stored object by its key');
+
+SELECT pg_temp.expect_error_as('aestara_app', '0a000000-0000-7000-8000-000000000001', $$
+  INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType")
+  VALUES (gen_random_uuid(), '0b000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL', 'clinical', 'org-b/x', 'image/jpeg')$$,
+  '42501', 'M4 tenant A cannot register an object in B');
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['StorageObject', 'PatientPhoto', 'PhotoSession', 'PhotoDerivative', 'PhotoPermission',
+                           'MediaRelease', 'MediaReleasePermission', 'AIJob', 'RetentionPolicy', 'OutboxEvent'] LOOP
+    BEGIN
+      PERFORM set_config('app.organization_id', '0a000000-0000-7000-8000-000000000001', true);
+      SET LOCAL ROLE aestara_app;
+      EXECUTE format('DELETE FROM %I', t);
+      RESET ROLE;
+      RAISE EXCEPTION 'FAIL  M5 the application could delete from %', t;
+    EXCEPTION WHEN insufficient_privilege THEN
+      RESET ROLE;
+    END;
+  END LOOP;
+  INSERT INTO _results VALUES ('M5 the application cannot delete clinical media, permissions, jobs or the outbox', true);
+  RAISE NOTICE 'PASS  M5 the application cannot delete clinical media, permissions, jobs or the outbox';
+END $$;
+
+SELECT pg_temp.expect_ok_as('aestara_app', '0a000000-0000-7000-8000-000000000001', $$
+  INSERT INTO "OutboxEvent" (id, "organizationId", "eventType", "aggregateType", "aggregateId", payload)
+  VALUES ('0a000000-0000-7000-8000-0e0000000001', '0a000000-0000-7000-8000-000000000001', 'photo.captured',
+          'PatientPhoto', '0a000000-0000-7000-8000-599a1cc8f834', '{}')$$,
+  'M6 the application appends outbox events for its tenant');
+
+SELECT pg_temp.expect_error_as('aestara_app', '0a000000-0000-7000-8000-000000000001', $$
+  INSERT INTO "OutboxEvent" (id, "organizationId", "eventType", "aggregateType", "aggregateId", payload)
+  VALUES (gen_random_uuid(), '0b000000-0000-7000-8000-000000000001', 'photo.captured', 'PatientPhoto',
+          '0b000000-0000-7000-8000-5e00000000b1', '{}')$$,
+  '42501', 'M7 the application cannot append outbox events for another tenant');
+
+SELECT pg_temp.expect_error_as('aestara_app', '0a000000-0000-7000-8000-000000000001',
+  $$SELECT 1 FROM "OutboxEvent"$$, '42501',
+  'M8 the application cannot read the outbox');
+
+SELECT pg_temp.expect_rows_as('aestara_worker', NULL,
+  $$SELECT 1 FROM "OutboxEvent" WHERE "eventType" = 'audit.recorded'$$,
+  (SELECT count(*) FROM "AuditEvent"),
+  'M9 every audit event has its WORM-feed outbox row, and the worker sees them all');
+
+SELECT pg_temp.expect_rows_as('aestara_worker', NULL,
+  $$SELECT 1 FROM "AuditEvent"$$, (SELECT count(*) FROM "AuditEvent"),
+  'M10 the worker reads every tenant''s audit events for the WORM copy');
+
+SELECT pg_temp.expect_rows_as('aestara_worker', NULL,
+  $$SELECT "organizationId" FROM "StorageObject" WHERE "objectKey" = 'org-b/o1'$$, 1,
+  'M11 the worker resolves an opaque key to its organization');
+
+DO $$
+DECLARE stmt text;
+BEGIN
+  FOREACH stmt IN ARRAY ARRAY[
+    'SELECT sha256 FROM "StorageObject"', 'SELECT 1 FROM "Patient"', 'SELECT 1 FROM "PatientPhoto"',
+    'SELECT name FROM "Organization"', 'SELECT "inputSummary" FROM "AIJob"'] LOOP
+    BEGIN
+      PERFORM pg_temp.rows_as('aestara_worker', NULL, format('SELECT 1 FROM (%s) q', stmt));
+      RAISE EXCEPTION 'FAIL  M12 the worker role could run: %', stmt;
+    EXCEPTION WHEN insufficient_privilege THEN
+      NULL;
+    END;
+  END LOOP;
+  -- Writes cannot run as subqueries; try them directly.
+  FOREACH stmt IN ARRAY ARRAY['UPDATE "AuditEvent" SET "requestId" = ''x''',
+                              'INSERT INTO "AuditEvent" (id, "actorType", action, "resourceType", "requestId") VALUES (gen_random_uuid(), ''SYSTEM'', ''LOGOUT'', ''Session'', ''r'')',
+                              'UPDATE "StorageObject" SET status = ''PURGED'''] LOOP
+    BEGIN
+      SET LOCAL ROLE aestara_worker;
+      EXECUTE stmt;
+      RESET ROLE;
+      RAISE EXCEPTION 'FAIL  M12 the worker role could run: %', stmt;
+    EXCEPTION WHEN insufficient_privilege THEN
+      RESET ROLE;
+    END;
+  END LOOP;
+  INSERT INTO _results VALUES ('M12 the worker reaches nothing but its cross-tenant columns', true);
+  RAISE NOTICE 'PASS  M12 the worker reaches nothing but its cross-tenant columns';
+END $$;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['StorageObject', 'PhotographyProtocol', 'PhotoSession', 'PatientPhoto', 'PhotoPermission',
+                           'MediaRelease', 'FeatureFlag', 'PracticeSetting', 'RetentionPolicy'] LOOP
+    BEGIN
+      PERFORM pg_temp.rows_as('aestara_platform', NULL, format('SELECT 1 FROM %I', t));
+      RAISE EXCEPTION 'FAIL  M13 the platform role could read %', t;
+    EXCEPTION WHEN insufficient_privilege THEN
+      NULL;
+    END;
+  END LOOP;
+  INSERT INTO _results VALUES ('M13 the platform role has no access to photos, storage or practice configuration', true);
+  RAISE NOTICE 'PASS  M13 the platform role has no access to photos, storage or practice configuration';
+END $$;
+
+SELECT pg_temp.expect_rows_as('aestara_platform', NULL,
+  $$SELECT app_seed_standard_protocols('0b000000-0000-7000-8000-000000000001') AS n$$, 1,
+  'M14 the platform role seeds a new organization''s standard protocols through the definer function');
+
+SELECT pg_temp.expect_rows_as('aestara_app', '0b000000-0000-7000-8000-000000000001',
+  $$SELECT 1 FROM "PhotographyProtocol" p JOIN "PhotographyProtocolView" v ON v."protocolId" = p.id
+    WHERE p.status = 'ACTIVE' AND p."practiceId" IS NULL AND v."isRequired"$$, 16,
+  'M15 tenant B has the three standard protocols, ACTIVE, organization-wide, 16 required views');
+
+SELECT pg_temp.expect_rows_as('aestara_app', '0a000000-0000-7000-8000-000000000001',
+  $$SELECT 1 FROM "PhotographyProtocol" WHERE name IN ('Face', 'Breast', 'Abdomen/body contour')$$, 0,
+  'M16 seeding B added nothing to A');
+
+SELECT pg_temp.expect_rows_as('aestara_platform', NULL,
+  $$SELECT 1 FROM (SELECT app_seed_standard_protocols('0b000000-0000-7000-8000-000000000001') AS n) q WHERE n = 0$$, 1,
+  'M17 seeding is idempotent: a second call adds nothing');
+
+SELECT pg_temp.expect_error_as('aestara_app', '0a000000-0000-7000-8000-000000000001',
+  $$SELECT app_seed_standard_protocols('0a000000-0000-7000-8000-000000000001')$$, '42501',
+  'M18 only the platform bootstrap may call the protocol seed');
+
+SELECT pg_temp.expect_error_as('aestara_platform', NULL, $$
+  INSERT INTO "PhotographyProtocol" (id, "organizationId", name, "bodyRegion", "updatedAt")
+  VALUES (gen_random_uuid(), '0b000000-0000-7000-8000-000000000001', 'X', 'FACE', now())$$,
+  '42501', 'M19 the platform role cannot write protocols directly');
+
+SELECT pg_temp.expect_rows_as('aestara_app', '0b000000-0000-7000-8000-000000000001',
+  $$SELECT 1 FROM "PhotographyProtocolView" v JOIN "PhotographyProtocol" p ON p.id = v."protocolId"
+    WHERE p.name = 'Face' AND v."viewKey" = 'LEFT_45' AND (v."poseTarget"->>'yawDeg')::int = 45
+      AND v."poseTarget"->>'subject' = 'FACE'$$, 1,
+  'M20 a standard view carries its pose target (left 45 shows the left side, yaw +45)');

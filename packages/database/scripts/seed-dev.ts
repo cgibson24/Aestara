@@ -40,6 +40,8 @@ try {
     const organization = await tx.organization.create({
       data: { id: organizationId, name: "Synthetic Demo Organization", slug: SLUG },
     });
+    // The Bible §6.2 standard photography protocols (ADR-0023 K2-11), as the bootstrap seeds them.
+    await tx.$queryRaw`SELECT app_seed_standard_protocols(${organizationId}::uuid)`;
     const practice = await tx.practice.create({
       data: { organizationId, name: "Synthetic Demo Practice", timezone: "America/New_York" },
     });

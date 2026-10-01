@@ -378,8 +378,11 @@ CREATE TRIGGER "MediaReleasePermission_append_only"
   BEFORE UPDATE OR DELETE ON "MediaReleasePermission"
   FOR EACH ROW EXECUTE FUNCTION app_reject_mutation();
 
+-- One row per flag and scope. The predicate is always true ("key" is NOT NULL);
+-- it marks the index as one Prisma does not manage, so its drift check leaves it.
 CREATE UNIQUE INDEX "FeatureFlag_scope_unique"
-  ON "FeatureFlag" ("key", "organizationId", "practiceId") NULLS NOT DISTINCT;
+  ON "FeatureFlag" ("key", "organizationId", "practiceId") NULLS NOT DISTINCT
+  WHERE "key" IS NOT NULL;
 
 -- A practice-level flag must name its organization (closes MATCH SIMPLE gap).
 ALTER TABLE "FeatureFlag" ADD CONSTRAINT "FeatureFlag_practice_needs_org_chk"

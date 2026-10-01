@@ -3,8 +3,10 @@
 // The design (docs/technical-spec/schema.prisma) stays the single source of every
 // table. Spec §5.8 says which layer creates which table; this script copies the
 // models of layers 1..PROMOTED_THROUGH_LAYER verbatim, drops only the relation
-// fields that point at tables a later layer creates, and keeps the enums those
-// models use. `--check` fails if the committed file differs (CI drift gate).
+// fields that point at tables a later layer creates, together with the foreign
+// key columns that serve only those relations (spec §5.8: a forward reference
+// arrives with the later table), and keeps the enums those models use.
+// `--check` fails if the committed file differs (CI drift gate).
 //
 // Usage: node scripts/promote-schema.ts [--check]
 import { readFileSync, writeFileSync } from "node:fs";
@@ -12,7 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The highest layer whose tables exist in packages/database. */
-export const PROMOTED_THROUGH_LAYER = 1;
+export const PROMOTED_THROUGH_LAYER = 2;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..", "..");
@@ -80,23 +82,46 @@ export function promote(design: string, spec: string, throughLayer: number): str
 
   const out: Block[] = [];
   const usedEnums = new Set<string>();
+  const fkColumnsOf = (line: string): string[] =>
+    (/fields: \[([^\]]*)\]/.exec(line)?.[1] ?? "")
+      .split(",")
+      .map((c) => c.trim())
+      .filter((c) => c !== "");
   for (const block of blocks) {
     if (block.kind !== "model" || !promoted.has(block.name)) continue;
+    const isLater = (line: string) => {
+      const field = fieldType(line);
+      return field !== undefined && models.has(field.type) && !promoted.has(field.type);
+    };
+    // A relation to a later layer is dropped, and so are its FK columns unless a
+    // kept relation also uses them (spec §5.8: forward references arrive with the
+    // later table, which adds the column and its FK together).
+    const keptRelationColumns = new Set(block.lines.filter((l) => !isLater(l)).flatMap(fkColumnsOf));
+    const droppedColumns = new Set(
+      block.lines
+        .filter(isLater)
+        .flatMap(fkColumnsOf)
+        .filter((c) => !keptRelationColumns.has(c)),
+    );
     const kept: string[] = [];
-    const dropped = new Set<string>();
     for (const line of block.lines) {
       const field = fieldType(line);
-      if (field && models.has(field.type) && !promoted.has(field.type)) {
-        // A relation to a later layer. Its FK columns must not exist yet either:
-        // spec §5.8 adds forward references together with the later table.
-        const fkColumns = /fields: \[([^\]]*)\]/.exec(line)?.[1];
-        if (fkColumns) {
-          throw new Error(
-            `${block.name}.${field.name} has FK columns (${fkColumns}) to later-layer table ${field.type}`,
-          );
-        }
-        dropped.add(field.name);
+      if (isLater(line) || (field !== undefined && droppedColumns.has(field.name))) {
+        // A `///` comment documents the field below it; it goes with the field.
+        while ((kept.at(-1) ?? "").trim().startsWith("///")) kept.pop();
         continue;
+      }
+      if (/^\s*@@/.test(line)) {
+        const used =
+          /\[([^\]]*)\]/
+            .exec(line)?.[1]
+            ?.split(",")
+            .map((c) => c.trim()) ?? [];
+        const stale = used.filter((c) => droppedColumns.has(c));
+        if (stale.length > 0)
+          throw new Error(
+            `${block.name}: ${line.trim()} uses columns of a later layer (${stale.join(", ")})`,
+          );
       }
       if (field && enums.has(field.type)) usedEnums.add(field.type);
       kept.push(line);

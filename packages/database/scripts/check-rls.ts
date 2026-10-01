@@ -6,11 +6,43 @@
 import pg from "pg";
 import { TABLE_OWNERSHIP, TENANT_CLASSES } from "../src/ownership.ts";
 
-const APP_ROLES = ["aestara_app", "aestara_platform", "aestara_signin"];
-/** Tables the application may delete from (ADR-0018 K-18: never clinical or audit rows). */
-const APP_DELETABLE = new Set(["UserToken", "PatientContact", "IdempotencyKey"]);
-/** The single pre-tenant path (K-16). */
-const SECURITY_DEFINER_FUNCTIONS = ["auth_sign_in_memberships"];
+const APP_ROLES = [
+  "aestara_app",
+  "aestara_platform",
+  "aestara_signin",
+  "aestara_worker",
+  "aestara_protocol_seed",
+];
+/**
+ * Tables the application may delete from (ADR-0018 K-18: never clinical or audit
+ * rows). A draft protocol's views and a photo's tags are replaced as sets.
+ */
+const APP_DELETABLE = new Set([
+  "UserToken",
+  "PatientContact",
+  "IdempotencyKey",
+  "PhotographyProtocolView",
+  "PhotoTag",
+]);
+/**
+ * The SECURITY DEFINER functions, their owners and who may call them: the
+ * pre-tenant sign-in lookup (K-16) and the standard-protocol seed that the
+ * platform's organization bootstrap calls (ADR-0023 K2-11).
+ */
+const SECURITY_DEFINER_FUNCTIONS: Record<string, { owner: string; executors: string[] }> = {
+  app_seed_standard_protocols: { owner: "aestara_protocol_seed", executors: ["aestara_platform"] },
+  auth_sign_in_memberships: { owner: "aestara_signin", executors: ["aestara_app"] },
+};
+/** What the worker role may reach across tenants (ADR-0023 K2-07); anything else fails. */
+const WORKER_REACH: Record<string, string[]> = {
+  OutboxEvent: ["SELECT", "UPDATE"],
+  AuditEvent: ["SELECT"],
+  Organization: ["SELECT"],
+  StorageObject: ["SELECT"],
+  AIJob: ["SELECT"],
+};
+/** The protocol seed role touches the two protocol tables only. */
+const PROTOCOL_SEED_REACH = new Set(["PhotographyProtocol", "PhotographyProtocolView"]);
 
 const failures: string[] = [];
 const fail = (message: string) => failures.push(message);
@@ -78,6 +110,12 @@ try {
     if (g.grantee === "aestara_app" && g.privilege_type === "DELETE" && !APP_DELETABLE.has(g.table_name)) {
       fail(`aestara_app may not delete from ${g.table_name}`);
     }
+    if (g.grantee === "aestara_worker" && !(WORKER_REACH[g.table_name] ?? []).includes(g.privilege_type)) {
+      fail(`aestara_worker holds ${g.privilege_type} on ${g.table_name} (ADR-0023 K2-07)`);
+    }
+    if (g.grantee === "aestara_protocol_seed" && !PROTOCOL_SEED_REACH.has(g.table_name)) {
+      fail(`aestara_protocol_seed holds ${g.privilege_type} on ${g.table_name}`);
+    }
     if (
       ["AuditEvent", "LoginEvent"].includes(g.table_name) &&
       APP_ROLES.includes(g.grantee) &&
@@ -95,15 +133,18 @@ try {
     FROM pg_proc p
     WHERE p.pronamespace = 'public'::regnamespace AND p.prosecdef`);
   const names = definers.rows.map((d) => d.proname).sort();
-  if (JSON.stringify(names) !== JSON.stringify(SECURITY_DEFINER_FUNCTIONS)) {
-    fail(
-      `SECURITY DEFINER functions must be exactly ${SECURITY_DEFINER_FUNCTIONS.join(", ")}; found ${names.join(", ")}`,
-    );
+  const expected = Object.keys(SECURITY_DEFINER_FUNCTIONS).sort();
+  if (JSON.stringify(names) !== JSON.stringify(expected)) {
+    fail(`SECURITY DEFINER functions must be exactly ${expected.join(", ")}; found ${names.join(", ")}`);
   }
   for (const d of definers.rows) {
-    if (d.owner !== "aestara_signin") fail(`${d.proname} must be owned by aestara_signin, not ${d.owner}`);
-    if (JSON.stringify(d.executors) !== JSON.stringify(["aestara_app"])) {
-      fail(`${d.proname} must be executable by aestara_app only; found ${d.executors.join(", ")}`);
+    const want = SECURITY_DEFINER_FUNCTIONS[d.proname];
+    if (want === undefined) continue;
+    if (d.owner !== want.owner) fail(`${d.proname} must be owned by ${want.owner}, not ${d.owner}`);
+    if (JSON.stringify(d.executors) !== JSON.stringify(want.executors)) {
+      fail(
+        `${d.proname} must be executable by ${want.executors.join(", ")} only; found ${d.executors.join(", ")}`,
+      );
     }
   }
 } finally {

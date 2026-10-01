@@ -38,7 +38,7 @@ END \$\$" -c "ALTER ROLE $migrator PASSWORD '$password'"
 # Where an earlier run already created the database roles, let this migrator
 # administer them, as the migrator that created them would.
 admin -c "DO \$\$ DECLARE r text; BEGIN
-  FOREACH r IN ARRAY ARRAY['aestara_app', 'aestara_platform', 'aestara_signin'] LOOP
+  FOREACH r IN ARRAY ARRAY['aestara_app', 'aestara_platform', 'aestara_signin', 'aestara_worker', 'aestara_protocol_seed'] LOOP
     IF EXISTS (SELECT FROM pg_roles WHERE rolname = r) THEN
       EXECUTE format('GRANT %I TO $migrator WITH ADMIN OPTION', r);
     END IF;
@@ -66,7 +66,7 @@ echo "PASS  no drift"
 echo "==> ownership, RLS, roles and grants"
 DATABASE_URL="$db_admin_url" node scripts/check-rls.ts
 
-echo "==> behaviour suite (Layer 1 fragment + RLS suite)"
+echo "==> behaviour suite (the built layers' fragments + RLS suite)"
 fragments=(-f "$behavior/A00_harness.sql")
 layers="$(node -e 'import("./scripts/promote-schema.ts").then(m => console.log(m.PROMOTED_THROUGH_LAYER))')"
 for f in "$behavior"/L*.sql; do
@@ -101,6 +101,10 @@ SELECT 'audit=' || string_agg(action::text, ',' ORDER BY action::text) FROM "Aud
 SELECT 'permissions=' || count(*) FROM "Permission";
 SELECT 'systemRoles=' || count(*) FROM "Role" WHERE "organizationId" IS NULL;
 SELECT 'grants=' || count(*) FROM "RolePermission";
+SELECT 'protocols=' || count(*) FROM "PhotographyProtocol" p JOIN "Organization" o ON o.id = p."organizationId"
+  WHERE o.slug = 'synthetic-demo' AND p.status = 'ACTIVE';
+SELECT 'views=' || count(*) FROM "PhotographyProtocolView" v JOIN "Organization" o ON o.id = v."organizationId"
+  WHERE o.slug = 'synthetic-demo' AND v."isRequired";
 SQL
 )"
 expected="organizations=1
@@ -111,7 +115,9 @@ invitations=1
 audit=CONFIGURATION_CHANGED,ROLE_ASSIGNED,USER_CREATED
 permissions=53
 systemRoles=10
-grants=139"
+grants=139
+protocols=3
+views=16"
 if [ "$seed_checks" != "$expected" ]; then
   diff <(echo "$expected") <(echo "$seed_checks") || true
   echo "FAIL  development seed"
@@ -119,4 +125,4 @@ if [ "$seed_checks" != "$expected" ]; then
 fi
 DATABASE_URL="$db_admin_url" node scripts/seed-dev.ts | grep -q "already exists" \
   || { echo "FAIL  a second seed run changed something"; exit 1; }
-echo "PASS  seed: organization, practice, location, invited ORGANIZATION_ADMIN, 3 audit rows, catalog 53/10/139, idempotent"
+echo "PASS  seed: organization, practice, location, invited ORGANIZATION_ADMIN, 3 audit rows, catalog 53/10/139, the 3 standard protocols (16 views), idempotent"
