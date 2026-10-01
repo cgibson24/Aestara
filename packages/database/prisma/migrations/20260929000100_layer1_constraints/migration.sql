@@ -1,5 +1,5 @@
 -- Layer 1 constraints beyond Prisma: partial unique indexes, CHECKs, triggers,
--- trigram search indexes. Copied verbatim from the LAYER 1 fragment of
+-- patient search keys. Copied verbatim from the LAYER 1 fragment of
 -- docs/technical-spec/constraints.sql; scripts/check-migrations.ts fails CI if
 -- the two ever differ.
 

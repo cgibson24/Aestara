@@ -266,7 +266,7 @@ Versions as checked on 2026-09-25 and recorded in spec §2; lockfiles pin exact 
 | Contracts | Zod 4 → OpenAPI 3.1 | zod 4.6, zod-to-openapi 9.1 |
 | Database | PostgreSQL on Amazon RDS, Multi-AZ | 18 targeted, ≥ 15 required |
 | ORM and migrations | Prisma ORM 7 with `@prisma/adapter-pg` | 7.10 (not 8 until GA) |
-| Search | `pg_trgm` + `btree_gin` | — |
+| Search | B-tree indexes on database-maintained search keys, leakproof under RLS (ADR-0020) | — |
 | Object storage | Amazon S3, private, SSE-KMS, versioning, Block Public Access | — |
 | Queues and events | SQS + EventBridge, fed by a transactional outbox | — |
 | Image processing | Python 3.13, OpenCV, libvips (pyvips) | — |
@@ -313,7 +313,7 @@ The pilot is about 10 practices; the design must not block about 1,000 [B §1.1,
 
 | Scale | Bible posture [B §25.4] | Specified mechanisms |
 |---|---|---|
-| ~10 practices | Single production region, multi-AZ database, containerized API and workers, encrypted object storage, modest autoscaling | us-east-1 multi-AZ (D-06); `pg_trgm` patient search; WAF rate rules plus database-backed login lockout (UD-27) |
+| ~10 practices | Single production region, multi-AZ database, containerized API and workers, encrypted object storage, modest autoscaling | us-east-1 multi-AZ (D-06); patient search on indexed search keys (ADR-0020); WAF rate rules plus database-backed login lockout (UD-27) |
 | ~100 practices | Capacity monitoring, worker scaling, stronger queue partitioning, search and index strategy, observability and SLOs | Monthly partitions for `AuditEvent` and `LoginEvent`; read replicas for reporting; consider OpenSearch (spec §5.6) |
 | ~1,000 practices | Horizontal API and worker scaling, database partitioning, tenant-aware rate limits, dedicated AI capacity, disaster-recovery exercises | Evaluate hash partitioning by `organizationId`, RDS Proxy, per-tenant rate limits (spec §5.6); evaluate per-tenant KMS keys (spec §7.1); DR exercise before enterprise rollout (spec §7.6) |
 
