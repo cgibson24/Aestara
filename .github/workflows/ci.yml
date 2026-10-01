@@ -463,6 +463,8 @@ jobs:
           for entry in "iphone:$iphone" "ipad:$ipad"; do
             name="${entry%%:*}"; udid="${entry##*:}"
             echo "::group::UI tests on $name ($udid)"
+            # A cold simulator answers slowly (the Keychain included) until it has fully booted.
+            xcrun simctl bootstatus "$udid" -b
             eval "$(python3 - "$users" "$name" <<'PY'
           import json, shlex, sys
           u = json.load(open(sys.argv[1]))[sys.argv[2]]

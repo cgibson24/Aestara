@@ -22,7 +22,7 @@ final class ProviderFlowTests: XCTestCase {
 
         // Login UI: a wrong password shows the server's message.
         let emailField = app.textFields["signin.email"]
-        XCTAssertTrue(emailField.waitForExistence(timeout: 20), "The sign-in screen did not appear. Screen: \(screen(app))")
+        XCTAssertTrue(emailField.waitForExistence(timeout: 60), "The sign-in screen did not appear. Screen: \(screen(app))")
         emailField.tap()
         emailField.typeText(email)
         let passwordField = app.secureTextFields["signin.password"]
