@@ -163,7 +163,13 @@ export class Fixtures {
   async photography(
     organizationId: string,
     patientId: string,
-    options: { capturedByUserId: string; objectKey?: string; sha256?: string; byteSize?: number },
+    options: {
+      capturedByUserId: string;
+      objectKey?: string;
+      sha256?: string;
+      byteSize?: number;
+      release?: boolean;
+    },
   ): Promise<{
     protocolId: string;
     photoSessionId: string;
@@ -206,19 +212,21 @@ export class Fixtures {
        VALUES ($1, $2, $3, $4, 'FRONT', 'PROVIDER_CAPTURE', 'ACCEPTED', $5, $6, now(), now())`,
       [photoId, organizationId, patientId, photoSessionId, objectId, options.capturedByUserId],
     );
-    await q(
-      `INSERT INTO "PhotoPermission" (id, "organizationId", "patientId", category, scope, state, "versionNumber", "effectiveAt", evidence)
-       VALUES ($1, $2, $3, 'PATIENT_APP', 'PATIENT_WIDE', 'GRANTED', 1, now(), 'STAFF_ATTESTATION')`,
-      [permissionId, organizationId, patientId],
-    );
-    await q(
-      `WITH r AS (
-         INSERT INTO "MediaRelease" (id, "organizationId", "patientId", purpose, "photoId", "releasedById")
-         VALUES ($1, $2, $3, 'PATIENT_APP', $4, $5) RETURNING id)
-       INSERT INTO "MediaReleasePermission" ("organizationId", "patientId", "mediaReleaseId", "permissionId")
-       SELECT $2, $3, r.id, $6 FROM r`,
-      [releaseId, organizationId, patientId, photoId, options.capturedByUserId, permissionId],
-    );
+    if (options.release !== false) {
+      await q(
+        `INSERT INTO "PhotoPermission" (id, "organizationId", "patientId", category, scope, state, "versionNumber", "effectiveAt", evidence)
+         VALUES ($1, $2, $3, 'PATIENT_APP', 'PATIENT_WIDE', 'GRANTED', 1, now(), 'STAFF_ATTESTATION')`,
+        [permissionId, organizationId, patientId],
+      );
+      await q(
+        `WITH r AS (
+           INSERT INTO "MediaRelease" (id, "organizationId", "patientId", purpose, "photoId", "releasedById")
+           VALUES ($1, $2, $3, 'PATIENT_APP', $4, $5) RETURNING id)
+         INSERT INTO "MediaReleasePermission" ("organizationId", "patientId", "mediaReleaseId", "permissionId")
+         SELECT $2, $3, r.id, $6 FROM r`,
+        [releaseId, organizationId, patientId, photoId, options.capturedByUserId, permissionId],
+      );
+    }
     return { protocolId, photoSessionId, photoId, releaseId, permissionId, objectKey };
   }
 

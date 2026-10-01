@@ -25,7 +25,7 @@ import { ApiError, notFound } from "../common/errors.ts";
 import type { OperationResult } from "../common/operation.ts";
 import { requireOrganizationGrant, requireScopedPermission } from "../common/scope.ts";
 import { parseInput } from "../common/validation.ts";
-import type { Tx } from "../db/database.ts";
+import { inOrder, type Tx } from "../db/database.ts";
 
 type RetentionRow = {
   id: string;
@@ -121,8 +121,8 @@ export class ConfigurationService {
     requireOrganization(ctx);
     if (practiceId !== undefined && !(await this.practiceExists(tx, practiceId)))
       throw invalid("practiceId", "UNKNOWN_PRACTICE", "Choose one of the organization's practices.");
-    const data = await Promise.all(
-      (Object.keys(FEATURE_FLAGS) as FeatureFlagKey[]).map((key) => resolveFlag(tx, key, practiceId ?? null)),
+    const data = await inOrder(Object.keys(FEATURE_FLAGS) as FeatureFlagKey[], (key) =>
+      resolveFlag(tx, key, practiceId ?? null),
     );
     return { data, page: { hasMore: false } };
   }
@@ -249,9 +249,7 @@ export class ConfigurationService {
     const practices = orgWide
       ? (await tx.practice.findMany({ select: { id: true } })).map((p) => p.id)
       : scoped;
-    const policies = await Promise.all(
-      practices.map((id) => readPracticeSetting(tx, id, "offline.cachePolicy")),
-    );
+    const policies = await inOrder(practices, (id) => readPracticeSetting(tx, id, "offline.cachePolicy"));
     const fallback = PRACTICE_SETTINGS["offline.cachePolicy"].default;
     const data = {
       maxPatients: Math.min(fallback.maxPatients, ...policies.map((p) => p.value.maxPatients)),

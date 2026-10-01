@@ -30,7 +30,7 @@ import { ApiError, notFound } from "../common/errors.ts";
 import { Idempotency } from "../common/idempotency.ts";
 import type { OperationResult } from "../common/operation.ts";
 import { requireScopedPermission } from "../common/scope.ts";
-import type { Tx } from "../db/database.ts";
+import { inOrder, type Tx } from "../db/database.ts";
 import { extensionFor, matchesSignature } from "../media/formats.ts";
 import { hexToBase64, ObjectStore } from "../media/object-store.ts";
 import { Outbox } from "../outbox/outbox.ts";
@@ -321,7 +321,7 @@ export class PhotosService implements OnModuleInit {
     const { items, page } = paginate(rows, query.limit, (s) =>
       this.cursors.encode("photo-sessions", { k: s.startedAt.toISOString(), id: s.id }),
     );
-    return { data: await Promise.all(items.map((s) => this.sessionDto(tx, s))), page };
+    return { data: await inOrder(items, (s) => this.sessionDto(tx, s)), page };
   }
 
   async getSession(ctx: RequestContext, patientId: string, sessionId: string): Promise<OperationResult> {
@@ -597,7 +597,7 @@ export class PhotosService implements OnModuleInit {
     const { items, page } = paginate(rows as unknown as PhotoRow[], query.limit, (p) =>
       this.cursors.encode("photos", { k: p.capturedAt.toISOString(), id: p.id }),
     );
-    return { data: await Promise.all(items.map((p) => this.photoDto(tx, p))), page };
+    return { data: await inOrder(items, (p) => this.photoDto(tx, p)), page };
   }
 
   async get(ctx: RequestContext, patientId: string, photoId: string): Promise<OperationResult> {

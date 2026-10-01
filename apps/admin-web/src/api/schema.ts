@@ -900,6 +900,426 @@ export interface paths {
         patch: operations["updatePatientContact"];
         trace?: never;
     };
+    "/photography-protocols": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's photography protocols with their views.
+         * @description Permission: `photo.view` (organization scope).
+         */
+        get: operations["listPhotographyProtocols"];
+        put?: never;
+        /**
+         * Create a custom protocol as a DRAFT, optionally superseding another.
+         * @description Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        post: operations["createPhotographyProtocol"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/photography-protocols/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One protocol and its views.
+         * @description Permission: `photo.view` (organization scope).
+         */
+        get: operations["getPhotographyProtocol"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a DRAFT protocol; views are replaced as a set. Active protocols are frozen.
+         * @description Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        patch: operations["updatePhotographyProtocol"];
+        trace?: never;
+    };
+    "/photography-protocols/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate a DRAFT. A successor retires the protocol it supersedes in the same step.
+         * @description Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        post: operations["activatePhotographyProtocol"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/photography-protocols/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire an ACTIVE protocol, or discard a DRAFT. Sessions already started continue.
+         * @description Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        post: operations["retirePhotographyProtocol"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photo-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The patient's photo sessions, newest first.
+         * @description Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listPhotoSessions"];
+        put?: never;
+        /**
+         * Start a session under an ACTIVE protocol. A client UUIDv7 is accepted for offline capture.
+         * @description Permission: `photo.capture` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createPhotoSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photo-sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One session, with each view's capture state and the required views still missing.
+         * @description Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getPhotoSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photo-sessions/{sessionId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete a session. Missing required views need acknowledgeMissingRequiredViews.
+         * @description Permission: `photo.capture` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["completePhotoSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The patient's photos, newest capture first. Archived photos only on request.
+         * @description Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listPhotos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload intent: registers the photo and returns a presigned PUT for its original.
+         * @description Permission: `photo.capture` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createPhotoUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/{photoId}/complete-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the uploaded original (size, checksum, type) and hand it to the malware scan.
+         * @description Permission: `photo.capture` (organization scope). Audit: PHOTO_CAPTURED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["completePhotoUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/{photoId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Photo metadata, scan state and derivative availability. No image bytes.
+         * @description Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getPhoto"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/{photoId}/access-urls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A signed GET for one variant, valid 120 seconds. ORIGINAL needs photo.export.
+         * @description Permission: `photo.view` (organization scope). Audit: PHOTO_VIEWED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createPhotoAccessUrl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/access-urls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signed thumbnail or preview URLs for up to 60 photos (galleries). One PHOTO_VIEWED per photo.
+         * @description Permission: `photo.view` (organization scope). Audit: PHOTO_VIEWED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createPhotoAccessUrls"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/{photoId}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace the photo's tags.
+         * @description Permission: `photo.annotate` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        put: operations["replacePhotoTags"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/{photoId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive an accepted photo. The original is kept; archived photos are never reused.
+         * @description Permission: `photo.capture` (organization scope). Audit: PHOTO_ARCHIVED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["archivePhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photo-permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The current media permission per category, with per-photo and per-session exceptions.
+         * @description Permission: `photo.permission.read` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getPhotoPermissions"];
+        put?: never;
+        /**
+         * Record a media permission transition. Online only; ending a grant revokes the releases on it.
+         * @description Permission: `photo.permission.manage` (organization scope). Audit: PHOTO_PERMISSION_CHANGED, MEDIA_RELEASE_REVOKED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["recordPhotoPermission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photo-permissions/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every version of the patient's media permissions, newest first.
+         * @description Permission: `photo.permission.read` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listPhotoPermissionHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/media-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Releases of the patient's media, newest first.
+         * @description Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listMediaReleases"];
+        put?: never;
+        /**
+         * Release a photo for one purpose, pinning the permission version it relies on.
+         * @description Permission: `photo.export` (organization scope). Audit: MEDIA_RELEASED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createMediaRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/media-releases/{releaseId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a release. It stays on record with its pins.
+         * @description Permission: `photo.export` (organization scope). Audit: MEDIA_RELEASE_REVOKED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["revokeMediaRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/offline-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay views recorded offline, with their original times (spec §8 rule 8). Own views only.
+         * @description Any signed-in session; acts on the caller's own account. Audit: PATIENT_VIEWED, PHOTO_VIEWED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["recordOfflineAuditEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit/events": {
         parameters: {
             query?: never;
@@ -958,6 +1378,118 @@ export interface paths {
          */
         put: operations["putOrganizationSetting"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feature-flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every registered flag's value for the organization, or for one practice.
+         * @description Any signed-in session; acts on the caller's own account.
+         */
+        get: operations["listFeatureFlags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feature-flags/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One flag's value and where it comes from.
+         * @description Permission: `configuration.manage` (organization scope).
+         */
+        get: operations["getFeatureFlag"];
+        /**
+         * Turn a flag on or off for the organization or one practice. A flag never grants access.
+         * @description Permission: `configuration.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        put: operations["putFeatureFlag"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/offline-cache-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The offline cache policy the provider app applies: the strictest of the caller's practices.
+         * @description Any signed-in session; acts on the caller's own account.
+         */
+        get: operations["getOfflineCachePolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/practices/{practiceId}/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A practice setting, or its default.
+         * @description Permission: `configuration.manage` (organization scope).
+         */
+        get: operations["getPracticeSetting"];
+        /**
+         * Set a practice setting. If-Match is required; a setting still at its default has ETag "v0".
+         * @description Permission: `configuration.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        put: operations["putPracticeSetting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/retention-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's retention policies, newest first. Recorded only; nothing runs them yet.
+         * @description Permission: `configuration.manage` (organization scope).
+         */
+        get: operations["listRetentionPolicies"];
+        put?: never;
+        /**
+         * Record a retention policy. DELETE is refused until legal hold exists (UD-24).
+         * @description Permission: `configuration.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        post: operations["createRetentionPolicy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1754,6 +2286,392 @@ export interface components {
             isPrimary?: boolean;
             notes?: string | null;
         };
+        PhotographyProtocol: {
+            id: components["schemas"]["Uuid"];
+            name: string;
+            bodyRegion: components["schemas"]["BodyRegion"];
+            description?: string;
+            status: components["schemas"]["ProtocolStatus"];
+            /**
+             * Format: uuid
+             * @description Absent for an organization-wide protocol.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            practiceId?: string;
+            supersedesId?: components["schemas"]["Uuid"];
+            supersededById?: components["schemas"]["Uuid"];
+            /** @description One of the Bible §6.2 standard protocols seeded for every organization. */
+            standard: boolean;
+            views: components["schemas"]["ProtocolView"][];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+            version: number;
+        };
+        /** @enum {string} */
+        BodyRegion: "FACE" | "BREAST" | "ABDOMEN_BODY" | "OTHER";
+        /** @enum {string} */
+        ProtocolStatus: "DRAFT" | "ACTIVE" | "RETIRED";
+        ProtocolView: {
+            id: components["schemas"]["Uuid"];
+            /** @example LEFT_45 */
+            viewKey: string;
+            name: string;
+            sortOrder: number;
+            isRequired: boolean;
+            captureInstructions?: string;
+            poseTarget?: components["schemas"]["PoseTarget"];
+        };
+        /** @description Target pose and framing tolerances used by live guidance. */
+        PoseTarget: {
+            /** @enum {string} */
+            subject: "FACE" | "TORSO";
+            /** @description The subject's turn from facing the camera; positive shows the left side. */
+            yawDeg: number;
+            yawToleranceDeg: number;
+            pitchToleranceDeg: number;
+            rollToleranceDeg: number;
+            centerToleranceFraction: number;
+            /** @description Subject height as a fraction of the frame. */
+            frameFill: number;
+            frameFillTolerance: number;
+        };
+        /** @description Creates a DRAFT. */
+        PhotographyProtocolCreate: {
+            name: string;
+            bodyRegion: components["schemas"]["BodyRegion"];
+            description?: string;
+            practiceId?: components["schemas"]["Uuid"];
+            /**
+             * Format: uuid
+             * @description The protocol this draft replaces; activating the draft retires it.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            supersedesId?: string;
+            views: components["schemas"]["ProtocolViewInput"][];
+        };
+        /** @description Views are captured in the order given. */
+        ProtocolViewInput: {
+            /** @example LEFT_45 */
+            viewKey: string;
+            name: string;
+            isRequired: boolean;
+            captureInstructions?: string;
+            poseTarget?: components["schemas"]["PoseTarget"];
+        };
+        /** @description DRAFT protocols only; views are replaced as a set. */
+        PhotographyProtocolUpdate: {
+            name?: string;
+            bodyRegion?: components["schemas"]["BodyRegion"];
+            description?: string | null;
+            practiceId?: components["schemas"]["Uuid"] & (string | null);
+            views?: components["schemas"]["ProtocolViewInput"][];
+        };
+        PhotoSession: {
+            id: components["schemas"]["Uuid"];
+            patientId: components["schemas"]["Uuid"];
+            protocolId: components["schemas"]["Uuid"];
+            protocolName: string;
+            source: components["schemas"]["PhotoSource"];
+            status: components["schemas"]["PhotoSessionStatus"];
+            capturedByUserId?: components["schemas"]["Uuid"];
+            practiceId?: components["schemas"]["Uuid"];
+            locationId?: components["schemas"]["Uuid"];
+            startedAt: components["schemas"]["Timestamp"];
+            completedAt?: components["schemas"]["Timestamp"];
+            views: components["schemas"]["PhotoSessionView"][];
+            missingRequiredViews: string[];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+        };
+        /** @enum {string} */
+        PhotoSource: "PROVIDER_CAPTURE" | "PATIENT_UPLOAD" | "IMPORT";
+        /** @enum {string} */
+        PhotoSessionStatus: "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+        PhotoSessionView: {
+            /** @example LEFT_45 */
+            viewKey: string;
+            name: string;
+            sortOrder: number;
+            isRequired: boolean;
+            /** @description A verified photo of this view exists (accepted or being checked). */
+            captured: boolean;
+            photoCount: number;
+        };
+        PhotoSessionCreate: {
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for offline capture.
+             */
+            id?: string;
+            protocolId: components["schemas"]["Uuid"];
+            practiceId?: components["schemas"]["Uuid"];
+            locationId?: components["schemas"]["Uuid"];
+            /**
+             * Format: date-time
+             * @description When capture began on the device (offline sessions); defaults to now. Never in the future.
+             * @example 2026-09-25T14:03:11.412Z
+             */
+            startedAt?: string;
+        };
+        PhotoSessionComplete: {
+            /**
+             * @description Complete although required views are missing (422 REQUIRED_VIEWS_MISSING otherwise).
+             * @default false
+             */
+            acknowledgeMissingRequiredViews: boolean;
+        };
+        Photo: {
+            id: components["schemas"]["Uuid"];
+            patientId: components["schemas"]["Uuid"];
+            photoSessionId?: components["schemas"]["Uuid"];
+            /** @example LEFT_45 */
+            viewKey?: string;
+            source: components["schemas"]["PhotoSource"];
+            status: components["schemas"]["PhotoStatus"];
+            capturedAt: components["schemas"]["Timestamp"];
+            capturedByUserId?: components["schemas"]["Uuid"];
+            contentType: string;
+            byteSize?: number;
+            /** @description Lower-case hex SHA-256 of the exact bytes uploaded. */
+            sha256?: string;
+            widthPx?: number;
+            heightPx?: number;
+            captureMetadata?: components["schemas"]["CaptureMetadata"];
+            qualityChecks?: components["schemas"]["QualityCheck"][];
+            /** @description Photographic position match, not a medical measurement. */
+            positionMatchScore?: number;
+            scanStatus: components["schemas"]["MalwareScanStatus"];
+            rejectionReason?: components["schemas"]["PhotoRejectionReason"];
+            derivatives: components["schemas"]["DerivativeAvailability"][];
+            tags: string[];
+            archivedAt?: components["schemas"]["Timestamp"];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+        };
+        /** @enum {string} */
+        PhotoStatus: "UPLOAD_PENDING" | "QUARANTINED" | "PENDING_REVIEW" | "ACCEPTED" | "RETAKE_REQUESTED" | "REJECTED" | "ARCHIVED";
+        /** @description Device and pose estimates only; never free text. */
+        CaptureMetadata: {
+            /** @example iPad16,3 */
+            deviceModel?: string;
+            /** @enum {string} */
+            lens?: "WIDE" | "ULTRA_WIDE" | "TELEPHOTO" | "FRONT";
+            yawDeg?: number;
+            pitchDeg?: number;
+            rollDeg?: number;
+            frameFill?: number;
+            exposureDurationSeconds?: number;
+            iso?: number;
+            /** @description Photographic position match, not a medical measurement. Present when a ghost overlay was used. */
+            positionMatchScore?: number;
+            /**
+             * Format: uuid
+             * @description The earlier photo used as the ghost overlay.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            referencePhotoId?: string;
+        };
+        QualityCheck: {
+            code: components["schemas"]["GuidanceCode"];
+            passed: boolean;
+            /** @description The measured value behind the check, when it has one. */
+            value?: number;
+        };
+        /**
+         * @description Live capture guidance [B §6.4]. Clients turn each code into one plain instruction.
+         * @enum {string}
+         */
+        GuidanceCode: "MOVE_LEFT" | "MOVE_RIGHT" | "MOVE_CLOSER" | "MOVE_BACK" | "CAMERA_TOO_HIGH" | "CAMERA_TOO_LOW" | "LEVEL_CAMERA" | "PATIENT_TURN_LEFT" | "PATIENT_TURN_RIGHT" | "RAISE_CHIN" | "LOWER_CHIN" | "LIGHTING_TOO_DARK" | "RETAKE_MOTION_BLUR";
+        /** @enum {string} */
+        MalwareScanStatus: "NOT_REQUIRED" | "PENDING" | "CLEAN" | "INFECTED" | "ERROR";
+        /** @enum {string} */
+        PhotoRejectionReason: "MALWARE_DETECTED" | "SCAN_FAILED";
+        DerivativeAvailability: {
+            kind: components["schemas"]["DerivativeKind"];
+            /** @enum {string} */
+            status: "PENDING" | "AVAILABLE" | "FAILED";
+            widthPx?: number;
+            heightPx?: number;
+        };
+        /** @enum {string} */
+        DerivativeKind: "THUMBNAIL" | "DISPLAY_PREVIEW" | "ANNOTATED_DERIVATIVE" | "BEFORE_AFTER_DERIVATIVE" | "AI_SIMULATION_DERIVATIVE" | "MARKETING_DERIVATIVE" | "EXPORT_DERIVATIVE";
+        PhotoUploadIntent: {
+            photoId: components["schemas"]["Uuid"];
+            status: components["schemas"]["PhotoStatus"];
+            /** @description Present while the photo waits for its bytes. */
+            upload?: {
+                /** @enum {string} */
+                method: "PUT";
+                /** Format: uri */
+                url: string;
+                expiresAt: components["schemas"]["Timestamp"];
+                /** @description Send exactly these headers with the PUT. */
+                headers: {
+                    [key: string]: string;
+                };
+            };
+        };
+        PhotoUploadRequest: {
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for offline capture.
+             */
+            id?: string;
+            photoSessionId: components["schemas"]["Uuid"];
+            /** @example LEFT_45 */
+            viewKey: string;
+            /**
+             * @description JPEG or PNG (ADR-0023 K2-02).
+             * @enum {string}
+             */
+            contentType: "image/jpeg" | "image/png";
+            byteSize: number;
+            /** @description Lower-case hex SHA-256 of the exact bytes uploaded. */
+            sha256: string;
+            capturedAt: components["schemas"]["Timestamp"];
+            widthPx?: number;
+            heightPx?: number;
+            captureMetadata?: components["schemas"]["CaptureMetadata"];
+            qualityChecks?: components["schemas"]["QualityCheck"][];
+        };
+        /** @description A signed GET, valid 120 seconds; private, no-store. */
+        AccessUrl: {
+            photoId: components["schemas"]["Uuid"];
+            variant: components["schemas"]["PhotoVariant"];
+            /** Format: uri */
+            url: string;
+            expiresAt: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description ORIGINAL needs photo.export and is always audited.
+         * @enum {string}
+         */
+        PhotoVariant: "ORIGINAL" | "THUMBNAIL" | "DISPLAY_PREVIEW";
+        AccessUrlRequest: {
+            variant: components["schemas"]["PhotoVariant"];
+        };
+        BatchAccessUrls: {
+            urls: components["schemas"]["AccessUrl"][];
+            unavailable: {
+                photoId: components["schemas"]["Uuid"];
+                /**
+                 * @description NOT_FOUND covers absent and not visible alike; NOT_READY means no such derivative yet.
+                 * @enum {string}
+                 */
+                reason: "NOT_FOUND" | "NOT_READY";
+            }[];
+        };
+        BatchAccessUrlRequest: {
+            photoIds: components["schemas"]["Uuid"][];
+            /** @enum {string} */
+            variant: "THUMBNAIL" | "DISPLAY_PREVIEW";
+        };
+        /** @description Replaces the photo's tags. */
+        PhotoTagsPut: {
+            tags: string[];
+        };
+        PhotoPermissionSummary: {
+            categories: components["schemas"]["PhotoPermissionCategorySummary"][];
+        };
+        PhotoPermissionCategorySummary: {
+            category: components["schemas"]["MediaPermissionCategory"];
+            /**
+             * @description The current patient-wide state; NOT_REQUESTED when nothing is recorded; expiry applied.
+             * @enum {string}
+             */
+            patientWideState: "NOT_REQUESTED" | "REQUESTED" | "GRANTED" | "DECLINED" | "REVOKED" | "EXPIRED";
+            patientWide?: components["schemas"]["PhotoPermission"];
+            /** @description Current photo- and session-scoped rows; the most specific row wins (ADR-0023 K2-15). */
+            exceptions: components["schemas"]["PhotoPermission"][];
+        };
+        /**
+         * @description Independent categories [B §7.1]; none implies another.
+         * @enum {string}
+         */
+        MediaPermissionCategory: "CLINICAL_USE" | "PATIENT_APP" | "EDUCATION" | "WEBSITE" | "SOCIAL_MEDIA" | "PAID_ADVERTISING" | "RESEARCH" | "AI_TRAINING" | "INTERNAL_AI_EVALUATION";
+        /** @description One version of a media permission (append-only, Bible §7.2). */
+        PhotoPermission: {
+            id: components["schemas"]["Uuid"];
+            category: components["schemas"]["MediaPermissionCategory"];
+            scope: components["schemas"]["MediaPermissionScope"];
+            photoSessionId?: components["schemas"]["Uuid"];
+            photoId?: components["schemas"]["Uuid"];
+            state: components["schemas"]["PhotoPermissionState"];
+            versionNumber: number;
+            effectiveAt: components["schemas"]["Timestamp"];
+            expiresAt?: components["schemas"]["Timestamp"];
+            evidence?: components["schemas"]["PermissionEvidence"];
+            reason?: string;
+            recordedByUserId?: components["schemas"]["Uuid"];
+            createdAt: components["schemas"]["Timestamp"];
+            supersededAt?: components["schemas"]["Timestamp"];
+        };
+        /** @enum {string} */
+        MediaPermissionScope: "PATIENT_WIDE" | "PHOTO_SESSION" | "PHOTO";
+        /** @enum {string} */
+        PhotoPermissionState: "NOT_REQUESTED" | "REQUESTED" | "GRANTED" | "DECLINED" | "REVOKED" | "EXPIRED";
+        /** @enum {string} */
+        PermissionEvidence: "SIGNED_CONSENT" | "PATIENT_APP_ACTION" | "STAFF_ATTESTATION" | "INTEGRATION_IMPORT";
+        PhotoPermissionChange: {
+            category: components["schemas"]["MediaPermissionCategory"];
+            scope?: components["schemas"]["MediaPermissionScope"];
+            photoSessionId?: components["schemas"]["Uuid"];
+            photoId?: components["schemas"]["Uuid"];
+            /**
+             * @description The new state; EXPIRED is set only by the system at expiresAt.
+             * @enum {string}
+             */
+            state: "REQUESTED" | "GRANTED" | "DECLINED" | "REVOKED";
+            /**
+             * @description Required for GRANTED. STAFF_ATTESTATION until signed consents arrive (Layer 4).
+             * @enum {string}
+             */
+            evidence?: "SIGNED_CONSENT" | "PATIENT_APP_ACTION" | "STAFF_ATTESTATION" | "INTEGRATION_IMPORT";
+            expiresAt?: components["schemas"]["Timestamp"];
+            reason?: string;
+        };
+        MediaRelease: {
+            id: components["schemas"]["Uuid"];
+            purpose: components["schemas"]["MediaPermissionCategory"];
+            photoId?: components["schemas"]["Uuid"];
+            derivativeId?: components["schemas"]["Uuid"];
+            releasedByUserId: components["schemas"]["Uuid"];
+            releasedAt: components["schemas"]["Timestamp"];
+            revokedAt?: components["schemas"]["Timestamp"];
+            revokedByUserId?: components["schemas"]["Uuid"];
+            revocationReason?: string;
+            pinnedPermissionIds: components["schemas"]["Uuid"][];
+            active: boolean;
+        };
+        /** @description PATIENT_APP needs consultation.complete; other purposes need photo.export. */
+        MediaReleaseCreate: {
+            purpose: components["schemas"]["MediaPermissionCategory"];
+            photoId: components["schemas"]["Uuid"];
+        };
+        MediaReleaseRevoke: {
+            reason: string;
+        };
+        OfflineAuditResult: {
+            recorded: number;
+            alreadyRecorded: number;
+        };
+        OfflineAuditBatch: {
+            events: components["schemas"]["OfflineAuditEvent"][];
+        };
+        OfflineAuditEvent: {
+            /**
+             * Format: uuid
+             * @description Generated on the device; replays are recognised by it.
+             */
+            id: string;
+            /** @enum {string} */
+            action: "PATIENT_VIEWED" | "PHOTO_VIEWED";
+            patientId: components["schemas"]["Uuid"];
+            photoId?: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            variant?: "THUMBNAIL" | "DISPLAY_PREVIEW";
+            occurredAt: components["schemas"]["Timestamp"];
+        };
         AuditEvent: {
             id: components["schemas"]["Uuid"];
             occurredAt: components["schemas"]["Timestamp"];
@@ -1778,7 +2696,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        AuditAction: "LOGIN_SUCCESS" | "LOGIN_FAILURE" | "LOGOUT" | "PATIENT_CREATED" | "PATIENT_VIEWED" | "PATIENT_UPDATED" | "PATIENT_ARCHIVED" | "PHOTO_CAPTURED" | "PHOTO_VIEWED" | "PHOTO_EXPORTED" | "PHOTO_PERMISSION_CHANGED" | "CONSULTATION_CREATED" | "CONSULTATION_COMPLETED" | "SIMULATION_GENERATED" | "SIMULATION_VIEWED" | "SIMULATION_APPROVED" | "SIMULATION_REJECTED" | "SIMULATION_REGENERATED" | "SIMULATION_RELEASED" | "CONSENT_ASSIGNED" | "CONSENT_VIEWED" | "CONSENT_SIGNED" | "CONSENT_COMPLETED" | "CONSENT_VOIDED" | "MESSAGE_SENT" | "ATTACHMENT_DOWNLOADED" | "USER_CREATED" | "USER_UPDATED" | "USER_DISABLED" | "ROLE_ASSIGNED" | "INTEGRATION_SYNC_STARTED" | "INTEGRATION_SYNC_SUCCEEDED" | "INTEGRATION_SYNC_FAILED" | "DATA_EXPORT_REQUESTED" | "DATA_EXPORT_COMPLETED" | "SECURITY_SESSION_REVOKED" | "SIMULATION_CREATED" | "SIMULATION_STATUS_CHANGED" | "CONSENT_STATUS_CHANGED" | "DOCUMENT_VIEWED" | "ACCESS_DENIED" | "ROLE_REVOKED" | "PATIENT_ACCOUNT_LINKED" | "CONSULTATION_STATUS_CHANGED" | "PHOTO_ANNOTATED" | "PHOTO_INTAKE_REVIEWED" | "BEFORE_AFTER_CREATED" | "MEDIA_RELEASED" | "MEDIA_RELEASE_REVOKED" | "SIMILAR_CASES_SHOWN" | "AI_MODEL_ROLLOUT_CHANGED" | "TREATMENT_PLAN_STATUS_CHANGED" | "CONSENT_TEMPLATE_PUBLISHED" | "DOCUMENT_RELEASED" | "CONTENT_ASSIGNED" | "INSTRUCTION_ASSIGNED" | "INSTRUCTION_ACKNOWLEDGED" | "APPOINTMENT_STATUS_CHANGED" | "TELEHEALTH_STATUS_CHANGED" | "INTEGRATION_CONFIG_CHANGED" | "DATA_EXPORT_DOWNLOADED" | "CONFIGURATION_CHANGED" | "SECURITY_CREDENTIAL_CHANGED" | "ORGANIZATION_SWITCHED";
+        AuditAction: "LOGIN_SUCCESS" | "LOGIN_FAILURE" | "LOGOUT" | "PATIENT_CREATED" | "PATIENT_VIEWED" | "PATIENT_UPDATED" | "PATIENT_ARCHIVED" | "PHOTO_CAPTURED" | "PHOTO_VIEWED" | "PHOTO_EXPORTED" | "PHOTO_PERMISSION_CHANGED" | "CONSULTATION_CREATED" | "CONSULTATION_COMPLETED" | "SIMULATION_GENERATED" | "SIMULATION_VIEWED" | "SIMULATION_APPROVED" | "SIMULATION_REJECTED" | "SIMULATION_REGENERATED" | "SIMULATION_RELEASED" | "CONSENT_ASSIGNED" | "CONSENT_VIEWED" | "CONSENT_SIGNED" | "CONSENT_COMPLETED" | "CONSENT_VOIDED" | "MESSAGE_SENT" | "ATTACHMENT_DOWNLOADED" | "USER_CREATED" | "USER_UPDATED" | "USER_DISABLED" | "ROLE_ASSIGNED" | "INTEGRATION_SYNC_STARTED" | "INTEGRATION_SYNC_SUCCEEDED" | "INTEGRATION_SYNC_FAILED" | "DATA_EXPORT_REQUESTED" | "DATA_EXPORT_COMPLETED" | "SECURITY_SESSION_REVOKED" | "SIMULATION_CREATED" | "SIMULATION_STATUS_CHANGED" | "CONSENT_STATUS_CHANGED" | "DOCUMENT_VIEWED" | "ACCESS_DENIED" | "ROLE_REVOKED" | "PATIENT_ACCOUNT_LINKED" | "CONSULTATION_STATUS_CHANGED" | "PHOTO_ANNOTATED" | "PHOTO_INTAKE_REVIEWED" | "PHOTO_REJECTED" | "PHOTO_ARCHIVED" | "BEFORE_AFTER_CREATED" | "MEDIA_RELEASED" | "MEDIA_RELEASE_REVOKED" | "SIMILAR_CASES_SHOWN" | "AI_MODEL_ROLLOUT_CHANGED" | "TREATMENT_PLAN_STATUS_CHANGED" | "CONSENT_TEMPLATE_PUBLISHED" | "DOCUMENT_RELEASED" | "CONTENT_ASSIGNED" | "INSTRUCTION_ASSIGNED" | "INSTRUCTION_ACKNOWLEDGED" | "APPOINTMENT_STATUS_CHANGED" | "TELEHEALTH_STATUS_CHANGED" | "INTEGRATION_CONFIG_CHANGED" | "DATA_EXPORT_DOWNLOADED" | "CONFIGURATION_CHANGED" | "SECURITY_CREDENTIAL_CHANGED" | "ORGANIZATION_SWITCHED";
         OrganizationSetting: {
             key: components["schemas"]["OrganizationSettingKey"];
             /** @description Shape depends on the key; see the setting schemas. */
@@ -1793,6 +2711,81 @@ export interface components {
         /** @description Validated against the key's schema. */
         OrganizationSettingPut: {
             value?: unknown;
+        };
+        FeatureFlag: {
+            key: components["schemas"]["FeatureFlagKey"];
+            enabled: boolean;
+            /**
+             * @description Where the value comes from: a practice row wins over an organization row over the default.
+             * @enum {string}
+             */
+            source: "DEFAULT" | "ORGANIZATION" | "PRACTICE";
+            practiceId?: components["schemas"]["Uuid"];
+            description: string;
+            updatedAt?: components["schemas"]["Timestamp"];
+        };
+        /** @enum {string} */
+        FeatureFlagKey: "photography.ghostOverlay" | "photography.liveGuidance";
+        FeatureFlagPut: {
+            enabled: boolean;
+            /**
+             * Format: uuid
+             * @description Set the practice's value; absent sets the organization's.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            practiceId?: string;
+        };
+        /** @description The strictest cache policy among the practices the caller's grants cover. */
+        EffectiveOfflineCachePolicy: {
+            maxPatients: number;
+            /** @description At most 7: offline use ends with the session's absolute lifetime (ADR-0023 K2-17). */
+            maxAgeDays: number;
+            /** @description The practices whose policies were combined. */
+            practiceIds: components["schemas"]["Uuid"][];
+        };
+        PracticeSetting: {
+            practiceId: components["schemas"]["Uuid"];
+            key: components["schemas"]["PracticeSettingKey"];
+            /** @description Shape depends on the key; see the setting schemas. */
+            value?: unknown;
+            isDefault: boolean;
+            updatedAt?: components["schemas"]["Timestamp"];
+            /** @description 0 while the default applies. */
+            version: number;
+        };
+        /** @enum {string} */
+        PracticeSettingKey: "offline.cachePolicy";
+        /** @description Validated against the key's schema. */
+        PracticeSettingPut: {
+            value?: unknown;
+        };
+        /** @description Recorded only: no retention job runs before production readiness (ADR-0023 K2-19). */
+        RetentionPolicy: {
+            id: components["schemas"]["Uuid"];
+            recordCategory: components["schemas"]["RetentionRecordCategory"];
+            /** @description Absent: retain indefinitely. */
+            retentionDays?: number;
+            action: components["schemas"]["RetentionAction"];
+            basis: string;
+            effectiveFrom: components["schemas"]["Timestamp"];
+            createdByUserId: components["schemas"]["Uuid"];
+            createdAt: components["schemas"]["Timestamp"];
+        };
+        /** @enum {string} */
+        RetentionRecordCategory: "CLINICAL_PHOTO" | "CLINICAL_RECORD" | "CONSENT_DOCUMENT" | "MESSAGE" | "AUDIT_EVENT" | "LOGIN_EVENT" | "AI_ARTIFACT" | "DATA_EXPORT" | "TELEHEALTH_METADATA" | "INTEGRATION_PAYLOAD";
+        /** @enum {string} */
+        RetentionAction: "ARCHIVE" | "DELETE" | "REVIEW";
+        RetentionPolicyCreate: {
+            recordCategory: components["schemas"]["RetentionRecordCategory"];
+            retentionDays?: number;
+            /**
+             * @description DELETE is refused until legal hold is modelled (UD-24).
+             * @enum {string}
+             */
+            action: "ARCHIVE" | "DELETE" | "REVIEW";
+            /** @description The customer's policy or legal basis, e.g. a records schedule reference. */
+            basis: string;
+            effectiveFrom: components["schemas"]["Timestamp"];
         };
         HealthStatus: {
             /** @enum {string} */
@@ -1881,7 +2874,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description Error envelope. Codes: UPLOAD_VERIFICATION_FAILED, INPUT_QUALITY_INSUFFICIENT, UNSUPPORTED_SIMULATION_INPUT. */
+        /** @description Error envelope. Codes: UPLOAD_VERIFICATION_FAILED, REQUIRED_VIEWS_MISSING, INPUT_QUALITY_INSUFFICIENT, UNSUPPORTED_SIMULATION_INPUT. */
         Error422: {
             headers: {
                 "X-Request-Id": components["headers"]["X-Request-Id"];
@@ -4077,6 +5070,1046 @@ export interface operations {
             503: components["responses"]["Error503"];
         };
     };
+    listPhotographyProtocols: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                status?: components["schemas"]["ProtocolStatus"];
+                bodyRegion?: components["schemas"]["BodyRegion"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotographyProtocol"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createPhotographyProtocol: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotographyProtocolCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotographyProtocol"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getPhotographyProtocol: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotographyProtocol"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    updatePhotographyProtocol: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotographyProtocolUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotographyProtocol"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    activatePhotographyProtocol: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotographyProtocol"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    retirePhotographyProtocol: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotographyProtocol"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listPhotoSessions: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                status?: components["schemas"]["PhotoSessionStatus"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoSession"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createPhotoSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoSession"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getPhotoSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                sessionId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoSession"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    completePhotoSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                sessionId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoSessionComplete"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoSession"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            422: components["responses"]["Error422"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listPhotos: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Resource identifier (UUID). */
+                photoSessionId?: components["schemas"]["Uuid"];
+                viewKey?: string;
+                /** @description Default: accepted photos and those being checked. */
+                status?: "QUARANTINED" | "ACCEPTED" | "REJECTED" | "ARCHIVED";
+                includeArchived?: "true" | "false";
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Photo"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createPhotoUpload: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoUploadIntent"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            413: components["responses"]["Error413"];
+            415: components["responses"]["Error415"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    completePhotoUpload: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Photo"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            413: components["responses"]["Error413"];
+            415: components["responses"]["Error415"];
+            422: components["responses"]["Error422"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getPhoto: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Photo"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createPhotoAccessUrl: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessUrlRequest"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AccessUrl"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createPhotoAccessUrls: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchAccessUrlRequest"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["BatchAccessUrls"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    replacePhotoTags: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoTagsPut"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Photo"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    archivePhoto: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Photo"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getPhotoPermissions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoPermissionSummary"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    recordPhotoPermission: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoPermissionChange"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoPermission"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listPhotoPermissionHistory: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Independent categories [B §7.1]; none implies another. */
+                category?: components["schemas"]["MediaPermissionCategory"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoPermission"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listMediaReleases: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Independent categories [B §7.1]; none implies another. */
+                purpose?: components["schemas"]["MediaPermissionCategory"];
+                activeOnly?: "true" | "false";
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MediaRelease"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createMediaRelease: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaReleaseCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MediaRelease"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    revokeMediaRelease: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                releaseId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaReleaseRevoke"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MediaRelease"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    recordOfflineAuditEvents: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfflineAuditBatch"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OfflineAuditResult"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
     listAuditEvents: {
         parameters: {
             query?: {
@@ -4239,6 +6272,309 @@ export interface operations {
             404: components["responses"]["Error404"];
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listFeatureFlags: {
+        parameters: {
+            query?: {
+                /** @description Resolve the flag for this practice. */
+                practiceId?: string;
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["FeatureFlag"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getFeatureFlag: {
+        parameters: {
+            query?: {
+                /** @description Resolve the flag for this practice. */
+                practiceId?: string;
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["FeatureFlag"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    putFeatureFlag: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeatureFlagPut"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["FeatureFlag"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getOfflineCachePolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["EffectiveOfflineCachePolicy"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getPracticeSetting: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                practiceId: components["schemas"]["Uuid"];
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PracticeSetting"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    putPracticeSetting: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                practiceId: components["schemas"]["Uuid"];
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PracticeSettingPut"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PracticeSetting"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listRetentionPolicies: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                recordCategory?: components["schemas"]["RetentionRecordCategory"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["RetentionPolicy"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createRetentionPolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionPolicyCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["RetentionPolicy"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
             503: components["responses"]["Error503"];
         };

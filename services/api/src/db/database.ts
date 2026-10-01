@@ -11,6 +11,16 @@ import { tenantFilter, withTenantFilter } from "./tenant-filter.ts";
 
 export type Tx = Prisma.TransactionClient;
 
+/**
+ * Maps each item in order, one query at a time. A transaction holds one
+ * connection, which runs one query at a time; pg refuses to queue them.
+ */
+export async function inOrder<T, R>(items: readonly T[], map: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (const item of items) out.push(await map(item));
+  return out;
+}
+
 const TX_OPTIONS = { maxWait: 5_000, timeout: 15_000 } as const;
 
 type DatabaseConfig = Pick<Config, "DATABASE_URL" | "DATABASE_POOL_SIZE"> & {

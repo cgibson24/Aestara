@@ -140,6 +140,9 @@ export class OutboxRelay {
              "resourceId", "patientId", "requestId", "sessionId", "deviceId", host("ipAddress") AS "ipAddress",
              "userAgent", metadata, "occurredAt"
         FROM "AuditEvent" WHERE id = ANY(${[...ids]}::uuid[]) ORDER BY id`;
+    // Audit rows are append-only and written with their outbox row, so each one exists;
+    // a row the worker cannot read is never counted as archived.
+    if (rows.length !== ids.length) throw new Error("audit rows missing for the archive batch");
     const byDay = new Map<string, Record<string, unknown>[]>();
     for (const row of rows) {
       const day = (row.occurredAt as Date).toISOString().slice(0, 10);
@@ -158,6 +161,8 @@ export class OutboxRelay {
             Body: body,
             ContentType: "application/x-ndjson",
             IfNoneMatch: "*",
+            // Object Lock needs the checksum algorithm header, not only the checksum.
+            ChecksumAlgorithm: "SHA256",
             ChecksumSHA256: createHash("sha256").update(body).digest("base64"),
           }),
         );

@@ -96,24 +96,29 @@ export class UsersService implements OnModuleInit {
   private async staffUsers(tx: Tx, memberships: MembershipRow[]): Promise<z.input<typeof StaffUser>[]> {
     const userIds = memberships.map((m) => m.userId);
     if (userIds.length === 0) return [];
-    const [users, grants, providers, staff, factors] = await Promise.all([
-      tx.user.findMany({ where: { id: { in: userIds } } }),
-      tx.userRole.findMany({
-        where: { userId: { in: userIds }, revokedAt: null },
-        orderBy: { assignedAt: "asc" },
-      }),
-      tx.providerProfile.findMany({ where: { userId: { in: userIds } }, select: { userId: true } }),
-      tx.staffProfile.findMany({ where: { userId: { in: userIds } }, select: { userId: true } }),
-      tx.userCredential.findMany({
-        where: {
-          userId: { in: userIds },
-          type: { in: ["TOTP", "WEBAUTHN"] },
-          revokedAt: null,
-          confirmedAt: { not: null },
-        },
-        select: { userId: true },
-      }),
-    ]);
+    // One query at a time: the transaction's connection runs them in turn anyway.
+    const users = await tx.user.findMany({ where: { id: { in: userIds } } });
+    const grants = await tx.userRole.findMany({
+      where: { userId: { in: userIds }, revokedAt: null },
+      orderBy: { assignedAt: "asc" },
+    });
+    const providers = await tx.providerProfile.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true },
+    });
+    const staff = await tx.staffProfile.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true },
+    });
+    const factors = await tx.userCredential.findMany({
+      where: {
+        userId: { in: userIds },
+        type: { in: ["TOTP", "WEBAUTHN"] },
+        revokedAt: null,
+        confirmedAt: { not: null },
+      },
+      select: { userId: true },
+    });
     const byId = new Map(users.map((u) => [u.id, u]));
     const withProvider = new Set(providers.map((p) => p.userId));
     const withStaff = new Set(staff.map((p) => p.userId));
