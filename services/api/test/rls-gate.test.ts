@@ -16,7 +16,8 @@ const ORGANIZATIONS = 20;
 const PATIENTS_PER_ORGANIZATION = 5_000;
 const STAFF_PER_ORGANIZATION = 10;
 const AUDIT_EVENTS_PER_ORGANIZATION = 10_000;
-const ROUNDS = Number(process.env.RLS_GATE_ROUNDS ?? 1000);
+const ROUNDS = Number(process.env.RLS_GATE_ROUNDS ?? 3000);
+const LOGIN_ROUNDS = Math.min(ROUNDS, 600);
 const LIMIT_RATIO = 0.1;
 const LIMIT_MS = 5;
 const BASELINE_LOGIN = "aestara_api_bench_baseline";
@@ -168,7 +169,7 @@ describe.runIf(databaseAvailable() && process.env.RLS_GATE === "1")("RLS gate, e
     let failed = false;
     for (const [name, run] of Object.entries(workloads)) {
       const times = { rls: [] as number[], baseline: [] as number[] };
-      const rounds = name === "login" ? Math.min(ROUNDS, 200) : ROUNDS;
+      const rounds = name === "login" ? LOGIN_ROUNDS : ROUNDS;
       for (let w = 0; w < 20; w++) {
         await run(rls);
         await run(baseline);
@@ -195,7 +196,7 @@ describe.runIf(databaseAvailable() && process.env.RLS_GATE === "1")("RLS gate, e
     const table = [
       "### RLS gate, end to end (ADR-0004: ≤ 10% and ≤ 5 ms added p95)",
       "",
-      `${ORGANIZATIONS} organizations, ${ORGANIZATIONS * PATIENTS_PER_ORGANIZATION} patients, ${ORGANIZATIONS * AUDIT_EVENTS_PER_ORGANIZATION} audit events; ${ROUNDS} rounds (login ${Math.min(ROUNDS, 200)}).`,
+      `${ORGANIZATIONS} organizations, ${ORGANIZATIONS * PATIENTS_PER_ORGANIZATION} patients, ${ORGANIZATIONS * AUDIT_EVENTS_PER_ORGANIZATION} audit events; ${ROUNDS} rounds (login ${LOGIN_ROUNDS}).`,
       "",
       "| Request | Median, baseline / RLS (ms) | Baseline p95 (ms) | RLS p95 (ms) | Added p95 (ms) | Added | Result |",
       "|---|---|---|---|---|---|---|",

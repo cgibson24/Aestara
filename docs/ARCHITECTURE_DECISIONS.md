@@ -476,7 +476,7 @@ Status values:
   - Spec §6.2 gains `SEPARATION_OF_DUTIES`; spec §6.3 gains the enrollment confirmation endpoint and the `GET /.well-known/jwks.json` path under `/api/v1`. `UserCredential.confirmedAt` is added by a new migration.
   - The open items in `AUTHENTICATION_ARCHITECTURE.md` §14 for M1.3 and M1.6 are closed.
   - The factor-confirmation migration also grants the platform role `SELECT ("confirmedAt")` on `UserCredential` (the step-up check before an MFA reset) and `UPDATE ("consumedAt")` on `UserToken` (a re-invitation supersedes the earlier one).
-  - **RLS gate, end to end (M1.8):** CI runs login, patient search and patient open through the whole api, as the application role and as an identical role with `BYPASSRLS`, 1,000 alternating rounds each (login 200), and fails if any adds more than 10% or 5 ms p95. Fewer rounds are dominated by noise at p95.
+  - **RLS gate, end to end (M1.8):** CI runs login, patient search and patient open through the whole api, as the application role and as an identical role with `BYPASSRLS`, 3,000 alternating rounds each (login 600), and fails if any adds more than 10% or 5 ms p95. A p95 rests on the slowest 5% of samples; with 1,000 rounds, write-path tail spikes (patient open writes `PATIENT_VIEWED`) moved it by up to 0.9 ms on a 5 ms request while the medians agreed within 2%, so the gate uses 3,000.
   - Passkey sign-in on iOS needs associated domains, so it waits for UD-34 and the domain names (F-32). The api and the admin web support passkeys in Layer 1.
 
 ## ADR-0022

@@ -82,6 +82,7 @@ fi
 echo "PASS  $(echo "$out" | tail -1 | tr -d ' ') database checks"
 
 echo "==> development seed (Bible §32 #3)"
+npx prisma generate >/dev/null   # the seed uses the generated client
 seed_out="$(DATABASE_URL="$db_admin_url" node scripts/seed-dev.ts)"
 grep -q "Local invitation token" <<<"$seed_out" || { echo "$seed_out"; echo "FAIL  the seed printed no invitation"; exit 1; }
 seed_checks="$(psql "$db_admin_url" -v ON_ERROR_STOP=1 -qAt <<'SQL'

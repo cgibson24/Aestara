@@ -17,6 +17,7 @@ All material changes to the architecture, contracts and repository. Newest first
 - **Acceptance evidence:** the database tests now check the development seed (Bible §32 #3); a new api test asserts every Layer 1 audit event and that patient events carry no demographics (#10).
 - **Local development:** `pnpm dev:stack` and `pnpm dev:admin` run Layer 1 locally; Mailpit joins `docker-compose.yml` (ADR-0018 K-14).
 - `packages/security` stays a placeholder until a second service shares its code (ADR-0022).
+- **RLS gate:** 3,000 alternating rounds (login 600) instead of 1,000 (200), so that write-path tail noise cannot decide the p95 (ADR-0021).
 
 ## 2026-10-01: Layer 1 API implementation decisions (ADR-0021)
 
