@@ -164,6 +164,8 @@ describe.runIf(databaseAvailable())("patients", () => {
       lastName: "Ørsted-Lund",
       dateOfBirth: "1999-09-09",
       phone: "+1 (555) 555-0199",
+      email: "Zoe.Orsted@Example.test",
+      mrn: "ZL-0919",
     });
     await fx.patient(org, { firstName: "Zachary", lastName: "Orr", dateOfBirth: "1980-01-01" });
     const ids = async (payload: Record<string, unknown>) =>
@@ -175,6 +177,10 @@ describe.runIf(databaseAvailable())("patients", () => {
     expect(await ids({ dateOfBirth: "1999-09-09" })).toEqual(["Ørsted-Lund"]);
     expect(await ids({ phone: "555-555-0199" })).toEqual([]);
     expect(await ids({ phone: "15555550199" })).toEqual(["Ørsted-Lund"]);
+    expect(await ids({ email: "zoe.orsted@example.TEST" })).toEqual(["Ørsted-Lund"]);
+    expect(await ids({ email: "zoe@example.test" })).toEqual([]);
+    expect(await ids({ mrn: "ZL-0919" })).toEqual(["Ørsted-Lund"]);
+    expect(await ids({ mrn: "ZL-091" })).toEqual([]);
     expect(await ids({ name: "zach", dateOfBirth: "1999-09-09" })).toEqual([]);
     const empty = await search(frontDesk, {});
     expect(empty.statusCode).toBe(400);

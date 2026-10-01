@@ -99,7 +99,7 @@ Before the first TestFlight build we need the Apple Developer team and bundle id
 
 ## 7. Admin web (from Layer 1)
 
-Layer 1 builds a minimal shell (M1.11: sign-in, users and roles, the audit viewer) that runs against the Layer 1 API locally and in CI (ADR-0018 K-23). Once deployed, it is a static build of the React SPA (ADR-0003), uploaded to a private S3 bucket and served through CloudFront with WAF. It is fronted only for static assets; it never serves PHI [B §25.3]. Releases are atomic: new assets are uploaded under content-hashed names, then `index.html` is switched and invalidated. Rollback switches `index.html` back.
+Layer 1 builds a minimal shell (M1.11: sign-in, users and roles, the audit viewer) that runs against the Layer 1 API locally and in CI (ADR-0018 K-23). Once deployed, it is a static build of the React SPA (ADR-0003), uploaded to a private S3 bucket and served through CloudFront with WAF. It is fronted only for static assets; it never serves PHI [B §25.3]. Releases are atomic: new assets are uploaded under content-hashed names, then `index.html` is switched and invalidated. Rollback switches `index.html` back. A CloudFront response headers policy serves the portal's Content Security Policy and companion headers from `apps/admin-web/security-headers.ts` (ADR-0022), including `frame-ancestors 'none'`, which the page's meta tag cannot carry.
 
 ## 8. AI models (from Layer 7)
 
