@@ -277,7 +277,7 @@ Each carried finding also appears in the relevant document's open items. The lay
 
 ## 6. Layer 1 acceptance review [B §32]
 
-Layer 1 (identity, tenancy, patients) was built in micro-prompts M1.1 to M1.11 on the branch `claude/jolly-keller-qmwt2o` (ADR-0018 to ADR-0022). Evidence is the test named and the CI job that runs it on every push; the numbers are the Bible's own. Format: [TESTING_STRATEGY.md](TESTING_STRATEGY.md#17-acceptance-review-format); planned locations: [TESTING_STRATEGY.md](TESTING_STRATEGY.md#181-layer-1-acceptance-b-32).
+Layer 1 (identity, tenancy, patients) was built in micro-prompts M1.1 to M1.11 on the branch `claude/jolly-keller-qmwt2o` (ADR-0018 to ADR-0022); this review is M1.12. Evidence is the test named and the CI job that runs it on every push, and the final run is [CI run 41](https://github.com/cgibson24/Aestara/actions/runs/36863057081) on commit `c2cd6ec`, green in all seven jobs; the numbers are the Bible's own. Format: [TESTING_STRATEGY.md](TESTING_STRATEGY.md#17-acceptance-review-format); planned locations: [TESTING_STRATEGY.md](TESTING_STRATEGY.md#181-layer-1-acceptance-b-32).
 
 ### 6.1 The fifteen criteria
 
@@ -291,12 +291,12 @@ Layer 1 (identity, tenancy, patients) was built in micro-prompts M1.1 to M1.11 o
 | 6 | Authorized provider can open an allowed patient | `patients.test.ts` (profile with the twelve tabs and their readability, `PATIENT_VIEWED`); the generated cross-tenant tests answer `404 PATIENT_NOT_FOUND` for another organization's patient (patients are shared across the practices of one organization, D-01); `ProviderFlowTests` opens the new patient | PASS | |
 | 7 | Cross-tenant access is rejected server-side | `services/api/test/authorization.test.ts`: tests generated from the endpoint registry for every tenant-scoped operation (other organization → 404 with an identical body, missing permission → 403 or 404); the RLS suite (`packages/database/test/sql/rls.sql`); explicit tenant filter plus forced RLS (ADR-0021) | PASS | 100% of the 62 operations are in the registry the generator reads |
 | 8 | Patient search works | `patients.test.ts` (`POST /patients/search`: name prefix, exact date of birth, email, phone, MRN; tenant-scoped; no term in the URL); RLS check S21 (the index is used under the tenant policy); `ProviderFlowTests` finds the new patient by name | PASS | ADR-0020 leakproof keys; RLS gate passes end to end |
-| 9 | Patient profile shell opens | `ProviderFlowTests` on iPhone and iPad: all twelve tabs present, the Photos tab shows its empty state | PASS | CI `ios` job, UI tests against the real api |
+| 9 | Patient profile shell opens | `ProviderFlowTests` on iPhone and iPad: all twelve tabs present, the Photos tab shows its empty state | PASS | CI `ios` job, UI tests against the real api (run 41) |
 | 10 | Audit events are written | `services/api/test/audit-events.test.ts`: each of the 11 Bible §32 events and the Layer 1 additions (`ROLE_REVOKED`, `ORGANIZATION_SWITCHED`, `SECURITY_SESSION_REVOKED`) with actor, organization, resource and outcome, and no demographics in patient events; `ACCESS_DENIED`, `CONFIGURATION_CHANGED` and `SECURITY_CREDENTIAL_CHANGED` in the authorization and administration tests; append-only enforced by the database | PASS | |
 | 11 | Provider iOS app builds | CI `ios` job: Tuist generate, the provider app for iPhone and iPad and the patient app, Xcode 26.6, Swift 6 strict concurrency | PASS | |
 | 12 | Login UI works | `ProviderFlowTests`: a wrong password shows the server's message, then password and TOTP sign in, on iPhone and iPad; `portal.spec.ts`: wrong password, enrollment, TOTP sign-in, cookie restore, sign-out | PASS | |
 | 13 | Patient list, search and create work | `ProviderFlowTests` on iPhone and iPad: create with the duplicate check, search by name prefix | PASS | |
-| 14 | Required tests pass | CI green on the final commit: lint, typecheck, unit and HTTP tests (api 218, database 45 plus 61 database checks and the seed check, contracts 36, admin web 11, tokens 63, prototype 173), the end-to-end RLS gate, Playwright (7), iOS module tests, hosted Keychain tests and UI tests (iPhone, iPad), Terraform checks, OSV-Scanner, gitleaks, Trivy and CodeQL | PASS | No test is skipped to get green; the RLS gate runs as its own CI step |
+| 14 | Required tests pass | CI green on the final commit ([run 41](https://github.com/cgibson24/Aestara/actions/runs/36863057081), `c2cd6ec`): lint, typecheck, unit and HTTP tests (api 219, database 45 plus 61 database checks and the seed check, contracts 36, admin web 11, tokens 63, prototype 173), the end-to-end RLS gate, Playwright (7), iOS module tests, hosted Keychain tests and UI tests (iPhone, iPad), Terraform checks, OSV-Scanner, gitleaks, Trivy and CodeQL | PASS | No test is skipped to get green; the RLS gate runs as its own CI step |
 | 15 | Run, test and migration commands are documented | `README.md` ("Run Layer 1 locally", "Verification"), `CLAUDE.md` (Commands), `services/api/README.md`, `apps/admin-web/README.md`, `apps/ios-provider/README.md`; the commands are the ones CI runs | PASS | |
 
 ### 6.2 What Layer 1 delivers
@@ -310,7 +310,7 @@ Layer 1 (identity, tenancy, patients) was built in micro-prompts M1.1 to M1.11 o
 - Provider iOS app: sign-in with TOTP, Face ID unlock, background relock, privacy cover; adaptive shell; patient list, search, create and profile shell; settings (ADR-0022).
 - Admin web portal: sign-in with TOTP or passkey, invitations and resets, users and roles, audit log, account; Content Security Policy (ADR-0022).
 
-**Files.** 223 files changed against the Layer 0 acceptance commit: 157 added, 62 modified, 4 removed (the Layer 0 placeholders of four iOS modules and the old router). By area: `services/api` (66 new), `packages/database` (26), `apps/admin-web` (25), `apps/ios-provider` (16), `packages/api-contracts` (8), `packages/shared-types` (5), `docs` and `.github`. `git diff --stat 5731563` lists them.
+**Files.** 224 files changed against the Layer 0 acceptance commit: 157 added, 63 modified, 4 removed (the Layer 0 placeholders of four iOS modules and the old router). By area: `services/api` (66 new), `packages/database` (26), `apps/admin-web` (25), `apps/ios-provider` (16), `packages/api-contracts` (8), `packages/shared-types` (5), `docs` and `.github`. `git diff --stat 5731563` lists them.
 
 **Migrations** (`packages/database/prisma/migrations`): `20260929000000_layer1_tables`, `20260929000100_layer1_constraints`, `20260929000200_layer1_security`, `20260929000300_layer1_catalog`, `20261001000000_layer1_factor_confirmation`.
 
@@ -321,6 +321,10 @@ Layer 1 (identity, tenancy, patients) was built in micro-prompts M1.1 to M1.11 o
 **Audit events.** The 11 Bible §32 events plus `ROLE_REVOKED`, `ACCESS_DENIED`, `CONFIGURATION_CHANGED`, `SECURITY_SESSION_REVOKED`, `SECURITY_CREDENTIAL_CHANGED` and `ORGANIZATION_SWITCHED` (spec §6.4, §7.3). Sign-in steps are also ledgered in `LoginEvent`.
 
 **Tests.** As in row 14. The api tests run as the runtime database roles, never a superuser; the cross-tenant and authorization tests are generated from the endpoint registry, so a new endpoint is tested by construction.
+
+**Fixed during the review.** The UI tests on a loaded macOS runner found two real defects, both fixed with regression tests:
+- The patient-search rate limit used a fixed minute, so 60 searches could be followed by 60 more across the minute boundary. It is now a sliding 60-second window (`patients.test.ts` pins the clock before the boundary).
+- Sign-in verified the password (Argon2id) inside a database transaction, so a saturated pool timed out with a 500. The check now runs between two short transactions, and a pool timeout (Prisma `P2028`) answers `503 SERVICE_UNAVAILABLE` with `Retry-After`, documented on every operation (ADR-0021).
 
 **Security considerations.**
 - Tenancy: forced RLS on every tenant table, an explicit tenant filter in the api, a platform role without access to patient tables, identical 404s across tenants (SR-TEN; T1.x).

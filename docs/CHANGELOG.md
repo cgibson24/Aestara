@@ -19,6 +19,7 @@ All material changes to the architecture, contracts and repository. Newest first
 - `packages/security` stays a placeholder until a second service shares its code (ADR-0022).
 - **Sign-in under load:** the password check (Argon2id) no longer runs inside a database transaction, and a saturated database answers 503 with Retry-After instead of 500; every operation in `openapi.json` documents 503. Found by the iOS UI tests on a loaded CI runner.
 - **Patient search rate limit:** a sliding 60-second window replaces the per-calendar-minute counter, which reset at each minute boundary and allowed a burst of up to 120 searches across it.
+- **Layer 1 acceptance review (M1.12):** all fifteen Bible §32 criteria pass (`ACCEPTANCE_CRITERIA.md` §6), with CI run 41 on `c2cd6ec` green in every job. Layer 1 awaits the owner's sign-off; Layer 2 has not started.
 - **RLS gate:** 3,000 alternating rounds (login 600) instead of 1,000 (200), so that write-path tail noise cannot decide the p95 (ADR-0021).
 
 ## 2026-10-01: Layer 1 API implementation decisions (ADR-0021)
