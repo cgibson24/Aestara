@@ -934,7 +934,8 @@ export function routePath(path: string): string {
 
 /** Every error status an endpoint can return, from its auth, inputs and headers. */
 export function errorStatuses(e: EndpointDefinition): number[] {
-  const statuses = new Set<number>([400, 500, ...(e.errors ?? [])]);
+  // 503: any operation can meet a saturated database (retry after Retry-After).
+  const statuses = new Set<number>([400, 500, 503, ...(e.errors ?? [])]);
   if (e.auth.kind !== "public") statuses.add(401);
   if (e.auth.kind === "permission" || e.stepUp) statuses.add(403);
   if (e.params !== undefined || e.notFound !== undefined) statuses.add(404);

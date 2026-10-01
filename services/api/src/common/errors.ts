@@ -74,6 +74,10 @@ export function mapDatabaseError(error: unknown): ApiError | undefined {
   if (sqlState === "AE001" || text.includes("IMMUTABLE_RECORD")) return new ApiError("IMMUTABLE_RECORD");
   if (sqlState === "AE002" || text.includes("SEPARATION_OF_DUTIES"))
     return new ApiError("SEPARATION_OF_DUTIES");
+  // Prisma could not start the interactive transaction in time, or it expired:
+  // the database is saturated, so the client may retry shortly.
+  if (code === "P2028")
+    return new ApiError("SERVICE_UNAVAILABLE", undefined, undefined, { "Retry-After": "2" });
   if (sqlState === "55P03")
     return new ApiError("IDEMPOTENCY_IN_PROGRESS", undefined, undefined, { "Retry-After": "1" });
   return undefined;

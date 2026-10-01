@@ -97,9 +97,9 @@ describe("endpoint registry", () => {
 
   it("derives error statuses from auth, parameters and headers", () => {
     const update = all.find((e) => e.operationId === "updatePatient");
-    expect(update && errorStatuses(update)).toEqual([400, 401, 403, 404, 409, 412, 428, 500]);
+    expect(update && errorStatuses(update)).toEqual([400, 401, 403, 404, 409, 412, 428, 500, 503]);
     const live = all.find((e) => e.operationId === "getLiveness");
-    expect(live && errorStatuses(live)).toEqual([400, 500]);
+    expect(live && errorStatuses(live)).toEqual([400, 500, 503]);
   });
 
   it("converts paths to the router form", () => {

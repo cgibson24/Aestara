@@ -84,6 +84,25 @@ export class AuthService {
     this.checkClient(body.clientApp, body.device !== undefined);
     const email = normalizeEmail(body.email);
     const identifierHash = this.identifierHash(email);
+    // Argon2id is deliberately slow, so the password is checked between two short
+    // transactions rather than inside one: no connection or transaction waits on it.
+    const stored = await this.db.identity(async (tx) => {
+      const user = await tx.user.findUnique({ where: { kind_email: { kind: "WORKFORCE", email } } });
+      const password = user
+        ? await tx.userCredential.findFirst({ where: { userId: user.id, type: "PASSWORD", revokedAt: null } })
+        : null;
+      const lock = await lockState(tx, identifierHash, password?.createdAt ?? null);
+      return {
+        credentialId: password?.id ?? null,
+        passwordHash: password?.passwordHash ?? null,
+        locked: lock.locked,
+      };
+    });
+    // A locked identifier is refused without checking the password.
+    const checked = stored.locked
+      ? false
+      : await verifyPassword(stored.passwordHash ?? (await dummyPasswordHash()), body.password);
+
     const outcome = await this.db.identity(async (tx): Promise<Outcome<z.input<typeof AuthTokens>>> => {
       const user = await tx.user.findUnique({ where: { kind_email: { kind: "WORKFORCE", email } } });
       const password = user
@@ -95,10 +114,9 @@ export class AuthService {
         await this.recordFailure(tx, ctx, ledger, "ACCOUNT_LOCKED");
         return fail(rateLimited(lock.retryAfterSeconds));
       }
-      const valid = await verifyPassword(
-        password?.passwordHash ?? (await dummyPasswordHash()),
-        body.password,
-      );
+      // The check counts only for the credential it was made against: a password
+      // changed in between makes this attempt invalid.
+      const valid = checked && password !== null && password.id === stored.credentialId;
       if (user === null || password === null || !valid) {
         await this.recordFailure(tx, ctx, ledger, "INVALID_CREDENTIALS");
         return fail(new ApiError("UNAUTHENTICATED", INVALID_CREDENTIALS));

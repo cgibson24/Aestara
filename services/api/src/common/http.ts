@@ -103,6 +103,15 @@ export function sendErrorEnvelope(
   if (error === undefined) {
     logger.error({ requestId, err: safeError(exception) }, "unhandled error");
     error = new ApiError("INTERNAL_ERROR");
+  } else if ((exception as { code?: string } | null)?.code === "P2028") {
+    // Which limit was reached, classified from Prisma's fixed message (no data in it).
+    const text = exception instanceof Error ? exception.message : "";
+    const reason = /start a transaction/i.test(text)
+      ? "maxWait"
+      : /closed|expired|timeout/i.test(text)
+        ? "timeout"
+        : "other";
+    logger.warn({ requestId, prisma: "P2028", reason }, "database busy");
   }
   for (const [name, value] of Object.entries(error.headers ?? {})) reply.header(name, value);
   reply.header(Header.requestId, requestId);

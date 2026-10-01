@@ -17,6 +17,7 @@ All material changes to the architecture, contracts and repository. Newest first
 - **Acceptance evidence:** the database tests now check the development seed (Bible §32 #3); a new api test asserts every Layer 1 audit event and that patient events carry no demographics (#10).
 - **Local development:** `pnpm dev:stack` and `pnpm dev:admin` run Layer 1 locally; Mailpit joins `docker-compose.yml` (ADR-0018 K-14).
 - `packages/security` stays a placeholder until a second service shares its code (ADR-0022).
+- **Sign-in under load:** the password check (Argon2id) no longer runs inside a database transaction, and a saturated database answers 503 with Retry-After instead of 500; every operation in `openapi.json` documents 503. Found by the iOS UI tests on a loaded CI runner.
 - **Patient search rate limit:** a sliding 60-second window replaces the per-calendar-minute counter, which reset at each minute boundary and allowed a burst of up to 120 searches across it.
 - **RLS gate:** 3,000 alternating rounds (login 600) instead of 1,000 (200), so that write-path tail noise cannot decide the p95 (ADR-0021).
 

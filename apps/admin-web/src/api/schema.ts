@@ -1993,6 +1993,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             429: components["responses"]["Error429"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     verifyMfa: {
@@ -2027,6 +2028,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             429: components["responses"]["Error429"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     refreshToken: {
@@ -2061,6 +2063,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     logout: {
@@ -2086,6 +2089,7 @@ export interface operations {
             400: components["responses"]["Error400"];
             401: components["responses"]["Error401"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getSession: {
@@ -2115,6 +2119,7 @@ export interface operations {
             400: components["responses"]["Error400"];
             401: components["responses"]["Error401"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     switchOrganization: {
@@ -2150,6 +2155,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listOwnSessions: {
@@ -2189,6 +2195,7 @@ export interface operations {
             400: components["responses"]["Error400"];
             401: components["responses"]["Error401"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     revokeOwnSession: {
@@ -2218,6 +2225,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     forgotPassword: {
@@ -2247,6 +2255,7 @@ export interface operations {
             400: components["responses"]["Error400"];
             429: components["responses"]["Error429"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     resetPassword: {
@@ -2276,6 +2285,7 @@ export interface operations {
             400: components["responses"]["Error400"];
             401: components["responses"]["Error401"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     changePassword: {
@@ -2306,6 +2316,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     acceptInvitation: {
@@ -2335,6 +2346,7 @@ export interface operations {
             400: components["responses"]["Error400"];
             401: components["responses"]["Error401"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     createMfaEnrollment: {
@@ -2372,6 +2384,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     confirmMfaEnrollment: {
@@ -2406,6 +2419,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     deleteMfaEnrollment: {
@@ -2437,6 +2451,7 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getJwks: {
@@ -2463,6 +2478,7 @@ export interface operations {
             };
             400: components["responses"]["Error400"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listOrganizations: {
@@ -2503,6 +2519,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     createOrganization: {
@@ -2541,6 +2558,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getOrganization: {
@@ -2576,6 +2594,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     updateOrganization: {
@@ -2619,6 +2638,7 @@ export interface operations {
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     bootstrapOrganizationAdmin: {
@@ -2660,6 +2680,7 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listPractices: {
@@ -2700,6 +2721,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     createPractice: {
@@ -2736,6 +2758,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getPractice: {
@@ -2771,6 +2794,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     updatePractice: {
@@ -2815,6 +2839,7 @@ export interface operations {
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listLocations: {
@@ -2857,6 +2882,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     createLocation: {
@@ -2894,6 +2920,7 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getLocation: {
@@ -2929,6 +2956,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     updateLocation: {
@@ -2973,6 +3001,7 @@ export interface operations {
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listUsers: {
@@ -3018,6 +3047,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     createUser: {
@@ -3056,6 +3086,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getUser: {
@@ -3091,6 +3122,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     updateUser: {
@@ -3134,6 +3166,7 @@ export interface operations {
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     disableUser: {
@@ -3170,6 +3203,7 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     createRoleAssignment: {
@@ -3209,6 +3243,7 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     revokeRoleAssignment: {
@@ -3241,6 +3276,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getProviderProfile: {
@@ -3276,6 +3312,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     putProviderProfile: {
@@ -3318,6 +3355,7 @@ export interface operations {
             404: components["responses"]["Error404"];
             412: components["responses"]["Error412"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getStaffProfile: {
@@ -3353,6 +3391,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     putStaffProfile: {
@@ -3395,6 +3434,7 @@ export interface operations {
             404: components["responses"]["Error404"];
             412: components["responses"]["Error412"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     revokeUserSessions: {
@@ -3429,6 +3469,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     resetUserMfa: {
@@ -3467,6 +3508,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listRoles: {
@@ -3507,6 +3549,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getRole: {
@@ -3541,6 +3584,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listPermissions: {
@@ -3581,6 +3625,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     searchPatients: {
@@ -3621,6 +3666,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             429: components["responses"]["Error429"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listPatients: {
@@ -3666,6 +3712,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     createPatient: {
@@ -3704,6 +3751,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     checkPatientDuplicates: {
@@ -3738,6 +3786,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getPatient: {
@@ -3773,6 +3822,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     updatePatient: {
@@ -3817,6 +3867,7 @@ export interface operations {
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     archivePatient: {
@@ -3857,6 +3908,7 @@ export interface operations {
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listPatientContacts: {
@@ -3901,6 +3953,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     createPatientContact: {
@@ -3941,6 +3994,7 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     deletePatientContact: {
@@ -3973,6 +4027,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     updatePatientContact: {
@@ -4019,6 +4074,7 @@ export interface operations {
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     listAuditEvents: {
@@ -4071,6 +4127,7 @@ export interface operations {
             401: components["responses"]["Error401"];
             403: components["responses"]["Error403"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getAuditEvent: {
@@ -4105,6 +4162,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getOrganizationSetting: {
@@ -4139,6 +4197,7 @@ export interface operations {
             403: components["responses"]["Error403"];
             404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     putOrganizationSetting: {
@@ -4181,6 +4240,7 @@ export interface operations {
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getLiveness: {
@@ -4207,6 +4267,7 @@ export interface operations {
             };
             400: components["responses"]["Error400"];
             500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
         };
     };
     getReadiness: {

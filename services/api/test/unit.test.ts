@@ -10,6 +10,7 @@ import { AccessTokens, RefreshTokens } from "../src/auth/tokens.ts";
 import { base32Encode, hotp, otpauthUri, verifyTotp } from "../src/auth/totp.ts";
 import { canonicalJson, deriveKey } from "../src/common/crypto.ts";
 import { CursorCodec, paginate } from "../src/common/cursor.ts";
+import { mapDatabaseError } from "../src/common/errors.ts";
 import { safeError } from "../src/common/logging.ts";
 import { loadConfig } from "../src/config.ts";
 import { nameKey, prefixEnd, prefixRange, similarNames } from "../src/patients/search-keys.ts";
@@ -261,5 +262,18 @@ describe("route table", () => {
   it("binds every registry operation exactly once", async () => {
     await import("../src/app.ts");
     expect(() => checkRouteTable()).not.toThrow();
+  });
+});
+
+describe("database errors", () => {
+  it("answers a saturated database with 503 and Retry-After, not 500", () => {
+    const error = mapDatabaseError(
+      Object.assign(new Error("Transaction API error: Unable to start a transaction in the given time."), {
+        code: "P2028",
+      }),
+    );
+    expect(error?.code).toBe("SERVICE_UNAVAILABLE");
+    expect(error?.status).toBe(503);
+    expect(error?.headers?.["Retry-After"]).toBe("2");
   });
 });
