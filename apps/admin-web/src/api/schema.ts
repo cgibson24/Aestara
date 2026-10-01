@@ -2363,7 +2363,11 @@ export interface components {
             name?: string;
             bodyRegion?: components["schemas"]["BodyRegion"];
             description?: string | null;
-            practiceId?: components["schemas"]["Uuid"] & (string | null);
+            /**
+             * Format: uuid
+             * @description null makes the protocol organization-wide.
+             */
+            practiceId?: string | null;
             views?: components["schemas"]["ProtocolViewInput"][];
         };
         PhotoSession: {

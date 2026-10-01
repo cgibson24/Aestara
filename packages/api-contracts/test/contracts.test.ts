@@ -184,6 +184,21 @@ describe("OpenAPI document (spec §6.8)", () => {
     expect(text).not.toContain("x-organization-id");
   });
 
+  it("never makes a referenced schema nullable through allOf, which would refuse null", () => {
+    const offenders: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (Array.isArray(node)) node.forEach((child, i) => walk(child, `${path}[${i}]`));
+      else if (node !== null && typeof node === "object") {
+        const allOf = (node as { allOf?: { type?: unknown }[] }).allOf;
+        if (allOf?.some((part) => Array.isArray(part.type) && part.type.includes("null")))
+          offenders.push(path);
+        for (const [key, child] of Object.entries(node)) walk(child, `${path}/${key}`);
+      }
+    };
+    walk(doc, "");
+    expect(offenders).toEqual([]);
+  });
+
   it("matches the committed openapi.json", () => {
     const committed = readFileSync(new URL("../openapi.json", import.meta.url), "utf8");
     expect(renderOpenApiDocument()).toBe(committed);

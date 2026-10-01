@@ -17,6 +17,8 @@ import { queryClient } from "./api/queries.ts";
 import { AuthProvider, useAuth } from "./auth/session.tsx";
 import { AccountPage } from "./pages/Account.tsx";
 import { AuditPage } from "./pages/Audit.tsx";
+import { ConfigurationPage } from "./pages/Configuration.tsx";
+import { ProtocolsPage } from "./pages/Protocols.tsx";
 import {
   AcceptInvitationPage,
   ChooseOrganizationPage,
@@ -32,6 +34,8 @@ const NAV = [
   { to: "/users", label: "Users", permission: "user.read" },
   { to: "/roles", label: "Roles", permission: "role.read" },
   { to: "/audit", label: "Audit log", permission: "audit.read" },
+  { to: "/protocols", label: "Photo protocols", permission: "practice.manage" },
+  { to: "/configuration", label: "Configuration", permission: "configuration.manage" },
 ] as const;
 
 /** Sign-in until a session exists, then the sidebar layout around the page. */
@@ -132,6 +136,16 @@ const routeTree = rootRoute.addChildren([
       getParentRoute: () => portalRoute,
       path: "/audit",
       component: guarded("audit.read", AuditPage),
+    }),
+    createRoute({
+      getParentRoute: () => portalRoute,
+      path: "/protocols",
+      component: guarded("practice.manage", ProtocolsPage),
+    }),
+    createRoute({
+      getParentRoute: () => portalRoute,
+      path: "/configuration",
+      component: guarded("configuration.manage", ConfigurationPage),
     }),
     createRoute({ getParentRoute: () => portalRoute, path: "/account", component: AccountPage }),
   ]),

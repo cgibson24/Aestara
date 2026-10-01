@@ -2916,17 +2916,12 @@
             "maxLength": 500
           },
           "practiceId": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Uuid"
-              },
-              {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            ]
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "null makes the protocol organization-wide."
           },
           "views": {
             "type": "array",

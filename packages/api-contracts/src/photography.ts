@@ -164,7 +164,12 @@ export const PhotographyProtocolUpdate = z
     name: z.string().trim().min(1).max(100).optional(),
     bodyRegion: BodyRegion.optional(),
     description: z.string().trim().min(1).max(500).nullable().optional(),
-    practiceId: Uuid.nullable().optional(),
+    // A plain uuid: a nullable reference renders as allOf, which would refuse null.
+    practiceId: z
+      .uuid()
+      .nullable()
+      .optional()
+      .meta({ description: "null makes the protocol organization-wide." }),
     views: ProtocolViews.optional(),
   })
   .refine((u) => Object.keys(u).length > 0, { message: "Change at least one field." })

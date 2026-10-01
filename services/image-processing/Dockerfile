@@ -15,7 +15,13 @@ COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
 FROM ${PYTHON_IMAGE}
-RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin imageproc
+# Debian security fixes published since the base image, and no pip: the runtime
+# installs nothing, and pip's vendored libraries would only add findings (ADR-0024).
+RUN apt-get update \
+ && apt-get upgrade --yes --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/* \
+ && python -m pip uninstall --yes --quiet pip \
+ && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin imageproc
 COPY --from=build /app/.venv /app/.venv
 ENV PATH=/app/.venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 APP_ENV=production
 USER 10001

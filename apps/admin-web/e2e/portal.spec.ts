@@ -1,7 +1,8 @@
-// The Layer 1 admin flows against the real api (roadmap M1.11): accept the
+// The admin flows against the real api (roadmap M1.11, M2.3, M2.10): accept the
 // invitation, enroll an authenticator, sign in with it, invite a colleague
 // with a role, see it in the audit log, sign out and back in, and confirm the
-// refresh cookie restores the session while the access token never persists.
+// refresh cookie restores the session while the access token never persists;
+// then author a photo protocol and change the Layer 2 configuration.
 import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { Authenticator } from "../../../services/api/scripts/totp.ts";
@@ -132,6 +133,80 @@ test("lists this browser among the account's devices", async ({ page }) => {
   await page.getByRole("link", { name: /Demo Admin|admin@synthetic-demo.test/ }).click();
   await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
   await expect(page.getByText("This browser")).toBeVisible();
+});
+
+// Layer 2 (M2.3, ADR-0023 K2-10, K2-11): the standard protocols are there; a
+// custom draft is edited, activated, then replaced by a new version.
+test("authors, activates and replaces a photo protocol", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("link", { name: "Photo protocols" }).click();
+  await expect(page.getByRole("heading", { name: "Photo protocols" })).toBeVisible();
+  for (const name of ["Face", "Breast", "Abdomen/body contour"])
+    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "New protocol" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Neck series");
+  await page.getByLabel("Body region").selectOption("OTHER");
+  await page.getByLabel("View 1 name").fill("Front");
+  await page.getByLabel("Key").nth(0).fill("FRONT");
+  await page.getByRole("button", { name: "Add a view" }).click();
+  await page.getByLabel("View 2 name").fill("Left profile");
+  await page.getByLabel("Key").nth(1).fill("left_profile");
+  await page.getByRole("button", { name: "Save draft" }).click();
+
+  const detail = page.getByRole("article");
+  await expect(detail.getByRole("heading", { name: "Neck series" })).toBeVisible();
+  await expect(detail.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(detail.getByText("LEFT_PROFILE")).toBeVisible();
+  await detail.getByRole("button", { name: "Activate" }).click();
+  await detail.getByRole("group").getByRole("button", { name: "Activate" }).click();
+  await expect(detail.getByText("Active", { exact: true })).toBeVisible();
+  // Active protocols are frozen: only a new version or retirement is offered.
+  await expect(detail.getByRole("button", { name: "Edit draft" })).toHaveCount(0);
+
+  await detail.getByRole("button", { name: "Create a new version" }).click();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(detail.getByRole("heading", { name: "Neck series (new version)" })).toBeVisible();
+  await detail.getByRole("button", { name: "Activate" }).click();
+  await detail.getByRole("group").getByRole("button", { name: "Activate" }).click();
+  await expect(detail.getByText("Active", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Status").selectOption("RETIRED");
+  await expect(page.getByRole("button", { name: "Neck series", exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "Audit log" }).click();
+  await expect(page.getByRole("cell", { name: /Configuration changed/i }).first()).toBeVisible();
+});
+
+// Layer 2 (M2.10, ADR-0023 K2-17 to K2-19): a flag for the organization, a
+// practice's offline policy, and a recorded retention policy.
+test("changes a feature, a practice's offline policy and records a retention policy", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("link", { name: "Configuration" }).click();
+  await expect(page.getByRole("heading", { name: "Configuration" })).toBeVisible();
+
+  const ghost = page.getByRole("listitem").filter({ hasText: "photography.ghostOverlay" });
+  await expect(ghost.getByText("On", { exact: true })).toBeVisible();
+  await expect(ghost.getByText("Default", { exact: true })).toBeVisible();
+  await ghost.getByRole("button", { name: "Turn off" }).click();
+  await expect(ghost.getByText("Off", { exact: true })).toBeVisible();
+  await expect(ghost.getByText(/Set for the organization/)).toBeVisible();
+
+  await page.getByLabel("Settings for").selectOption({ label: "Synthetic Demo Practice" });
+  await expect(page.getByLabel("Days kept")).toHaveValue("7");
+  await page.getByLabel("Days kept").fill("5");
+  await page.getByRole("button", { name: "Save offline policy" }).click();
+  await expect(page.getByText(/^Saved\./)).toBeVisible();
+  await expect(page.getByLabel("Days kept")).toHaveValue("5");
+
+  await page.getByRole("button", { name: "Record a policy" }).click();
+  await page.getByLabel("Kept for (days)").fill("3650");
+  await page.getByLabel("Then").selectOption("ARCHIVE");
+  await page.getByLabel("Basis").fill("Records schedule RS-1");
+  await page.getByRole("button", { name: "Record policy" }).click();
+  const row = page.getByRole("row", { name: /Clinical photo/ });
+  await expect(row).toContainText("3650 days");
+  await expect(row).toContainText("Archive");
 });
 
 test("adds a passkey and signs in with it", async ({ page }) => {

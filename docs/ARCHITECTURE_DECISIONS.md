@@ -626,6 +626,7 @@ Status values:
   - **Configuration.** `APP_ENV=production` refuses an emulator endpoint and requires HTTPS queue URLs.
   - **Container:**
     - Built on `python:3.13-slim` pinned by digest, with the locked virtual environment installed by uv.
+    - Debian's security updates are applied at build time, and pip is removed: the runtime installs nothing, and pip's vendored libraries would add findings.
     - Runs as UID 10001 with a read-only root filesystem and a tmpfs `/tmp`.
     - The health check reads a heartbeat that the consumer loop writes.
 - **Decision, infrastructure** (`modules/storage`, `modules/messaging`; K2-04, K2-07, K2-09):

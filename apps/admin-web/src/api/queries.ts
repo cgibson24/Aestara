@@ -63,3 +63,44 @@ export const auditQuery = (filters: AuditFilters) =>
       ),
     getNextPageParam: (last) => (last.page.hasMore ? last.page.nextCursor : undefined),
   });
+
+export const practicesQuery = queryOptions({
+  queryKey: ["practices"],
+  queryFn: async () => unwrap(await api.GET("/practices", { params: { query: { limit: 100 } } })).data,
+  staleTime: 5 * 60_000,
+});
+
+export const protocolsQuery = (status: Schemas["ProtocolStatus"] | undefined) =>
+  queryOptions({
+    queryKey: ["protocols", status ?? "ALL"],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/photography-protocols", {
+          params: { query: { limit: 100, ...(status ? { status } : {}) } },
+        }),
+      ).data,
+  });
+
+export const flagsQuery = (practiceId: string | undefined) =>
+  queryOptions({
+    queryKey: ["feature-flags", practiceId ?? "ORGANIZATION"],
+    queryFn: async () =>
+      unwrap(await api.GET("/feature-flags", { params: { query: practiceId ? { practiceId } : {} } })).data,
+  });
+
+export const offlinePolicyQuery = (practiceId: string) =>
+  queryOptions({
+    queryKey: ["settings", practiceId, "offline.cachePolicy"],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/settings/practices/{practiceId}/{key}", {
+          params: { path: { practiceId, key: "offline.cachePolicy" } },
+        }),
+      ).data,
+  });
+
+export const retentionQuery = queryOptions({
+  queryKey: ["retention-policies"],
+  queryFn: async () =>
+    unwrap(await api.GET("/retention-policies", { params: { query: { limit: 100 } } })).data,
+});
