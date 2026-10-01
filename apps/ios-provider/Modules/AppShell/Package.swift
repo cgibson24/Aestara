@@ -9,7 +9,9 @@ let package = Package(
     products: [.library(name: "AppShell", targets: ["AppShell"])],
     dependencies: [
         .package(path: "../DesignSystem"),
+        .package(path: "../CoreNetworking"),
         .package(path: "../Authentication"),
+        .package(path: "../PatientDomain"),
         .package(path: "../Photography"),
         .package(path: "../Annotations"),
         .package(path: "../BeforeAfter"),
@@ -23,6 +25,6 @@ let package = Package(
         .package(path: "../Settings"),
     ],
     targets: [
-        .target(name: "AppShell", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "Authentication", package: "Authentication"), .product(name: "Photography", package: "Photography"), .product(name: "Annotations", package: "Annotations"), .product(name: "BeforeAfter", package: "BeforeAfter"), .product(name: "Simulation", package: "Simulation"), .product(name: "TreatmentPlans", package: "TreatmentPlans"), .product(name: "DocumentsConsent", package: "DocumentsConsent"), .product(name: "Education", package: "Education"), .product(name: "Appointments", package: "Appointments"), .product(name: "Messaging", package: "Messaging"), .product(name: "Telehealth", package: "Telehealth"), .product(name: "Settings", package: "Settings")]),
+        .target(name: "AppShell", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "Authentication", package: "Authentication"), .product(name: "PatientDomain", package: "PatientDomain"), .product(name: "Photography", package: "Photography"), .product(name: "Annotations", package: "Annotations"), .product(name: "BeforeAfter", package: "BeforeAfter"), .product(name: "Simulation", package: "Simulation"), .product(name: "TreatmentPlans", package: "TreatmentPlans"), .product(name: "DocumentsConsent", package: "DocumentsConsent"), .product(name: "Education", package: "Education"), .product(name: "Appointments", package: "Appointments"), .product(name: "Messaging", package: "Messaging"), .product(name: "Telehealth", package: "Telehealth"), .product(name: "Settings", package: "Settings")]),
     ]
 )

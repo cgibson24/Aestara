@@ -2,6 +2,7 @@
 // components, then one path per entry of the endpoint registry (endpoints.ts).
 import { OpenAPIRegistry, OpenApiGeneratorV31 } from "@asteasolutions/zod-to-openapi";
 import pkg from "../package.json" with { type: "json" };
+import { MfaChallengeDetails } from "./auth.ts";
 import { ENDPOINTS, type EndpointDefinition, errorStatuses } from "./endpoints.ts";
 import { ErrorCode, ErrorDetails, ErrorEnvelope, errorCodesByStatus, FieldError } from "./errors.ts";
 import { Header } from "./headers.ts";
@@ -112,6 +113,9 @@ export function buildRegistry(): OpenAPIRegistry {
       content: { "application/json": { schema: ref("schemas", "ErrorEnvelope") } },
     });
   }
+
+  // error.details of 401 MFA_REQUIRED, which clients read to continue sign-in.
+  registry.register("MfaChallengeDetails", MfaChallengeDetails);
 
   for (const e of ENDPOINTS) registerEndpoint(registry, e);
 

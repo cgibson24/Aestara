@@ -123,9 +123,8 @@ export const MfaVerifyRequest = z
     challengeToken: z.string().min(1).max(200),
     totpCode: TotpCode.optional(),
     webauthnResponse: WebAuthnJson.optional(),
-    device: DeviceInfo.optional().meta({
-      description: "The same device as in the login request (iOS apps).",
-    }),
+    /** The same device as in the login request (iOS apps). */
+    device: DeviceInfo.optional(),
     organizationId: Uuid.optional().meta({ description: "As in the login request; verified again." }),
   })
   .refine((r) => (r.totpCode === undefined) !== (r.webauthnResponse === undefined), {

@@ -18,10 +18,18 @@ let project = Project(
     name: "AestaraProvider",
     organizationName: "Aestara",
     packages: modules.map { .local(path: .relativeToManifest("Modules/\($0)")) },
-    settings: .settings(base: [
-        "SWIFT_VERSION": "6.0",
-        "SWIFT_STRICT_CONCURRENCY": "complete",
-    ]),
+    settings: .settings(
+        base: [
+            "SWIFT_VERSION": "6.0",
+            "SWIFT_STRICT_CONCURRENCY": "complete",
+        ],
+        // The API address per build (ADR-0022). Release has none until the
+        // domain names are decided (F-32, UD-34); such a build says so and stops.
+        configurations: [
+            .debug(name: "Debug", settings: ["AESTARA_API_BASE_URL": "http://localhost:3000"]),
+            .release(name: "Release", settings: ["AESTARA_API_BASE_URL": ""]),
+        ]
+    ),
     targets: [
         .target(
             name: "AestaraProvider",
@@ -44,6 +52,11 @@ let project = Project(
                     "UIInterfaceOrientationPortraitUpsideDown",
                 ],
                 "ITSAppUsesNonExemptEncryption": false,
+                "AestaraAPIBaseURL": "$(AESTARA_API_BASE_URL)",
+                // Face ID guards the saved sign-in (spec §4.2).
+                "NSFaceIDUsageDescription": "Face ID unlocks Aestara and keeps patient information private.",
+                // Only local names (localhost, .local) may use plain HTTP, for a development server.
+                "NSAppTransportSecurity": ["NSAllowsLocalNetworking": true],
             ]),
             sources: ["Sources/**"],
             dependencies: [.package(product: "AppShell")]

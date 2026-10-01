@@ -8,7 +8,10 @@ const target = fileURLToPath(new URL("../openapi.json", import.meta.url));
 // The iOS client is generated from a copy inside CoreNetworking (swift-openapi-generator reads
 // the document from the target's sources).
 const iosCopy = fileURLToPath(
-  new URL("../../../apps/ios-provider/Modules/CoreNetworking/Sources/CoreNetworking/openapi.json", import.meta.url),
+  new URL(
+    "../../../apps/ios-provider/Modules/CoreNetworking/Sources/CoreNetworking/openapi.json",
+    import.meta.url,
+  ),
 );
 const rendered = renderOpenApiDocument();
 

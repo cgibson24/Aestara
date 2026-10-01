@@ -36,7 +36,7 @@
       "bible": "§21.1",
       "layer": 1,
       "summary": "Sign-in, MFA, token refresh, biometric unlock, session revocation handling.",
-      "dependsOn": ["CoreNetworking", "CoreSecurity"]
+      "dependsOn": ["DesignSystem", "CoreNetworking", "CoreSecurity"]
     },
     "Media": {
       "tier": "platform",
@@ -134,7 +134,7 @@
       "bible": "§17, §21.1",
       "layer": 1,
       "summary": "Account, security and device settings.",
-      "dependsOn": ["DesignSystem", "Authentication"]
+      "dependsOn": ["DesignSystem", "CoreNetworking", "Authentication"]
     },
     "AppShell": {
       "tier": "app",
@@ -143,7 +143,9 @@
       "summary": "Composition root: adaptive navigation (iPad sidebar, iPhone tabs), routing, deep links that re-run authorization.",
       "dependsOn": [
         "DesignSystem",
+        "CoreNetworking",
         "Authentication",
+        "PatientDomain",
         "Photography",
         "Annotations",
         "BeforeAfter",

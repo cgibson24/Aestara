@@ -114,7 +114,8 @@ const PatientFields = {
   dateOfBirth: BirthDate,
   email: Email.nullable().optional(),
   phone: Phone.nullable().optional(),
-  primaryPracticeId: Uuid.nullable().optional(),
+  // A plain nullable UUID, so generated clients get an optional string rather than a wrapper.
+  primaryPracticeId: z.uuid().nullable().optional(),
   mrn: Mrn.nullable().optional(),
 };
 
@@ -207,7 +208,8 @@ export const DuplicateCandidate = z
   .strictObject({
     patientId: Uuid,
     matchReasons: z.array(DuplicateMatchReason).min(1),
-    summary: PatientSummary.optional().meta({ description: "Present when the caller holds patient.read." }),
+    /** Present when the caller holds patient.read. */
+    summary: PatientSummary.optional(),
   })
   .meta({ id: "DuplicateCandidate" });
 

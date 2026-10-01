@@ -2,6 +2,16 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-01: Layer 1 clients (ADR-0022)
+
+- **iOS provider app** (M1.9–M1.10):
+  - generated API client in `CoreNetworking` (swift-openapi-generator build plugin), with correlation, token refresh and error-envelope middleware
+  - sign-in with password and TOTP, authenticator enrollment, organization choice, Face ID unlock of the saved sign-in, relock after 5 minutes in the background, privacy cover
+  - adaptive shell (iPad sidebar, iPhone tabs), patient list and search, create with the duplicate check, profile with all twelve tabs, settings
+  - server address per build; Release has none until F-32 and UD-34 are decided
+  - CI builds both apps and runs the DesignSystem, CoreNetworking, CoreSecurity and PatientDomain tests on a simulator
+- **Admin web portal** (M1.11): sign-in, invitation acceptance, password reset, users and roles, audit viewer, against the Layer 1 api.
+
 ## 2026-10-01: Layer 1 API implementation decisions (ADR-0021)
 
 - The owner asked for Layer 1 (M1.2 to M1.12) to be completed before Layer 2. ADR-0021 records the decisions the documentation leaves to those micro-prompts:

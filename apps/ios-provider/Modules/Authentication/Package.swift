@@ -8,10 +8,11 @@ let package = Package(
     platforms: [.iOS("26.0")],
     products: [.library(name: "Authentication", targets: ["Authentication"])],
     dependencies: [
+        .package(path: "../DesignSystem"),
         .package(path: "../CoreNetworking"),
         .package(path: "../CoreSecurity"),
     ],
     targets: [
-        .target(name: "Authentication", dependencies: [.product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "CoreSecurity", package: "CoreSecurity")]),
+        .target(name: "Authentication", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "CoreSecurity", package: "CoreSecurity")]),
     ]
 )

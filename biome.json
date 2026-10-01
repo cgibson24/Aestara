@@ -12,7 +12,8 @@
       "!**/dist",
       "!docs",
       "!packages/api-contracts/openapi.json",
-      "!apps/ios-provider/Modules/CoreNetworking/Sources/CoreNetworking/openapi.json"
+      "!apps/ios-provider/Modules/CoreNetworking/Sources/CoreNetworking/openapi.json",
+      "!apps/admin-web/src/api/schema.ts"
     ]
   },
   "formatter": {

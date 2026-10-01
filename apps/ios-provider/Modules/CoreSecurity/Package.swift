@@ -9,5 +9,6 @@ let package = Package(
     products: [.library(name: "CoreSecurity", targets: ["CoreSecurity"])],
     targets: [
         .target(name: "CoreSecurity"),
+        .testTarget(name: "CoreSecurityTests", dependencies: ["CoreSecurity"]),
     ]
 )

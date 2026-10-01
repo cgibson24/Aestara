@@ -464,6 +464,46 @@
         "additionalProperties": false,
         "description": "Cursor pagination state. nextCursor is present when hasMore is true."
       },
+      "MfaChallengeDetails": {
+        "type": "object",
+        "properties": {
+          "challengeToken": {
+            "type": "string",
+            "description": "Send back in the body of /auth/mfa/verify. Valid 5 minutes."
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "factors": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "TOTP",
+                "WEBAUTHN"
+              ]
+            },
+            "description": "Confirmed factors the user can answer with."
+          },
+          "enrollmentRequired": {
+            "type": "boolean",
+            "description": "True when MFA is required but no factor is confirmed: enroll TOTP with the challenge first."
+          },
+          "webauthnOptions": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {},
+            "description": "Passkey assertion options, when relevant."
+          }
+        },
+        "required": [
+          "challengeToken",
+          "expiresAt",
+          "factors",
+          "enrollmentRequired"
+        ],
+        "additionalProperties": false
+      },
       "AuthTokens": {
         "type": "object",
         "properties": {
@@ -741,36 +781,7 @@
             "$ref": "#/components/schemas/WebAuthnJson"
           },
           "device": {
-            "type": "object",
-            "properties": {
-              "installationId": {
-                "type": "string",
-                "format": "uuid",
-                "description": "Per-install identifier kept in the Keychain; only its hash is stored.",
-                "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
-              },
-              "name": {
-                "type": "string",
-                "maxLength": 100
-              },
-              "model": {
-                "type": "string",
-                "maxLength": 100
-              },
-              "osVersion": {
-                "type": "string",
-                "maxLength": 40
-              },
-              "appVersion": {
-                "type": "string",
-                "maxLength": 40
-              }
-            },
-            "required": [
-              "installationId"
-            ],
-            "additionalProperties": false,
-            "description": "The same device as in the login request (iOS apps)."
+            "$ref": "#/components/schemas/DeviceInfo"
           },
           "organizationId": {
             "type": "string",
@@ -2112,46 +2123,7 @@
             "minItems": 1
           },
           "summary": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "$ref": "#/components/schemas/Uuid"
-              },
-              "status": {
-                "$ref": "#/components/schemas/PatientStatus"
-              },
-              "firstName": {
-                "type": "string"
-              },
-              "lastName": {
-                "type": "string"
-              },
-              "preferredName": {
-                "type": "string"
-              },
-              "dateOfBirth": {
-                "$ref": "#/components/schemas/DateOnly"
-              },
-              "mrn": {
-                "type": "string"
-              },
-              "primaryPracticeId": {
-                "$ref": "#/components/schemas/Uuid"
-              },
-              "updatedAt": {
-                "$ref": "#/components/schemas/Timestamp"
-              }
-            },
-            "required": [
-              "id",
-              "status",
-              "firstName",
-              "lastName",
-              "dateOfBirth",
-              "updatedAt"
-            ],
-            "additionalProperties": false,
-            "description": "Present when the caller holds patient.read."
+            "$ref": "#/components/schemas/PatientSummary"
           }
         },
         "required": [
@@ -2342,17 +2314,11 @@
             "example": "+15555550123"
           },
           "primaryPracticeId": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Uuid"
-              },
-              {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            ]
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "mrn": {
             "type": [
@@ -2489,17 +2455,11 @@
             "example": "+15555550123"
           },
           "primaryPracticeId": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Uuid"
-              },
-              {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            ]
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "mrn": {
             "type": [

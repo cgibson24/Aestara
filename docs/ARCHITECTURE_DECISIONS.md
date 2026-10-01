@@ -478,3 +478,27 @@ Status values:
   - The factor-confirmation migration also grants the platform role `SELECT ("confirmedAt")` on `UserCredential` (the step-up check before an MFA reset) and `UPDATE ("consumedAt")` on `UserToken` (a re-invitation supersedes the earlier one).
   - **RLS gate, end to end (M1.8):** CI runs login, patient search and patient open through the whole api, as the application role and as an identical role with `BYPASSRLS`, 1,000 alternating rounds each (login 200), and fails if any adds more than 10% or 5 ms p95. Fewer rounds are dominated by noise at p95.
   - Passkey sign-in on iOS needs associated domains, so it waits for UD-34 and the domain names (F-32). The api and the admin web support passkeys in Layer 1.
+
+## ADR-0022
+
+**Layer 1 clients: iOS provider shell and admin web portal**
+
+- **Status:** Adopted (delegated), 2026-10-01. Implementation choices inside ADR-0018 K-22 and K-23 and spec §4.2, §6.8 (roadmap M1.9–M1.11).
+- **Decision (both clients):**
+  - **Generated clients only.** iOS uses swift-openapi-generator as a build plugin of `CoreNetworking` over a copy of `packages/api-contracts/openapi.json` that `pnpm generate` writes and CI compares. The admin web uses openapi-typescript (`src/api/schema.ts`, also compared by CI) with openapi-fetch. No client hand-writes a request or response type.
+  - **Generated types stop at the domain layer.** On iOS, `PatientDomain` and `Authentication` map generated types to domain models; views never see generated types.
+  - **Tokens.** The access token is held in memory only. A 401 triggers one serialized refresh and one retry; a refresh that fails ends the session. On iOS the refresh token is stored in the Keychain behind the current biometric set with no passcode fallback (`biometryCurrentSet`); without biometrics it stays in memory and the next launch needs sign-in. The admin web never sees the refresh token: it is the `aestara_rt` HttpOnly cookie (ADR-0021).
+  - **Errors.** Both clients read the error envelope into one error type with the request ID shown as a reference, field errors, the MFA challenge, duplicate candidates and the current version. Messages come from the server.
+  - **Permissions shape the UI only.** Buttons appear from the session's permissions; the server's 403 or 404 is the answer. A 404 for a patient reads "not available", covering both missing and not visible (spec §4.6).
+- **Decision (iOS):**
+  - **Navigation.** `TabView` with `.sidebarAdaptable`: a sidebar on iPad and a tab bar on iPhone. Patients is a `NavigationSplitView` (list and profile). Switching organization rebuilds the signed-in shell, so no screen keeps another tenant's data.
+  - **Privacy.** A brand cover hides the app whenever the scene is not active (app switcher). After 5 minutes in the background the app asks for Face ID or Touch ID again; failure signs out (spec §4.2).
+  - **Patients.** Search sends the term in the request body (ADR-0020), after typing pauses. Create checks duplicates first; creating anyway is an explicit choice sent as `confirmNoDuplicate`. One idempotency key per draft: a retry cannot create two patients, and an edited draft gets a new key. The date of birth is the calendar date picked on the device, with no time-zone conversion. Creation is online only (K-17).
+  - **Profile.** All twelve tabs in Bible order. The server's `readable` flag decides between the tab's empty state and the permission state. Overview shows demographics; the other tabs' content arrives with their layers.
+  - **Server address.** From the build setting `AESTARA_API_BASE_URL` through `Info.plist`. Debug points at `http://localhost:3000`. Release has no address until the domain names are decided (F-32, UD-34); such a build shows that it has no server and does nothing else. The app accepts only HTTPS, except a loopback address. ATS allows plain HTTP to local names only (`NSAllowsLocalNetworking`).
+  - **Not in Layer 1.** Passkey sign-in on iOS (needs associated domains, F-32). Jailbreak detection: not adopted; it is bypassable and gives no server-side guarantee, and the server enforces every rule. Snapshot tests: deferred until the visual design of the clinical screens settles (Layer 2), to avoid churn. The encrypted local store (GRDB + SQLCipher) arrives with the offline cache (UD-25, Layer 2).
+- **Decision (admin web):**
+  - **Shape.** React single-page app with a small path router; pages for sign-in (password, TOTP, enrollment, organization choice), invitation acceptance, password reset (token in the URL fragment, never sent to a server log), users and roles, and the audit viewer. Patient data is not in the portal in Layer 1.
+  - **Origin.** Served from the same site as the api (`/api/v1` through a proxy in development), so the refresh cookie is first-party and the api's Origin check applies.
+  - **Tests.** Unit tests (Vitest, jsdom) for the client and session logic, and Playwright end-to-end tests against the real api and database in CI.
+- **Consequences:** a contract change regenerates both clients and fails CI until they compile. Release builds of the iOS app need F-32 and UD-34 decided before TestFlight.
