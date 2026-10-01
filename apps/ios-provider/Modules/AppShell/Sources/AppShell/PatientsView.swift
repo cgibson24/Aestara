@@ -12,12 +12,14 @@ struct PatientsSplitView: View {
     let repository: PatientRepository
     let session: SessionSummary?
     @State private var selection: PatientSummary.ID?
+    /// A patient to open once the reloaded list shows it (see PatientListView.load).
+    @State private var pendingSelection: PatientSummary.ID?
     @State private var creating = false
     @State private var reload = 0
 
     var body: some View {
         NavigationSplitView {
-            PatientListView(repository: repository, selection: $selection, reload: reload)
+            PatientListView(repository: repository, selection: $selection, pendingSelection: $pendingSelection, reload: reload)
                 .navigationTitle("Patients")
                 .toolbar {
                     if session?.can("patient.create") == true {
@@ -38,11 +40,12 @@ struct PatientsSplitView: View {
         .sheet(isPresented: $creating) {
             CreatePatientView(repository: repository) { patientId in
                 creating = false
+                pendingSelection = patientId
                 reload += 1
-                selection = patientId
             } openExisting: { patientId in
                 creating = false
-                selection = patientId
+                pendingSelection = patientId
+                reload += 1
             }
         }
     }
@@ -51,6 +54,7 @@ struct PatientsSplitView: View {
 struct PatientListView: View {
     let repository: PatientRepository
     @Binding var selection: PatientSummary.ID?
+    @Binding var pendingSelection: PatientSummary.ID?
     let reload: Int
     @State private var text = ""
     @State private var state: ListState = .loading
@@ -114,6 +118,13 @@ struct PatientListView: View {
         } catch {
             if Task.isCancelled { return }
             state = .failed(error.viewState)
+        }
+        // Select only after the list holds the patient's row. On iPhone the list's
+        // selection drives the pushed profile: selecting first and then adding the
+        // row pushed the profile a second time, and that copy never loaded.
+        if let pending = pendingSelection {
+            pendingSelection = nil
+            selection = pending
         }
     }
 }
