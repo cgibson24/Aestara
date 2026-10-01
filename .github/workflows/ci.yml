@@ -457,6 +457,18 @@ jobs:
 
       # Each module's tests on an iPhone simulator, with a minimum count per
       # module: a green step alone does not show the tests executed.
+      # A simulator's first boot migrates data for minutes. The UI tests' iPad boots now,
+      # while the module tests run on an iPhone, instead of beside the whole test stack.
+      - name: Boot the iPad simulator for the UI tests
+        run: |
+          ipad=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
+          print(next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith("iPad")))')
+          echo "iPad: $ipad"
+          xcrun simctl boot "$ipad"
+
       - name: Test the Layer 0–2 modules on an iPhone simulator
         working-directory: apps/ios-provider/Modules
         run: |
@@ -603,6 +615,8 @@ jobs:
           print(f"{sys.argv[2]}: result={s['result']} passed={s['passedTests']} failed={s['failedTests']}")
           assert s["result"] == "Passed" and s["failedTests"] == 0 and s["passedTests"] >= 1, "UI tests did not all run and pass"
           PY
+            # Free the machine for the next device's run.
+            xcrun simctl shutdown "$udid"
             echo "::endgroup::"
           done
 

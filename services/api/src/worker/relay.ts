@@ -129,7 +129,8 @@ export class OutboxRelay {
         const archived = done.filter((id) => auditIds.has(id)).length;
         return { published: done.length - archived, archived, failed: failed.length };
       },
-      { timeout: 30_000 },
+      // A busy host can hold the worker's few connections for seconds; waiting is harmless.
+      { maxWait: 10_000, timeout: 30_000 },
     );
   }
 
