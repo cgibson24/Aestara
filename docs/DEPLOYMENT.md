@@ -110,7 +110,7 @@ AI model deployments are independent of application deployments, versioned, and 
 
 ## 9. Feature flags
 
-Flags allow controlled rollout per organization or practice [B §26]. **A flag never bypasses authorization**: it can hide a feature, never grant access. Flags are stored as `FeatureFlag` rows (Layer 2). Holders of `configuration.manage` change them within their scope (organization and practice admins, spec §4.5), and every change is audited (`CONFIGURATION_CHANGED`). Who manages platform-wide defaults is an open item (F-67).
+Flags allow controlled rollout per organization or practice [B §26]. **A flag never bypasses authorization**: it can hide a feature, never grant access. Flags are stored as `FeatureFlag` rows (Layer 2). Holders of `configuration.manage` change them within their scope (organization and practice admins, spec §4.5), and every change is audited (`CONFIGURATION_CHANGED`). Flag keys are registered in code with their platform defaults; a practice row wins over an organization row, which wins over the default. Platform-wide rows are not written in Layer 2: changing a platform default is a reviewed code change (F-67; ADR-0023 K2-18).
 
 ## 10. Secrets and configuration
 

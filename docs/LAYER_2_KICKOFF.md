@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | **Proposed, 2026-10-01.** Awaiting the owner's confirmation. Nothing here is adopted until it is confirmed (Bible §0.1). |
+| Status | **Confirmed by the owner, 2026-10-01.** Every recommendation adopted, with the owner choosing explicitly that every standard view is required (K2-11), every upload is scanned (K2-04) and `CLINICAL_USE` does not gate staff capture or viewing (K2-16). Recorded as ADR-0023. |
 | Authority | Bible §6 (clinical photography), §7 (media permissions and releases), §22.3 (retention), §23 (offline), §29 (Layer 2), §30, §33; ADR-0001, ADR-0004, ADR-0008, ADR-0010, ADR-0018, ADR-0022 |
 | Normative sources | spec §5.2 (Photography & media), §5.4.5, §5.4.10, §5.7, §5.8, §6.1.8, §6.1.9, §6.3 (Photography; administration rows marked L2), §6.7, §7.3, §7.4, §8; [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) Step 5; [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §5.3 |
 
-Before any Layer 2 code, the roadmap requires confirming the decisions listed for the layer (UD-06, UD-21, UD-22, UD-25, and UD-24 again). It also requires resolving the Layer 0 findings carried to Layer 2 (F-34, F-35, F-36, F-61, F-63, F-66, F-67) and the Layer 2 open items in the documentation pack. This document gives one recommendation for each. Once confirmed, they are recorded as ADR-0023 and the spec text they change is corrected under change control before implementation (Bible §0).
+Before any Layer 2 code, the roadmap requires confirming the decisions listed for the layer (UD-06, UD-21, UD-22, UD-25, and UD-24 again). It also requires resolving the Layer 0 findings carried to Layer 2 (F-34, F-35, F-36, F-61, F-63, F-66, F-67) and the Layer 2 open items in the documentation pack. This document gives one recommendation for each. The owner confirmed them all, and they are recorded as ADR-0023. The spec text they change was corrected under change control before implementation (Bible §0).
 
 ## 1. Scope (Bible §29)
 
@@ -141,7 +141,7 @@ Layer 2 is built and proven locally and in CI; nothing is deployed.
 | A licensed HEVC decoder, only if HEIC uploads are wanted | Layer 5 | K2-02 |
 | The open items of [LAYER_1_KICKOFF.md](LAYER_1_KICKOFF.md) §3 (AWS accounts and BAA, Apple team, pilot metrics, repository visibility) | As listed there | F-32, F-33, F-56, F-59, UD-34 |
 
-## 4. After confirmation
+## 4. After confirmation (done 2026-10-01)
 
 1. The confirmed decisions are recorded as ADR-0023, with the ADR-0010 amendment (K2-08).
 2. The spec, schema, `constraints.sql` and the documentation pack are corrected under change control.

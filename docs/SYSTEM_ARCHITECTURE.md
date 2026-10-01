@@ -124,13 +124,13 @@ Supporting AWS services across the platform: Secrets Manager (all secrets), KMS 
 |---|---|---|---|---|---|
 | `services/api` | NestJS 12, Fastify, TypeScript 6.0 | All public REST endpoints; authentication and authorization; domain logic and state transitions; the media module (upload intents, signed URLs, storage ledger); audit; outbox writes; transactional email (invitations, password reset) through SES until the notifications service arrives (ADR-0018 K-14) | PostgreSQL, S3, ai-gateway, SES | **Sole owner of the schema** | Layer 1 |
 | worker | Same codebase as api, separate process | Outbox relay, exports, retention jobs, sync orchestration, notification fan-out, permission-expiry job | PostgreSQL, S3, SQS | Yes | Layer 2 onward (outbox relay, roadmap M2.2) |
-| `services/image-processing` | Python 3.13, OpenCV, pyvips (UD-06) | Thumbnails, display previews, normalization, before/after registration, annotated and export renders | SQS, S3 (signed, per object) | **No** | Layer 2 (derivatives), Layer 3 (registration) |
+| `services/image-processing` | Python 3.13, pyvips; OpenCV from Layer 3 (UD-06, ADR-0023 K2-01) | Thumbnails, display previews, normalization, before/after registration, annotated and export renders | SQS, S3 (signed, per object) | **No** | Layer 2 (derivatives), Layer 3 (registration) |
 | `services/ai-gateway` | NestJS (TypeScript) | Internal AI job API, model routing through the active rollout, provenance capture, validation harness | api (internal), SQS, inference | **No**: results return as events | Layer 7 |
 | AI inference | Python, PyTorch or ONNX Runtime, private GPU (UD-04) | Quality, landmarks, segmentation, simulation, identity similarity, artifact detection | ai-gateway only | **No** | Layers 7–8 |
 | `services/notifications` | Not fixed by spec §2 | APNs, email and SMS delivery of generic templates | SQS, providers | No | Layer 5 |
 | `services/integration-service` | Not fixed by spec §2 | FHIR, vendor and CSV adapters behind one `IntegrationAdapter` interface | api (internal), SQS, external EMRs | **No**: api persists mappings | Layer 10 |
 | `apps/admin-web` | React 19, TypeScript, Vite 8, TanStack Router/Query | Administration SPA, served as static assets | api | — | Layer 1 onward: a minimal shell with sign-in, users and roles, and the audit viewer (M1.11; ADR-0018 K-23) |
-| `apps/ios-provider`, `apps/ios-patient` | Swift 6, SwiftUI, Tuist, GRDB + SQLCipher | Provider and patient apps | api | — | Layers 1 and 5 |
+| `apps/ios-provider`, `apps/ios-patient` | Swift 6, SwiftUI, Tuist, CryptoKit-sealed offline store | Provider and patient apps | api | — | Layers 1 and 5 |
 
 Sources: spec §2, §3.1; Bible §25.2 allows either a media service or a media module, and the spec places the media module inside api [P].
 
@@ -149,7 +149,7 @@ Sources: spec §2, §3.1; Bible §25.2 allows either a media service or a media 
 | Domain events | `OutboxEvent` rows written by api and worker in the same transaction as the change | Relay in worker | Payloads carry identifiers only |
 | Integration mappings and sync runs | api persists; integration-service holds none | api, worker | spec §3.1, §6.7 |
 | Secrets | Secrets Manager | The owning service's IAM role | `Integration.secretRef` stores only a reference |
-| On-device clinical cache | Provider app | The signed-in user on that device | GRDB + SQLCipher, key in Keychain; purge rules (spec §8) |
+| On-device clinical cache | Provider app | The signed-in user on that device | CryptoKit AES-GCM, key in Keychain; purge rules (spec §8; ADR-0023 K2-17) |
 
 ---
 
@@ -276,13 +276,13 @@ Versions as checked on 2026-09-25 and recorded in spec §2; lockfiles pin exact 
 | Authentication | `jose`, `@node-rs/argon2`, `otplib`, `@simplewebauthn/server` | jose 6.2, argon2 2.2, otplib 13.5, simplewebauthn 14.0 |
 | Logging | `pino` with allow-list redaction | pino 10.3 |
 | Tracing and metrics | OpenTelemetry SDK → AWS Distro for OpenTelemetry → CloudWatch / X-Ray | @opentelemetry/sdk-node 0.222 |
-| iOS | Swift 6 language mode, SwiftUI, Swift Concurrency; Tuist; swift-openapi-generator; GRDB + SQLCipher | iOS/iPadOS 26 minimum (D-05) |
+| iOS | Swift 6 language mode, SwiftUI, Swift Concurrency; Tuist; swift-openapi-generator; CryptoKit-sealed offline store | iOS/iPadOS 26 minimum (D-05) |
 | Admin web | React 19 + TypeScript + Vite 8, TanStack Router/Query | — |
 | Cloud and compute | AWS, HIPAA-eligible services; ECS on Fargate for API and workers; ECS on EC2 GPU (or SageMaker, UD-04) for inference | — |
 | IaC | Terraform, one root module per environment | — |
 | CI/CD | GitHub Actions | — |
 | Tests | Vitest, Testcontainers + PostgreSQL, Playwright, Swift Testing / XCTest + XCUITest | — |
-| Local development | Docker Compose with `postgres:18`; Mailpit (mail catcher) arrives with Layer 1 (M1.3, ADR-0018 K-14) and LocalStack with Layer 2 | — |
+| Local development | Docker Compose with `postgres:18`; Mailpit (mail catcher) arrives with Layer 1 (M1.3, ADR-0018 K-14) and moto (S3, SQS, EventBridge, KMS) with Layer 2 (ADR-0023 K2-08) | — |
 
 Deliberately excluded (spec §2.4): public CDN caching of patient media, PHI-capable third-party analytics or crash SDKs, third-party generative-AI APIs receiving patient images, payment or claims engines, GraphQL.
 
@@ -335,7 +335,7 @@ Each requirement from the Layer 0 kickoff prompt [B §31], the mechanism that sa
 | Versioned APIs | `/api/v1`, `/api/v1/portal`, `/internal/v1`, `/webhooks/v1`; additive-only within `v1`; `oasdiff` gate; generated Swift and TypeScript clients | spec §6.1.1, §6.8 | `packages/api-contracts` primitives with OpenAPI drift check and `oasdiff` breaking-change gate in CI |
 | AI services isolated behind authenticated internal APIs | ai-gateway reachable only inside the VPC with IAM-signed requests or mTLS; inference in a private environment without public egress; object references only, no database access | spec §3.1, §6.7, §7.2 | Designed; built in Layer 7 |
 | Audit/event architecture | Append-only `AuditEvent` written in the same transaction as the change; transactional outbox to SQS/EventBridge; WORM copy with daily reconciliation | spec §3.3, §5.5, §7.3 | Audit triggers verified (G1–G4); outbox in Layer 2 |
-| Offline-safe iOS architecture | GRDB + SQLCipher store; ordered mutation queue with `Idempotency-Key` and client UUIDv7; `If-Match` conflicts surfaced; offline audit replay; purge after verified upload | spec §2.2, §8 | Tuist workspace with the 20 [B §24.4] modules builds in CI |
+| Offline-safe iOS architecture | CryptoKit-sealed store; ordered mutation queue with `Idempotency-Key` and client UUIDv7; `If-Match` conflicts surfaced; offline audit replay; purge after verified upload | spec §2.2, §8 | Tuist workspace with the 20 [B §24.4] modules builds in CI |
 | IaC | Terraform root modules per environment (dev, staging, production) plus a state bootstrap root, composing account-baseline, network, KMS, storage, database and compute modules | spec §2.3; [B §25.1]; ADR-0014 | fmt, `terraform validate`, tflint and checkov in CI; not yet applied to any AWS account ([INFRASTRUCTURE.md](INFRASTRUCTURE.md)) |
 | Clear separation between DTOs and persistence models | Zod schemas in `packages/api-contracts`; DTO mappers in every handler; separate portal DTOs; API enums generated from Prisma enums | spec §3.3, §6.5, §6.8; [B §20.3] | Shared primitives (error envelope, cursor pagination, request metadata) exist |
 
@@ -359,8 +359,8 @@ Detailed in [INFRASTRUCTURE.md](INFRASTRUCTURE.md) and [DEPLOYMENT.md](DEPLOYMEN
 |---|---|---|
 | RLS performance gate result | Design in spec §3.5 (ADR-0018 K-16); benchmark in roadmap M1.1; design revised, not dropped, if it fails (ADR-0004) | Layer 1 (M1.1) |
 | PostgreSQL 18 availability on RDS in us-east-1 | ADR-0014 pins RDS PostgreSQL 18 (parameter family `postgres18`), but the Terraform has not been applied; 17 is the fallback (spec §2.1) | First `terraform apply`, before the first deployment ([INFRASTRUCTURE.md](INFRASTRUCTURE.md)) |
-| Image-processing language (UD-06), malware scanning (UD-22) | Python; managed scanning if in BAA scope, else ClamAV worker | Layer 2 |
-| Outbox consumer de-duplication | Not specified beyond `AIJob.idempotencyKey` | Layer 2 (M2.2) |
+| ~~Image-processing language (UD-06), malware scanning (UD-22)~~ | Closed: Python with pyvips; every upload scanned, GuardDuty Malware Protection for S3 if in BAA scope, else ClamAV (ADR-0023 K2-01, K2-04) | Layer 2 kickoff |
+| ~~Outbox consumer de-duplication~~ | Closed: every message carries its outbox event ID; consumers ignore an event already applied, by event ID or job state (ADR-0023 K2-07) | Layer 2 kickoff |
 | Telehealth vendor (UD-05) | BAA-capable; Amazon Chime SDK evaluated first | Layer 6 |
 | AI inference hosting (UD-04) | ECS on EC2 GPU in a private subnet; SageMaker async as alternative | Layer 7 |
 | Runtime language of notifications and integration-service | Not fixed by spec §2; Bible §25.1 prefers TypeScript/Node.js | Layer 5, Layer 10 |

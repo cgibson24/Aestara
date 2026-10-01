@@ -33,13 +33,20 @@ The Bible's three standard protocols [B §6.2], exactly as listed. Each is seede
 | Breast | `BREAST` | Front; Left oblique; Right oblique; Left lateral; Right lateral |
 | Abdomen/body contour | `ABDOMEN_BODY` | Front; Left 45; Right 45; Left profile; Right profile; Back |
 
-View keys are stable `UPPER_SNAKE` strings, unique within a protocol (`@@unique([protocolId, viewKey])`). The schema documents the style with the examples `FRONT`, `LEFT_45`, `RIGHT_45`, `LEFT_PROFILE` and `BACK`, and the upload DTO uses `LEFT_45` (spec §6.6.2). The exact keys for the other views are fixed by the Layer 2 seed.
+View keys are stable `UPPER_SNAKE` strings, unique within a protocol (`@@unique([protocolId, viewKey])`). The Layer 2 kickoff fixed them (ADR-0023 K2-11):
 
-Not specified by the Bible, and decided at Layer 2 kickoff (M2.3):
+| Protocol | Keys, in Bible order |
+|---|---|
+| Face | `FRONT`, `LEFT_45`, `RIGHT_45`, `LEFT_PROFILE`, `RIGHT_PROFILE` |
+| Breast | `FRONT`, `LEFT_OBLIQUE`, `RIGHT_OBLIQUE`, `LEFT_LATERAL`, `RIGHT_LATERAL` |
+| Abdomen/body contour | `FRONT`, `LEFT_45`, `RIGHT_45`, `LEFT_PROFILE`, `RIGHT_PROFILE`, `BACK` |
 
-- which views of the standard protocols are **required** and which are **optional** (the Bible says each protocol marks this, but gives no values for its own examples);
-- default `captureInstructions` and `poseTarget` tolerances for the standard views;
-- the status in which the standard protocols are seeded, and how organizations created in Layer 1 receive them.
+The Bible gives no required flags, instructions or tolerances for its own examples. The kickoff decided them:
+
+- **Every view of a standard protocol is required**, because each is the complete standard series. A practice that wants optional views authors a custom protocol [B §6.2].
+- `captureInstructions` are short positioning text with no clinical claims.
+- `poseTarget` names the subject (`FACE` or `TORSO`) and the target yaw: 0° for front, ±45° for 45 and oblique views, ±90° for profile and lateral views, 180° for `BACK`. Yaw is the subject's turn from facing the camera, positive when the subject's left side turns toward it, so "Left 45" shows the patient's left side. Default tolerances: yaw ±8°, pitch ±8°, roll ±4°, centring ±8% of the frame, and frame fill 45% ±8% for faces, 80% ±8% for torsos.
+- The standard protocols are seeded `ACTIVE` and organization-wide in every organization: by migration for organizations created in Layer 1, and in the organization bootstrap from Layer 2 on.
 
 Bible §6.2 titles the table "Standard protocol examples". The spec treats the three as the seeded standard set; that reading is recorded here and not extended.
 
@@ -65,11 +72,13 @@ Excerpt; the normative definition is `schema.prisma`.
 stateDiagram-v2
   [*] --> DRAFT: create
   DRAFT --> ACTIVE: activate
-  ACTIVE --> RETIRED: retire
+  ACTIVE --> RETIRED: retire, or a successor is activated
+  DRAFT --> RETIRED: discard a draft
 ```
 
-- The spec has no transition table for protocols (spec §5.4.10 lists none). The diagram is this document's reading of the `/activate` and `/retire` endpoints (spec §6.3); whether a `DRAFT` protocol may be retired or deleted is not specified (open item).
-- A protocol is **frozen once `ACTIVE`**. Changing it means creating a new protocol that supersedes it (spec §5.2). This is enforced by the API; `constraints.sql` has no trigger for it (open item).
+- Spec §5.4.10 holds the machine (ADR-0023 K2-10). Protocols are never deleted, and status only moves forward (trigger).
+- A protocol is **frozen once it leaves `DRAFT`**, with its views. Changing it means creating a new `DRAFT` that supersedes it (spec §5.2); activating the successor retires the predecessor in the same transaction. Database triggers enforce the freeze, not only the API (C12–C14).
+- Only `ACTIVE` protocols start new sessions; sessions already started under a retired protocol continue.
 - Because active protocols never change, every photo keeps an exact link to the view definition it was captured under (`PatientPhoto.protocolViewId` and `viewKey`), and before/after pairs can compare like with like.
 - A photo session always names its protocol [B §6.1]; a `PhotoRequest` must name one too (spec §5.2).
 
@@ -148,7 +157,7 @@ Rules:
 | Patient upload guidance | Patient app, where available | Same fields | [B §13.4] |
 | Staff intake review of patient uploads | Server-side, after quarantine | `reviewedById`, `reviewedAt`, `reviewNote` | spec §3.4 flow C |
 
-Quality checks inform the photographer, who accepts or retakes [B §6.3]. Numeric thresholds are not specified; per-view tolerances live in `PhotographyProtocolView.poseTarget` and are set at Layer 2 (M2.5). Whether any check can block acceptance of a photo is also not specified.
+Quality checks inform the photographer, who accepts or retakes [B §6.3]. **No check blocks acceptance** (ADR-0023 K2-12). Per-view tolerances live in `PhotographyProtocolView.poseTarget` (section 2). Lighting and blur use fixed photographic thresholds in the app, documented with the capture code. Guidance shows one instruction at a time, in priority order: level the camera, then distance, framing, pose and lighting.
 
 ---
 
@@ -167,7 +176,7 @@ A previous standardized image may be overlaid on the live camera with adjustable
 
 Accessibility: the score is shown with a word and not by colour alone (DESIGN_SYSTEM.md §5).
 
-Not specified, and decided at Layer 2 (M2.5): which previous image the ghost overlay uses (for example, which earlier photo of the same view key), and how the overlay behaves when that image is not in the offline cache.
+The reference image (ADR-0023 K2-12): by default the latest earlier accepted photo of the same patient and view key, shown as its display preview; the photographer may choose another earlier photo of that view. Offline, the overlay is available only if that preview is in the encrypted cache; otherwise the app says "No reference photo available". The score compares the live pose with the pose recorded for the reference photo. The overlay is behind the flag `photography.ghostOverlay` and live guidance behind `photography.liveGuidance`, both on by default.
 
 ---
 
@@ -198,15 +207,17 @@ The request moves `OPEN → SUBMITTED → COMPLETED`, or `OPEN → CANCELLED | E
 
 ---
 
-## 11. Open items
+## 11. Decisions
 
-| Item | Decided at |
+The Layer 2 kickoff decided every open item of this document ([LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md), ADR-0023):
+
+| Item | Decision |
 |---|---|
-| Required/optional flags, instructions and pose tolerances for the standard views; exact view keys | Layer 2 kickoff (M2.3) |
-| Seeding: initial status of standard protocols; how organizations created in Layer 1 receive them (spec §6.3 and §11.3 #16 move protocol seeding to Layer 2, and the `schema.prisma` comment now says the same, ADR-0017) | Layer 2 kickoff (M2.3) |
-| Protocol freeze is application-enforced only; add a database trigger or accept | Layer 2 kickoff |
-| Whether activating a superseding protocol retires its predecessor automatically | Layer 2 (M2.3) |
-| Protocol status transitions beyond `/activate` and `/retire` (for example retiring or discarding a `DRAFT`); no spec §5.4 table exists | Layer 2 (M2.3) |
-| Whether `POST …/photo-sessions/{sid}/complete` is refused while required views are missing | Layer 2 (M2.4) |
-| Quality thresholds; whether any check blocks acceptance | Layer 2 (M2.5) |
-| Ghost overlay reference-image selection and offline behaviour | Layer 2 (M2.5) |
+| View keys, required flags, instructions and pose tolerances of the standard views | Section 2; every view required (K2-11) |
+| Seeding of the standard protocols | `ACTIVE`, organization-wide, in every organization: by migration for organizations created in Layer 1, and in the organization bootstrap afterwards (K2-11) |
+| Protocol freeze | Database triggers (K2-10) |
+| Activating a superseding protocol | Retires its predecessor in the same transaction (K2-10) |
+| Transitions beyond `/activate` and `/retire` | `DRAFT → RETIRED` discards a draft; no deletes (K2-10) |
+| Completing a session with required views missing | `422 REQUIRED_VIEWS_MISSING` unless acknowledged (K2-13) |
+| Quality thresholds; whether a check blocks acceptance | Tolerances in section 2; no check blocks acceptance (K2-12) |
+| Ghost overlay reference image and offline behaviour | Section 8 (K2-12) |

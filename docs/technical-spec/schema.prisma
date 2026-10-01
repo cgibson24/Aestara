@@ -1765,6 +1765,8 @@ enum RolloutState {
 }
 
 enum AIJobType {
+  /// Thumbnail and display preview of an accepted photo (Layer 2; image processing, no model).
+  IMAGE_DERIVATIVE
   INPUT_QUALITY_CHECK
   LANDMARK_DETECTION
   SEGMENTATION
@@ -1915,6 +1917,8 @@ model AIModelRollout {
   @@index([modelId, organizationId, state])
 }
 
+/// Generic job record (spec 5.8): image derivatives from Layer 2 (ADR-0023 K2-06),
+/// before/after registration from Layer 3, AI jobs from Layer 7 (model FK).
 model AIJob {
   id             String      @id @default(uuid(7)) @db.Uuid
   organizationId String      @db.Uuid
@@ -2896,6 +2900,8 @@ enum AuditAction {
   CONSULTATION_STATUS_CHANGED
   PHOTO_ANNOTATED
   PHOTO_INTAKE_REVIEWED
+  PHOTO_REJECTED
+  PHOTO_ARCHIVED
   BEFORE_AFTER_CREATED
   MEDIA_RELEASED
   MEDIA_RELEASE_REVOKED

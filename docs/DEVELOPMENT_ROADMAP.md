@@ -19,7 +19,7 @@
 | 2 | Design prototype | Owner request (ADR-0009) | Static, clickable front-end shell with hard-coded data for the core scenes on iPad, iPhone, patient app and admin web | ✅ Built; awaiting your review |
 | 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | ✅ Accepted 2026-09-28 |
 | 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell; admin web shell | ✅ Accepted 2026-10-01 (`ACCEPTANCE_CRITERIA.md` §6) |
-| 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | Kickoff proposed ([LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md)); awaiting your confirmation |
+| 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | Kickoff confirmed 2026-10-01 (ADR-0023); in progress |
 | 6 | Layer 3: Consultations & before/after | Layer 3 | Consultation lifecycle, annotations, comparison viewer, timeline | — |
 | 7 | Layer 4: Documents, consent, education, plans | Layer 4 | Plans A/B/C + estimates, consent builder + signing, education, instructions | — |
 | 8 | Layer 5: Patient app & messaging | Layer 5 | Patient iOS app, released content, secure messaging, notifications | — |
@@ -68,7 +68,7 @@ Steps 4–13 follow the Bible's layer order exactly. Nothing from a later layer 
 | Monorepo skeleton | Bible §35 tree: `apps/` (ios-provider, ios-patient, admin-web, design-prototype), `services/` (api, ai-gateway, image-processing, notifications, integration-service), `packages/` (api-contracts, database, security, design-tokens, shared-types), `infrastructure/terraform`, `docs/`. Placeholders carry a README naming the layer that builds them; there is no fake business code. |
 | Toolchain | Node.js 24 LTS, pnpm workspaces, Turborepo, TypeScript 6.0, Biome (lint + format), Vitest |
 | Design tokens | `packages/design-tokens`: one JSON source compiled to CSS variables (web), TypeScript and Swift, with an automated colour-contrast test. This keeps iPhone, iPad and web visually identical. |
-| Local development | `docker compose` with PostgreSQL 18 now. LocalStack (S3/SQS/EventBridge/KMS/Secrets Manager) arrives with Layer 2 and Mailpit with Layer 5, when they can first be exercised (ADR-0010). `.env.example`; one-command scripts. |
+| Local development | `docker compose` with PostgreSQL 18 now. moto (S3/SQS/EventBridge/KMS) arrives with Layer 2 in place of LocalStack, which now needs an account token (ADR-0023 K2-08), and Mailpit arrived with Layer 1 (ADR-0018 K-14), each when it can first be exercised (ADR-0010). `.env.example`; one-command scripts. |
 | Cloud IDE | GitHub Codespaces / VS Code Dev Container (`.devcontainer/`) with Node 24, pnpm and Docker; Claude Code on the web via a SessionStart hook that installs dependencies automatically |
 | AI guardrails | `CLAUDE.md` with the Bible §30 Development Constitution, so every Claude session starts with the rules |
 | CI | GitHub Actions: install, lint, typecheck, test, build, spec traceability, schema + DB behaviour suite on PostgreSQL 18 |
@@ -122,12 +122,12 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 
 ### Step 5: Layer 2, Photography Core
 
-**Kickoff:** UD-06 image-processing language · UD-21 permission granularity · UD-22 malware scanning · UD-25 offline cache. **Proposed 2026-10-01:** one recommendation per decision and per carried finding in [LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md) (K2-01 to K2-22), awaiting the owner's confirmation.
+**Kickoff:** UD-06 image-processing language · UD-21 permission granularity · UD-22 malware scanning · UD-25 offline cache. **Confirmed by the owner on 2026-10-01:** every recommendation in [LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md) (K2-01 to K2-22), recorded as ADR-0023.
 
 | # | Micro-prompt |
 |---|---|
 | M2.1 | Storage ledger + media module: upload intents, checksum verification, signed URLs, write-once objects |
-| M2.2 | Outbox relay + SQS/EventBridge wiring (LocalStack locally) |
+| M2.2 | Outbox relay + SQS/EventBridge wiring (moto locally), the audit WORM copy |
 | M2.3 | Photography protocols: standard Face/Breast/Body protocols seeded per org; admin protocol editor |
 | M2.4 | Photo sessions + uploads API (offline-capable client IDs) |
 | M2.5 | iOS guided capture: AVFoundation camera, Vision pose/framing/blur/lighting checks, guidance codes, ghost overlay + position-match score |

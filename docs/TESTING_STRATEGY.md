@@ -33,7 +33,7 @@ Rows are the Bible §27.1 test layers. Tools come from spec §2.3 unless noted. 
 | Database and migration tests | SQL behaviour suite on PostgreSQL 18; Prisma migrations applied to an empty database | `docs/technical-spec/verification/` today; migration test stage from M1.1 | L0 |
 | Authorization tests | Generated role × endpoint suite, Vitest + Testcontainers | `services/api/test/authz/` | L1 |
 | Tenant-isolation tests | Generated cross-tenant suite and RLS tests, Vitest + Testcontainers | `services/api/test/cross-tenant/` | L1 |
-| Media permission tests | Vitest + Testcontainers + LocalStack S3 (spec §2.3) | `services/api/test/integration/media/` | L2 |
+| Media permission tests | Vitest + real PostgreSQL + moto S3 (spec §2.3; ADR-0023 K2-08) | `services/api/test/` | L2 |
 | iOS ViewModel and domain tests | Swift Testing | Each Bible §24.4 module's test target in the Tuist workspace | L0 (skeleton), L1 |
 | UI automation for critical flows | XCUITest (iOS); Playwright (admin web) | Each app's UI test target; `apps/admin-web/e2e/` | L1 |
 | Integration-adapter tests | Vitest with synthetic canonical resources | `services/integration-service` | L10 |
@@ -42,7 +42,7 @@ Rows are the Bible §27.1 test layers. Tools come from spec §2.3 unless noted. 
 | Performance and load tests | RLS benchmark (ADR-0004); k6 (spec §7.6) | `services/api/test/perf/` | L1 |
 | Backup, restore and DR tests | Restore drill and DR exercise (spec §7.6) | Runbooks in [`DEPLOYMENT.md`](DEPLOYMENT.md) and [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | Pre-prod; DR before enterprise rollout |
 
-The Python services (`image-processing`, inference; UD-06) have no named test runner yet (open item 1).
+The Python services (`image-processing`, inference; UD-06) use pytest, with ruff and mypy, managed by uv (ADR-0023 K2-21).
 
 ## 3. Definition of done per micro-prompt
 
@@ -382,8 +382,8 @@ Planned locations follow §2. Numbers are the Bible's own.
 
 | # | Item | Decide at |
 |---|---|---|
-| 1 | Test runner for the Python services (`image-processing`, inference) | Layer 2 kickoff (UD-06) |
-| 2 | iOS snapshot-testing tool and automated accessibility audit | Layer 2, with the first clinical screens (ADR-0022) |
+| 1 | Closed by ADR-0023 K2-21: pytest, with ruff and mypy, managed by uv | Closed |
+| 2 | Closed by ADR-0023 K2-21: swift-snapshot-testing and XCUITest `performAccessibilityAudit()` | Closed |
 | 3 | Closed by ADR-0018 K-21: GitHub CodeQL for SAST and gitleaks for secret scanning, added in M1.2 | Closed |
 | 4 | Which CI job runs the Testcontainers API suites | M1.2 |
 | 5 | Lint rules that reject focused or skipped tests | M1.2 |

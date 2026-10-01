@@ -229,9 +229,9 @@ F-32 covers these platform prerequisites, each now resolved or scheduled:
 
 | ID | Layer | Finding | Recommended resolution |
 |---|---|---|---|
-| F-34 | 2 | The PatientPhoto machine has no path for an infected or failed malware scan; "protocol frozen when ACTIVE" is enforced by the API only | Add a quarantine path; add a freeze trigger |
-| F-35 | 2 | Unspecified photo details (see the list after this table) | Specify in the Layer 2 micro-prompts |
-| F-36 | 2, 5 | The effect of revoking a permission on releases that already exist | Revocation hides released items at read time (Bible §7.3) |
+| F-34 | 2 | The PatientPhoto machine has no path for an infected or failed malware scan; "protocol frozen when ACTIVE" is enforced by the API only | **Resolved** (ADR-0023 K2-05, K2-10): every source passes `QUARANTINED`, a failed scan rejects; triggers enforce the photo machine and the protocol freeze (C11–C14) |
+| F-35 | 2 | Unspecified photo details (see the list after this table) | **Resolved** (ADR-0023 K2-02 to K2-04, K2-06, K2-09, K2-11, K2-12, K2-15), except the compatible-view rule, which stays with Layer 3 (M3.5) |
+| F-36 | 2, 5 | The effect of revoking a permission on releases that already exist | **Resolved** (ADR-0023 K2-15): a change that ends a release's effective grant revokes the release; every use re-checks at read time |
 | F-37 | 3 | Consultation completion requires "release decision recorded", but there is no column for it, and `/release` arrives in Layer 5 while `/complete` arrives in Layer 3 | Model the decision explicitly in Layer 3 |
 | F-38 | 4 | The UD-23 baseline names a GUARDIAN signer, but `SignerRole` has no such value | Add it if minors are in scope |
 | F-39 | 4 | Consent "prepare"/"supersede" and snapshot access URLs have no audit event in spec §6.3 | Add them |
@@ -253,13 +253,13 @@ F-32 covers these platform prerequisites, each now resolved or scheduled:
 | F-55 | 1, 3, 5 | Patient INACTIVE/DECEASED transitions, the consultation cancellation policy, patient-app offline caching | Decide at the kickoff of each layer |
 | F-56 | Owner | The repository is public, but the Bible is marked "Confidential Product Specification" | The owner decides the repository's visibility |
 | F-60 | 5 | Spec §6.3/§6.5 have no staff endpoint or permission for inviting a patient, though `PatientUserLink.invitedById` implies one | Add the endpoint and permission in Layer 5 |
-| F-61 | 2 | The spec §7.1 VPC-endpoint bucket condition and the spec §7.4 denial of overwriting existing keys are not yet in Terraform | Add with the upload flow in Layer 2 (conditional writes) |
+| F-61 | 2 | The spec §7.1 VPC-endpoint bucket condition and the spec §7.4 denial of overwriting existing keys are not yet in Terraform | **Scheduled** (ADR-0023 K2-09): built in M2.1 |
 | F-62 | 7 | GPU inference needs a subnet tier with no internet egress (spec §2.1); the Layer 0 private subnets route through NAT | Add the tier in Layer 7 (UD-04) |
-| F-63 | 2 | Spec §5.4 has no photography-protocol state machine (the lifecycle is read from `/activate` and `/retire`) | Add an explicit machine in Layer 2 |
+| F-63 | 2 | Spec §5.4 has no photography-protocol state machine (the lifecycle is read from `/activate` and `/retire`) | **Resolved** (ADR-0023 K2-10): spec §5.4.10 |
 | F-64 | 3 | Whether consultation transitions other than sign-off and release may be queued offline | Decide in Layer 3 |
 | F-65 | 4 | Whether education and instruction assignments may reference only PUBLISHED content versions | Decide in Layer 4 |
-| F-66 | 2 | How archived photos are shown in lists | Decide in Layer 2 |
-| F-67 | 2 | Who manages platform-wide feature-flag defaults (`configuration.manage` is held by organization and practice admins) | Decide in Layer 2 |
+| F-66 | 2 | How archived photos are shown in lists | **Resolved** (ADR-0023 K2-14) |
+| F-67 | 2 | Who manages platform-wide feature-flag defaults (`configuration.manage` is held by organization and practice admins) | **Resolved** (ADR-0023 K2-18): defaults in code; no platform-wide rows in Layer 2 |
 
 F-35 covers these photo details:
 - resumable upload and upload-URL renewal
@@ -360,4 +360,4 @@ cd apps/ios-provider && tuist generate                       # Xcode workspace (
 
 The owner authorized Layer 1 (Bible Appendix B #38). Its kickoff, confirmed on 2026-09-29 (ADR-0018), resolved or scheduled the Layer 1 findings in §5.2 (F-13 to F-33, F-59) together with the decisions the roadmap lists for Layer 1.
 
-**Layer 1: accepted by the owner on 2026-10-01**, with the go-ahead for Layer 2. The Layer 2 kickoff decisions are proposed in [LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md) and await the owner's confirmation before any Layer 2 code (Bible §0.1).
+**Layer 1: accepted by the owner on 2026-10-01**, with the go-ahead for Layer 2. The owner confirmed the Layer 2 kickoff the same day ([LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md), ADR-0023), resolving the Layer 2 findings in §5.3.

@@ -497,7 +497,7 @@ erDiagram
   }
 ```
 
-- `AIJob` is created in Layer 3 for automatic before/after registration; Layer 7 adds its `modelVersionId` FK (spec §5.8).
+- `AIJob` is created in Layer 2 for image derivatives (`IMAGE_DERIVATIVE`, ADR-0023 K2-06), used in Layer 3 for automatic before/after registration; Layer 7 adds its `modelVersionId` FK (spec §5.8).
 - Sources join `PatientPhoto` on `(organizationId, patientId, photoId)`, so a simulation can never use another patient's photo (E6–E7). The reviewer is a same-organization `ProviderProfile` (R18).
 - The case library is organization-wide, never cross-organization (D-01); `practiceId` records the originating practice for filtering.
 
@@ -1008,6 +1008,6 @@ Details: [technical-spec/verification/README.md](technical-spec/verification/REA
 | Custom roles (UD-07) | System roles only in Layer 1 (ADR-0018 K-02). `UserRole.roleId` references `Role(id)` alone, so before custom roles are enabled `UserRole` gets a composite key that stops one organization's custom role being assigned in another | When custom roles are enabled |
 | Final notes (UD-15) | Immutable, corrections as new notes | Layer 3 |
 | Estimate versus quote (UD-11) | `Quote` is a proposed shape; drop if unused | Layer 4 |
-| Retention defaults and legal hold (UD-24) | No automated deletion without a customer policy; re-confirmed for Layer 1 in ADR-0018 | Layer 2 |
+| Retention defaults and legal hold (UD-24) | No automated deletion without a customer policy; re-confirmed in ADR-0018 and ADR-0023 K2-19: policies are recorded, `DELETE` waits for legal hold, no retention job runs before production readiness | Production readiness (roadmap step 14) |
 | Case-library permission and de-identification (UD-10) | Baseline: `EDUCATION` grant plus de-identified display derivative | Layer 9 |
 | `AuditEvent` / `LoginEvent` partitioning | Planned for the ~100-practice tier | Scale review |

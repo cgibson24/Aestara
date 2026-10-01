@@ -2,6 +2,22 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-01: Layer 2 kickoff confirmed (ADR-0023)
+
+- The owner confirmed every recommendation in `LAYER_2_KICKOFF.md` (K2-01 to K2-22), choosing explicitly that every standard view is required, every upload is scanned and `CLINICAL_USE` does not gate staff capture or viewing. Recorded as ADR-0023; ADR-0010 amended (moto replaces LocalStack).
+- **Spec corrected before any Layer 2 code:**
+  - §2: image-processing on pyvips, malware scanning, the CryptoKit offline store, moto
+  - §5.2, §5.8: `AIJob` moves to Layer 2 for image derivatives
+  - §5.4.10: the photo machine gains the scan step for every source; a protocol machine
+  - §5.5: photo transition, protocol freeze and audit-feed rules
+  - §6.1.9: JPEG and PNG only, 50 MiB and 100 megapixels, conditional writes, URL renewal, checksum verification
+  - §6.2: `REQUIRED_VIEWS_MISSING`
+  - §6.3: batch thumbnail URLs, session completion, `PHOTO_ARCHIVED` and `PHOTO_REJECTED`, flag precedence, retention rule
+  - §6.6.2, §6.7: JPEG in the upload example; image jobs carry presigned URLs
+  - §7.1, §7.3, §7.4, §8, §10.2: storage controls, the WORM copy, offline rules, confirmed baselines
+- **Schema:** `AuditAction` gains `PHOTO_REJECTED` and `PHOTO_ARCHIVED`; `AIJobType` gains `IMAGE_DERIVATIVE`. **`constraints.sql` Layer 2:** the photo transition table, the protocol freeze and the audit-to-outbox feed, with behaviour checks C11–C14 and G5.
+- **Documentation pack:** PHOTO_ARCHITECTURE, PHOTO_PROTOCOLS, SECURITY_REQUIREMENTS, THREAT_MODEL (open items 3, 6, 7 and 19 closed or narrowed), AUTHENTICATION_ARCHITECTURE §9, IOS_ARCHITECTURE, TESTING_STRATEGY (open items 1 and 2 closed), SYSTEM_ARCHITECTURE, INFRASTRUCTURE, DATABASE_SCHEMA, DEPLOYMENT, WORKFLOWS, PRODUCT_REQUIREMENTS and the findings register (F-34, F-35, F-36, F-63, F-66 and F-67 resolved; F-61 scheduled in M2.1).
+
 ## 2026-10-01: Layer 1 accepted; Layer 2 kickoff proposed
 
 - The owner accepted the Layer 1 acceptance review (`ACCEPTANCE_CRITERIA.md` §6) and authorized Layer 2.

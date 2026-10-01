@@ -672,4 +672,4 @@ stateDiagram-v2
 | Telehealth waiting-room trigger | Which action moves `SCHEDULED → WAITING` is not tabulated in spec §5.4.8 | Layer 6 (UD-05) |
 | UD-29, UD-32 | Simulation proposed transitions; source-photo grant | Layer 8 |
 | Sync audit coverage | No event covers `PARTIAL` or `RETRY_SCHEDULED`, and no `…_STATUS_CHANGED` fallback exists for sync | Layer 10 |
-| UD-21, UD-22, UD-25 | Permission granularity; malware scanning; offline cache policy | Layer 2 |
+| ~~UD-21, UD-22, UD-25~~ | Closed by ADR-0023 (K2-15, K2-04, K2-17) | Layer 2 kickoff |

@@ -14,7 +14,7 @@
       "tier": "foundation",
       "bible": "§21.2, §23.3",
       "layer": 1,
-      "summary": "Keychain access, the encrypted local store (GRDB + SQLCipher), biometric gate, secure wipe on sign-out.",
+      "summary": "Keychain access, the encrypted local store (CryptoKit AES-GCM, ADR-0023), biometric gate, secure wipe on sign-out.",
       "dependsOn": []
     },
     "CoreNetworking": {

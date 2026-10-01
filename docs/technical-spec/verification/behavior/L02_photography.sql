@@ -2,12 +2,12 @@
 -- LAYER 2 - Photography core, storage, media permissions, configuration (spec §5.8)
 -- =============================================================================
 INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", sha256, status, "verifiedAt") VALUES
-  ('0a000000-0000-7000-8000-3e10486dde69', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL',   'clinical', 'org-a/o1', 'image/heic', repeat('a', 64), 'AVAILABLE', now()),
-  ('0a000000-0000-7000-8000-034875d585d2', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL',   'clinical', 'org-a/o2', 'image/heic', repeat('b', 64), 'AVAILABLE', now()),
-  ('0a000000-0000-7000-8000-348c249d3d1c', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL',   'clinical', 'org-a/o3', 'image/heic', repeat('c', 64), 'AVAILABLE', now()),
+  ('0a000000-0000-7000-8000-3e10486dde69', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL',   'clinical', 'org-a/o1', 'image/jpeg', repeat('a', 64), 'AVAILABLE', now()),
+  ('0a000000-0000-7000-8000-034875d585d2', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL',   'clinical', 'org-a/o2', 'image/jpeg', repeat('b', 64), 'AVAILABLE', now()),
+  ('0a000000-0000-7000-8000-348c249d3d1c', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL',   'clinical', 'org-a/o3', 'image/jpeg', repeat('c', 64), 'AVAILABLE', now()),
   ('0a000000-0000-7000-8000-e672b9c054ef', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_DERIVATIVE', 'clinical', 'org-a/d1', 'image/jpeg', repeat('d', 64), 'AVAILABLE', now()),
   ('0a000000-0000-7000-8000-9e6e6c5076ab', '0a000000-0000-7000-8000-000000000001', 'DOCUMENT',            'clinical', 'org-a/doc1', 'application/pdf', repeat('e', 64), 'AVAILABLE', now()),
-  ('0a000000-0000-7000-8000-47609cd6f2f0', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL',   'clinical', 'org-a/pending', 'image/heic', NULL, 'PENDING_UPLOAD', NULL);
+  ('0a000000-0000-7000-8000-47609cd6f2f0', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL',   'clinical', 'org-a/pending', 'image/jpeg', NULL, 'PENDING_UPLOAD', NULL);
 
 INSERT INTO "PatientPhoto" (id, "organizationId", "patientId", source, status, "originalObjectId", "capturedAt", "updatedAt") VALUES
   ('0a000000-0000-7000-8000-599a1cc8f834', '0a000000-0000-7000-8000-000000000001', '0a000000-0000-7000-8000-8f01aa50d871', 'PROVIDER_CAPTURE', 'ACCEPTED', '0a000000-0000-7000-8000-3e10486dde69', now(), now()),
@@ -52,6 +52,46 @@ SELECT pg_temp.expect_ok($$
   UPDATE "StorageObject" SET status = 'PURGED', "purgedAt" = now()
   WHERE id = '0a000000-0000-7000-8000-e672b9c054ef'$$,
   'C10 lifecycle status of a verified object can still advance (retention purge)');
+
+-- Photo machine (spec 5.4.10; ADR-0023 K2-05)
+INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", status) VALUES
+  ('0a000000-0000-7000-8000-5c0000000004', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL', 'clinical', 'org-a/o4', 'image/jpeg', 'PENDING_UPLOAD'),
+  ('0a000000-0000-7000-8000-5c0000000005', '0a000000-0000-7000-8000-000000000001', 'CLINICAL_ORIGINAL', 'clinical', 'org-a/o5', 'image/jpeg', 'PENDING_UPLOAD');
+INSERT INTO "PatientPhoto" (id, "organizationId", "patientId", source, status, "originalObjectId", "capturedAt", "updatedAt") VALUES
+  ('0a000000-0000-7000-8000-5e0000000004', '0a000000-0000-7000-8000-000000000001', '0a000000-0000-7000-8000-8f01aa50d871', 'PROVIDER_CAPTURE', 'UPLOAD_PENDING', '0a000000-0000-7000-8000-5c0000000004', now(), now()),
+  ('0a000000-0000-7000-8000-5e0000000005', '0a000000-0000-7000-8000-000000000001', '0a000000-0000-7000-8000-8f01aa50d871', 'PATIENT_UPLOAD', 'UPLOAD_PENDING', '0a000000-0000-7000-8000-5c0000000005', now(), now());
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PatientPhoto" SET status = 'ACCEPTED' WHERE id = '0a000000-0000-7000-8000-5e0000000004'$$,
+  'AE001', 'C11a an upload cannot skip the scan step (UPLOAD_PENDING -> ACCEPTED)');
+
+SELECT pg_temp.expect_ok($$
+  UPDATE "PatientPhoto" SET status = 'QUARANTINED' WHERE id IN ('0a000000-0000-7000-8000-5e0000000004', '0a000000-0000-7000-8000-5e0000000005')$$,
+  'C11b a verified upload enters QUARANTINED whatever its source');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PatientPhoto" SET status = 'ACCEPTED' WHERE id = '0a000000-0000-7000-8000-5e0000000005'$$,
+  'AE001', 'C11c a clean patient upload waits for staff review (QUARANTINED -> ACCEPTED refused)');
+
+SELECT pg_temp.expect_ok($$
+  UPDATE "PatientPhoto" SET status = 'ACCEPTED' WHERE id = '0a000000-0000-7000-8000-5e0000000004'$$,
+  'C11d a clean staff capture is accepted');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PatientPhoto" SET status = 'QUARANTINED' WHERE id = '0a000000-0000-7000-8000-5e0000000004'$$,
+  'AE001', 'C11e an accepted photo never goes back to quarantine');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PatientPhoto" SET status = 'ARCHIVED' WHERE id = '0a000000-0000-7000-8000-5e0000000004'$$,
+  '23514', 'C11f an archived photo records when it was archived');
+
+SELECT pg_temp.expect_ok($$
+  UPDATE "PatientPhoto" SET status = 'ARCHIVED', "archivedAt" = now() WHERE id = '0a000000-0000-7000-8000-5e0000000004'$$,
+  'C11g an accepted photo can be archived');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PatientPhoto" SET status = 'ACCEPTED', "archivedAt" = NULL WHERE id = '0a000000-0000-7000-8000-5e0000000004'$$,
+  'AE001', 'C11h archiving cannot be undone');
 
 -- =============================================================================
 -- D. Media permissions: independent, versioned, append-only (Bible 7)
@@ -147,6 +187,68 @@ SELECT pg_temp.expect_error($$
   VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')), (SELECT id FROM "PhotographyProtocol" WHERE name = 'Face standard'),
           'PROVIDER_CAPTURE', now(), now())$$,
   '23514', 'R3 a captured session records its capturing user (Bible 6.1)');
+
+-- Protocol lifecycle and freeze (ADR-0023 K2-10)
+INSERT INTO "PhotographyProtocol" (id, "organizationId", name, "bodyRegion", status, "updatedAt")
+VALUES ('0a000000-0000-7000-8000-9a0000000001', '0a000000-0000-7000-8000-000000000001', 'Face custom', 'FACE', 'DRAFT', now());
+
+SELECT pg_temp.expect_ok($$
+  INSERT INTO "PhotographyProtocolView" (id, "organizationId", "protocolId", "viewKey", name, "sortOrder", "isRequired")
+  VALUES ('0a000000-0000-7000-8000-9b0000000001', '0a000000-0000-7000-8000-000000000001', '0a000000-0000-7000-8000-9a0000000001', 'FRONT', 'Front', 1, true)$$,
+  'C12a a DRAFT protocol takes views');
+
+SELECT pg_temp.expect_ok($$
+  UPDATE "PhotographyProtocol" SET status = 'ACTIVE', version = version + 1 WHERE id = '0a000000-0000-7000-8000-9a0000000001'$$,
+  'C12b a DRAFT protocol can be activated');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PhotographyProtocol" SET name = 'Face custom v2' WHERE id = '0a000000-0000-7000-8000-9a0000000001'$$,
+  'AE001', 'C13a an ACTIVE protocol is frozen');
+
+SELECT pg_temp.expect_error($$
+  INSERT INTO "PhotographyProtocolView" (id, "organizationId", "protocolId", "viewKey", name, "sortOrder", "isRequired")
+  VALUES ('0a000000-0000-7000-8000-9b0000000002', '0a000000-0000-7000-8000-000000000001', '0a000000-0000-7000-8000-9a0000000001', 'LEFT_45', 'Left 45', 2, true)$$,
+  'AE001', 'C13b an ACTIVE protocol takes no new views');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PhotographyProtocolView" SET "isRequired" = false WHERE id = '0a000000-0000-7000-8000-9b0000000001'$$,
+  'AE001', 'C13c the views of an ACTIVE protocol are frozen');
+
+SELECT pg_temp.expect_error($$
+  DELETE FROM "PhotographyProtocolView" WHERE id = '0a000000-0000-7000-8000-9b0000000001'$$,
+  'AE001', 'C13d the views of an ACTIVE protocol cannot be removed');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PhotographyProtocol" SET status = 'DRAFT' WHERE id = '0a000000-0000-7000-8000-9a0000000001'$$,
+  'AE001', 'C14a protocol status is forward-only (ACTIVE -> DRAFT refused)');
+
+SELECT pg_temp.expect_ok($$
+  UPDATE "PhotographyProtocol" SET status = 'RETIRED', version = version + 1 WHERE id = '0a000000-0000-7000-8000-9a0000000001'$$,
+  'C14b an ACTIVE protocol can be retired');
+
+SELECT pg_temp.expect_error($$
+  UPDATE "PhotographyProtocol" SET status = 'ACTIVE' WHERE id = '0a000000-0000-7000-8000-9a0000000001'$$,
+  'AE001', 'C14c a RETIRED protocol stays retired');
+
+SELECT pg_temp.expect_error($$
+  DELETE FROM "PhotographyProtocol" WHERE id = '0a000000-0000-7000-8000-9a0000000001'$$,
+  'AE001', 'C14d protocols are never deleted');
+
+-- The audit feed to the WORM copy (spec 7.3; ADR-0023 K2-07)
+SELECT pg_temp.expect_ok($t$
+  DO $do$
+  BEGIN
+    INSERT INTO "AuditEvent" (id, "organizationId", "actorType", "actorUserId", action, "resourceType", "resourceId", "patientId", "requestId")
+    VALUES ('0a000000-0000-7000-8000-00000000ae05', '0a000000-0000-7000-8000-000000000001', 'USER', '0a000000-0000-7000-8000-bda01469c352',
+            'PHOTO_VIEWED', 'PatientPhoto', '0a000000-0000-7000-8000-599a1cc8f834', '0a000000-0000-7000-8000-8f01aa50d871', 'req-audit-5');
+    IF NOT EXISTS (SELECT 1 FROM "OutboxEvent" WHERE id = '0a000000-0000-7000-8000-00000000ae05'
+                     AND "eventType" = 'audit.recorded' AND "aggregateId" = '0a000000-0000-7000-8000-00000000ae05'
+                     AND "organizationId" = '0a000000-0000-7000-8000-000000000001') THEN
+      RAISE EXCEPTION 'no outbox row for the audit event';
+    END IF;
+  END
+  $do$$t$,
+  'G5 every audit event queues its WORM copy in the same transaction');
 
 INSERT INTO "PhotoPermission" (id, "organizationId", "patientId", category, scope, state, "versionNumber", "effectiveAt")
 VALUES (gen_random_uuid(), (SELECT id FROM "Organization" WHERE slug = 'org-a'), (SELECT id FROM "Patient" WHERE mrn = 'MRN-1' AND "organizationId" = (SELECT id FROM "Organization" WHERE slug = 'org-a')), 'PATIENT_APP', 'PATIENT_WIDE', 'GRANTED', 1, now());

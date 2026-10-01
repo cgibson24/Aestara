@@ -1,5 +1,5 @@
 // swift-tools-version: 6.2
-// CoreSecurity: Keychain access, the encrypted local store (GRDB + SQLCipher), biometric gate, secure wipe on sign-out.
+// CoreSecurity: Keychain access, the encrypted local store (CryptoKit AES-GCM, ADR-0023), biometric gate, secure wipe on sign-out.
 // Bible §21.2, §23.3. Tier: foundation. Built from Layer 1. Allowed dependencies: see modules.json.
 import PackageDescription
 

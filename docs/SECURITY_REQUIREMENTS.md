@@ -134,7 +134,7 @@ The INT area is added to the areas the pack names because Bible §36 has a "Cons
 | SR-DPR-05 | Data buckets (clinical media, exports, integration payloads) use SSE-KMS with bucket keys and versioning, and the account has Block Public Access. The access-log bucket uses SSE-S3, because S3 server access logging cannot deliver to SSE-KMS buckets (ADR-0014). | B §21.2; spec §2.1, §7.1 | CI (checkov) | L0 |
 | SR-DPR-06 | Each environment has its own customer-managed KMS keys; TOTP seeds and integration payloads are envelope-encrypted. | B §21.2; spec §2.3, §7.1 | RV, AT | L0, L1, L10 |
 | SR-DPR-07 | Bucket policies deny non-TLS access and, for services, access that does not come through the VPC endpoint. | spec §7.1 | CI (checkov), RV | L0 (non-TLS deny); L2 (VPC-endpoint condition, with the first service that reads media) |
-| SR-DPR-08 | On iOS, cached sensitive data uses Data Protection class *Complete*, a SQLCipher database and CryptoKit AES-GCM for cached media, with keys in the Keychain. | B §21.2, §23.3; spec §2.2, §7.1 | AT (iOS), RV | L2 |
+| SR-DPR-08 | On iOS, cached sensitive data uses Data Protection class *Complete* and CryptoKit AES-GCM-sealed records and media, with keys in the Keychain (ADR-0023 K2-17). | B §21.2, §23.3; spec §2.2, §7.1 | AT (iOS), RV | L2 |
 | SR-DPR-09 | PHI responses carry `Cache-Control: no-store`, and the API sends `X-Content-Type-Options: nosniff`. | spec §3.3, §6.1.10 | AT (contract) | L1 |
 | SR-DPR-10 | Error responses never contain stack traces, SQL, storage keys or cross-tenant existence hints. | B §20.4; spec §6.1.5 | AT | L1 |
 | SR-DPR-11 | Per-tenant encryption keys are evaluated at the ~1,000-practice tier. | B §25.4; spec §7.1 | RV | Scale tier |
@@ -150,7 +150,7 @@ The INT area is added to the areas the pack names because Bible §36 has a "Cons
 | SR-MED-05 | Uploads use a presigned PUT valid 10 minutes with required `Content-Type` and `x-amz-checksum-sha256`; `complete-upload` verifies size and checksum before anything becomes visible. | B §6.3, §20.3; spec §3.4, §6.1.9 | AT | L2 |
 | SR-MED-06 | Downloads use a presigned GET valid 120 seconds (exports 10 minutes) for one object and variant, with `Content-Disposition` and `Cache-Control: private, no-store`. Each issuance writes the view or download audit event. | B §14.4, §21.2; spec §6.1.9 | AT | L2 |
 | SR-MED-07 | There are no public buckets, no permanent or public media URLs and no public CDN caching of patient media. | B §21.2, §25.3; spec §2.4 | CI (checkov), PT | L0, L2 |
-| SR-MED-08 | Size and type allow-lists are enforced at intent and again at completion: HEIC/JPEG/PNG for photos, PDF for documents, configured types for attachments. | B §14.4; spec §6.1.9 | AT | L2, L3, L5 |
+| SR-MED-08 | Size and type allow-lists are enforced at intent and again at completion: JPEG/PNG for photos (at most 50 MiB and 100 megapixels, first bytes matching the declared type; ADR-0023 K2-02), PDF for documents, configured types for attachments. | B §14.4; spec §6.1.9 | AT | L2, L3, L5 |
 | SR-MED-09 | Patient uploads land `QUARANTINED`, pass malware and file validation, then wait in `PENDING_REVIEW` for staff acceptance before entering the clinical record. | B §13.4; spec §3.4, §5.4.10; UD-22 | AT | L5 |
 | SR-MED-10 | Message attachments are scanned before use, downloaded only through signed short-lived URLs, and every download writes `ATTACHMENT_DOWNLOADED`. | B §14.4; spec §6.3 | AT | L5 |
 | SR-MED-11 | Media permissions are independent per category and stored as append-only versions; no category implies another, and clinical consent never implies marketing, research or AI training. | B §7.1, §7.2, §30; spec §1.4, §5.4.5 | DB (D1–D9), AT | L2 |
@@ -310,7 +310,7 @@ The offline contract is spec §8; these requirements cite its rules.
 |---|---|---|---|---|
 | SR-VEN-01 | Only HIPAA-eligible AWS services, configured appropriately and covered by the applicable BAA, handle PHI. | B §21.3, §25.3; ADR-0006; spec §2.3 | RV | Infra, Pre-prod |
 | SR-VEN-02 | The telehealth vendor is BAA-capable (UD-05); calls are not recorded, and the schema has no recording field. Recording would need separate consent, retention, encryption and jurisdiction review. | B §16.2; spec §2.1, §5.2 | RV | L6 |
-| SR-VEN-03 | Malware scanning is a managed service inside BAA scope or a self-hosted worker (UD-22). | spec §2.1; UD-22 | RV | L2 |
+| SR-VEN-03 | Malware scanning is a managed service inside BAA scope or a self-hosted worker (UD-22); every uploaded object is scanned (ADR-0023 K2-04). | spec §2.1; UD-22 | RV | L2 |
 | SR-VEN-04 | Email (SES) and SMS (AWS End User Messaging) are HIPAA-eligible services and still receive generic template text only. From Layer 1 the api sends templated transactional email (invitations, password reset; no PHI) through SES under the BAA. | B §14.3; spec §2.1; ADR-0018 K-14 | RV, AT | L1 (transactional email), L5 |
 | SR-VEN-05 | APNs payloads carry no PHI, only template text and opaque identifiers. Whether APNs needs any further agreement is part of the pre-production legal review. | B §14.3, §36 | AT, RV | L5, Pre-prod |
 | SR-VEN-06 | EMR integrations run under the customer's agreements with each vendor; vendor-specific code stays inside adapters, and webhooks are signature-verified and replay-protected. | B §18.1; spec §6.7 | AT, RV | L10 |

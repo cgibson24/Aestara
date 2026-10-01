@@ -78,11 +78,11 @@ This is the Bible §25.3 deployment map. The api and its worker process (same co
 | KMS keys (data, media, logs) | `modules/kms` | Yes | — |
 | Account baseline: S3 public-access block, EBS default encryption, multi-region CloudTrail with log-file validation delivered to an Object Lock bucket, GuardDuty, IAM Access Analyzer, access-log bucket | `modules/account-baseline` | Yes | Security alert metric filters and alarms (Layer 1); CloudTrail delivery to a separate security account (spec §7.1, F-59) |
 | VPC: public, private and isolated subnets; NAT; flow logs; S3 gateway endpoint | `modules/network` | Yes | Interface endpoints (ECR, Secrets Manager, Logs) as services arrive |
-| Buckets: clinical-media (deletes denied), exports, integration-payloads | `modules/storage` | Yes | Presigned-upload CORS rules, the VPC-endpoint bucket condition and the overwrite denial from spec §7.1/§7.4 (Layer 2, F-61) |
+| Buckets: clinical-media (deletes denied), exports, integration-payloads | `modules/storage` | Yes | Layer 2 (ADR-0023 K2-09): the overwrite denial (conditional writes), VPC-endpoint-only service access, the presigning role, the `audit-archive` Object Lock bucket and the GuardDuty malware protection plan. No CORS rules: only native apps upload |
 | RDS PostgreSQL 18 | `modules/database` | Yes | RDS Proxy if connection counts need it (~100 practices) |
 | ECS cluster, ECR repositories, service log groups, task security group | `modules/compute` | Yes | api task definition and service, ALB, WAF, ACM certificate (Layer 1) |
 | Remote state (versioned, KMS, TLS-only S3 with lock files) | `bootstrap` | Yes | — |
-| SQS / EventBridge for the transactional outbox | — | No | Layer 2 (M2.2) |
+| SQS / EventBridge for the transactional outbox | `modules/messaging` | No | Layer 2 (M2.2; ADR-0023 K2-07): an event bus, work queues with dead-letter queues and alarms |
 | CloudFront + WAF for the admin SPA | — | No | Layer 1, with the admin web |
 | SES for transactional email (invitations, password reset; no PHI) | — | No | The api sends it from Layer 1 (ADR-0018 K-14), through Mailpit locally; the SES resources arrive with the first deployment |
 | Notifications service: APNs credentials, SMS and notification email | — | No | Layer 5 |

@@ -23,7 +23,7 @@ It covers the module structure, the rules that keep it clean, how offline work a
 | Packages | Swift Package Manager: one local package per Bible §24.4 module | spec §2.2 |
 | Project generation | **Tuist** (Swift manifests); generated `.xcodeproj`/`.xcworkspace` are never committed | [B §31] "reproducible method", spec §2.2 |
 | API client | Generated from `packages/api-contracts/openapi.json` by swift-openapi-generator, inside CoreNetworking | spec §2.2, §6.8 |
-| Offline store | GRDB (SQLite) with SQLCipher; key in the Keychain; Data Protection class *Complete* | [B §23.3], spec §2.2 |
+| Offline store | CryptoKit AES-GCM-sealed records and media files; key in the Keychain; Data Protection class *Complete* (ADR-0023 K2-17) | [B §23.3], spec §2.2 |
 | Toolchain in CI | macOS 26 runner, Xcode 26.6, Swift tools 6.2 | `.github/workflows/ci.yml` |
 
 ## 2. Repository layout
@@ -92,7 +92,7 @@ flowchart TB
 | Module | Tier | Bible | Responsibility | Built from |
 |---|---|---|---|---|
 | DesignSystem | foundation | §24.1–24.2 | Design tokens (generated), shared SwiftUI components and view states | Layer 0 (tokens); Layer 1 (components) |
-| CoreSecurity | foundation | §21.2, §23.3 | Keychain and biometric gate (Layer 1); encrypted store with GRDB + SQLCipher and secure wipe (Layer 2, M2.9) | Layer 1 |
+| CoreSecurity | foundation | §21.2, §23.3 | Keychain and biometric gate (Layer 1); encrypted store (CryptoKit AES-GCM) and secure wipe (Layer 2, M2.9) | Layer 1 |
 | CoreNetworking | foundation | §20 | Generated API client, request correlation, idempotency keys, error envelope | Layer 1 |
 | AuditSupport | foundation | §22, §23.3 | Client audit context; offline audit replay queue | Layer 2 |
 | Authentication | platform | §21.1 | Sign-in, MFA, token refresh, biometric unlock, revocation handling | Layer 1 |
@@ -150,7 +150,7 @@ flowchart LR
   view["SwiftUI view"] --> model["@Observable view model<br/>MainActor"]
   model --> repo["Domain repository<br/>actor"]
   repo --> client["CoreNetworking<br/>generated client"]
-  repo --> store["CoreSecurity store<br/>GRDB + SQLCipher"]
+  repo --> store["CoreSecurity store<br/>CryptoKit AES-GCM"]
   repo --> queue["Mutation queue<br/>(offline)"]
   queue --> client
 ```
@@ -167,7 +167,7 @@ The device follows spec §8 exactly; this is the implementation shape.
 | Rule | How |
 |---|---|
 | What works offline | Cached recent patients, photo capture, note drafts, annotating cached photos, queueing uploads and mutations [B §23.1]. AI generation, EMR sync, release, export, sign-off, permission changes and consent completion need a connection [B §23.2]; the UI disables them with the offline banner. Patient creation is online-only too, because the duplicate check needs the server (spec §6.1.8; ADR-0018 K-17). |
-| Encrypted at rest | GRDB + SQLCipher database; cached media encrypted with CryptoKit AES-GCM; keys in the Keychain; files use Data Protection *Complete* (spec §7.1). |
+| Encrypted at rest | Records and cached media sealed with CryptoKit AES-GCM; keys in the Keychain; files use Data Protection *Complete* (spec §7.1; ADR-0023 K2-17). |
 | Mutation queue | Each operation stores a UUIDv7 `operationId`, which is sent as `Idempotency-Key`. Creates also store a client-generated `id`, and updates the resource `version`, which is sent as `If-Match`. Operations replay in order per aggregate; a failed dependency pauses only its dependents (spec §8 rules 1–3). |
 | Conflicts | `412 VERSION_CONFLICT` is shown to the user with both versions. Nothing is auto-resolved by timestamp [B §23.3]. |
 | Reconnect | Re-validate the session (`GET /auth/session`), replay offline audit records first (`POST /audit/offline-events`), then mutations (spec §8 rules 5 and 8). |
@@ -210,5 +210,5 @@ The CI `ios` job generates both projects, builds both apps for the simulator (th
 | Item | Decision point |
 |---|---|
 | Apple Developer team and bundle identifier prefix (`com.aestara.*` is provisional) | UD-34, before the first TestFlight build (end of Layer 1) |
-| Snapshot-testing tool for SwiftUI views and the automated accessibility audit | Layer 2, with the first clinical screens (ADR-0022) |
+| ~~Snapshot-testing tool for SwiftUI views and the automated accessibility audit~~ | Closed: swift-snapshot-testing and `performAccessibilityAudit()` (ADR-0023 K2-21) |
 | ~~App-switcher privacy screen and jailbreak signals~~ | Closed: ADR-0022; see [THREAT_MODEL.md](THREAT_MODEL.md) |

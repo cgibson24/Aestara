@@ -33,6 +33,8 @@ Status values:
 | [0019](#adr-0019) | Layer 1 database foundation: generated schema, roles, Row-Level Security, catalog | Adopted (delegated) | 2026-09-29 |
 | [0020](#adr-0020) | Patient search under Row-Level Security: leakproof search keys (UD-35) | Accepted | 2026-10-01 |
 | [0021](#adr-0021) | Layer 1 API implementation decisions | Adopted (delegated) | 2026-10-01 |
+| [0022](#adr-0022) | Layer 1 clients: iOS provider shell and admin web portal | Adopted (delegated) | 2026-10-01 |
+| [0023](#adr-0023) | Layer 2 kickoff decisions | Accepted | 2026-10-01 |
 
 ---
 
@@ -157,6 +159,7 @@ Status values:
   - **Claude Code on the web:** a SessionStart hook installs the pinned Node (checksum-verified), pnpm and dependencies.
   - **CI:** GitHub Actions runs lint, typecheck, tests, build, token drift, Bible → spec traceability, and schema + DB behaviour on PostgreSQL 18.
   - **Agent guardrails:** `CLAUDE.md` carries the Bible §30 constitution.
+  - **Amended 2026-10-01 (ADR-0023 K2-08):** the local AWS emulator is **moto**, not LocalStack. LocalStack now exits at start without an account auth token. moto (Apache-2.0) emulates S3, SQS, EventBridge and KMS, runs from its Docker image in `docker-compose.yml`, and runs from `pip` where there is no Docker (the macOS CI runner).
 - **Consequences:** a fresh clone is ready with one command locally, in Codespaces and in Claude Code on the web.
 
 ## ADR-0011
@@ -507,3 +510,53 @@ Status values:
 - **Decision (shared code):** `packages/security` stays a placeholder in Layer 1. The api is the only consumer: the permission catalog lives in `packages/database` (it seeds the database), and authorization, step-up and PHI-safe logging live in `services/api`. They move into the package when a second service needs them (the Layer 2 workers).
 - **Decision (local stack):** `services/api/scripts/local-stack.ts` starts a throwaway Layer 1 stack against a local PostgreSQL: a fresh database migrated by a non-superuser, the synthetic seed, and the api from `dist/` as login users of the runtime roles. `pnpm dev:stack` uses it for local development (email to Mailpit, which joins `docker-compose.yml` as ADR-0018 K-14 decided); the web and iOS end-to-end tests use it too. It refuses non-local databases and drops its database when it stops.
 - **Consequences:** a contract change regenerates both clients and fails CI until they compile. Release builds of the iOS app need F-32 and UD-34 decided before TestFlight.
+
+## ADR-0023
+
+**Layer 2 kickoff decisions**
+
+- **Status:** Accepted, 2026-10-01. The owner accepted Layer 1 and authorized Layer 2, then confirmed every recommendation in [`LAYER_2_KICKOFF.md`](LAYER_2_KICKOFF.md) ("adopt all"), choosing explicitly that every standard view is required (K2-11), that every upload is scanned (K2-04) and that `CLINICAL_USE` does not gate staff capture or viewing (K2-16). The spec is corrected to match before any Layer 2 code (Bible §0).
+- **Context:** the roadmap requires the Layer 2 decisions (UD-06, UD-21, UD-22, UD-24, UD-25) to be confirmed, and the findings carried to Layer 2 (F-34, F-35, F-36, F-61, F-63, F-66, F-67) and the documentation pack's Layer 2 open items to be resolved, before implementation.
+- **Decision:** K2-01 to K2-22 as written in `LAYER_2_KICKOFF.md` §2:
+  - **Services:**
+    - K2-01: image-processing is Python 3.13 with pyvips, has no database access, receives presigned per-object URLs per job, and calls only the JPEG and PNG loaders under a pixel limit and a time limit.
+    - K2-06: `AIJob` moves to Layer 2 as the generic job record, with job type `IMAGE_DERIVATIVE`; derivatives are a 400 px thumbnail and a 2048 px preview with metadata stripped; output objects are registered before the job runs; transient failures retry three times.
+    - K2-07: the worker relays the outbox to EventBridge and SQS with dead-letter queues and de-duplication by event ID, and writes the audit WORM copy to an Object Lock bucket with a daily reconciliation.
+    - K2-08: moto replaces LocalStack (ADR-0010 amended).
+  - **Photos and storage:**
+    - K2-02: JPEG originals; JPEG and PNG accepted; no HEIC until an HEVC decoder licence is reviewed; 50 MiB and 100 megapixels; first bytes must match the declared type.
+    - K2-03: one presigned `PUT` with `If-None-Match: *`; replaying the intent renews the URL; completion verifies the stored checksum or computes it.
+    - K2-04: every upload is scanned (GuardDuty Malware Protection for S3 if it is in the BAA's scope, else ClamAV); an EICAR-only scanner locally and in CI; an infected or failed scan rejects the photo.
+    - K2-05: the photo machine gains the scan step: `UPLOAD_PENDING → QUARANTINED → ACCEPTED | PENDING_REVIEW | REJECTED`, enforced by a trigger.
+    - K2-09: bucket placement per object class, the new `audit-archive` bucket, the overwrite denial, VPC-endpoint-only service access and a presigning role for devices.
+    - K2-14: archived photos hidden by default and never reusable; quarantined and rejected photos never served; tag rules; a batch access-URL endpoint that audits each photo.
+  - **Protocols and capture:**
+    - K2-10: protocol machine `DRAFT → ACTIVE → RETIRED` and `DRAFT → RETIRED`, frozen by trigger once not a draft; activating a successor retires its predecessor.
+    - K2-11: the Bible §6.2 standard protocols are seeded `ACTIVE` in every organization with the view keys and pose targets listed; every view is required.
+    - K2-12: on-device guidance with the 13 Bible codes, one instruction at a time; no check blocks acceptance; the ghost overlay defaults to the latest earlier photo of the same view.
+    - K2-13: completing a session with missing required views needs an explicit acknowledgement; a practice is named when the capture grant is practice- or location-scoped.
+  - **Permissions:**
+    - K2-15: patient-wide permissions with per-photo exceptions; the most specific current row wins; `STAFF_ATTESTATION` is the only evidence until Layer 4; a change that ends a release's effective grant also revokes the release; an hourly expiry job.
+    - K2-16: `CLINICAL_USE` does not gate capture or staff viewing.
+  - **Platform:**
+    - K2-17: the offline cache policy is a practice setting (25 patients, 7 days); offline use ends at the session's absolute expiry; the queue belongs to one user in one organization; the store is CryptoKit AES-GCM with Data Protection *Complete* instead of GRDB with SQLCipher.
+    - K2-18: flags and settings are registered in code; practice over organization over the code default; no platform-wide rows in Layer 2.
+    - K2-19: retention policies are recorded (`ARCHIVE`, `REVIEW`); `DELETE` is refused until legal hold exists; no retention job runs in Layer 2.
+    - K2-20: two new audit actions, `PHOTO_REJECTED` and `PHOTO_ARCHIVED`.
+    - K2-21: swift-snapshot-testing and the XCUITest accessibility audit on iOS; pytest, ruff and mypy for Python.
+    - K2-22: Node.js 24 stays through Layer 2.
+  - **Delegated baselines confirmed:** UD-06 (Python, as K2-01), UD-21 (as K2-15), UD-22 (as K2-04), UD-24 (no automated deletion; K2-19) and UD-25 (as K2-17).
+- **Spec and schema changes made under this ADR:**
+  - **Spec §2.2, §2.3, §10.3:** the iOS offline store (K2-17) and the local emulator (K2-08).
+  - **Spec §5.2, §5.8:** `AIJob` moves to Layer 2 (K2-06).
+  - **Spec §5.4.10:** the photo machine (K2-05) and a protocol machine (K2-10).
+  - **Spec §5.5:** the protocol freeze, photo transition and audit-feed rules (K2-05, K2-07, K2-10).
+  - **Spec §6.1.9:** formats, limits, URL renewal, conditional writes and checksum verification (K2-02, K2-03).
+  - **Spec §6.2:** new error code `REQUIRED_VIEWS_MISSING` (K2-13).
+  - **Spec §6.3:** the batch access-URL endpoint (K2-14); the session completion rule (K2-13); the archive and scan events (K2-20); the flag precedence (K2-18); the retention rule (K2-19).
+  - **Spec §6.6.2, §6.7:** the upload DTO uses JPEG; image jobs carry presigned URLs (K2-01, K2-06).
+  - **Spec §7.1, §7.3, §7.4:** the device store, the two audit actions, the WORM copy and the bucket layout (K2-07, K2-09, K2-17, K2-20).
+  - **Spec §8:** the offline rules (K2-17).
+  - **Spec §10.2:** UD-06, UD-21, UD-22, UD-24 and UD-25 confirmed.
+  - **Schema:** `AuditAction` gains `PHOTO_REJECTED` and `PHOTO_ARCHIVED`; `AIJobType` gains `IMAGE_DERIVATIVE`. **`constraints.sql`:** the Layer 2 fragment gains the protocol freeze, the photo transition table and the audit-to-outbox feed (behaviour checks C11–C14 and G5).
+- **Consequences:** the Layer 2 tables of spec §5.8, plus `AIJob`, are created by the Layer 2 migrations. `packages/security` stays a placeholder: the worker shares the api's codebase and the image-processing service is Python, so no second TypeScript service needs it yet (ADR-0022). Before the first deployment the owner confirms GuardDuty Malware Protection for S3 is within the BAA (K2-04). HEIC needs an HEVC licence review before Layer 5 (K2-02).

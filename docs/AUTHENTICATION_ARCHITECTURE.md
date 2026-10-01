@@ -409,7 +409,7 @@ Invitation and password-reset email goes out from the api through Amazon SES in 
 | Deep links always re-authorize | [B §24.5] |
 | Sign-out or device revocation purges the cache; unsent records of a device revoked while offline are reported through the security runbook | spec §8 (UD-25) |
 
-**Not specified, decided at Layer 2 kickoff (UD-25, M2.9):** the longest time the app may be used offline (the cache baseline is 7 days, the provider session's absolute limit is also 7 days); whether offline unlock is still allowed after the session's absolute expiry has passed; whether a queue may be replayed after the same user signs in again following an expired (not revoked) session.
+**Decided at the Layer 2 kickoff (UD-25; ADR-0023 K2-17):** offline use ends at the session's absolute expiry (at most 7 days); after it, the cache cannot be unlocked until the user signs in again. The mutation queue belongs to one user in one organization: it replays only after that same user signs in again to that organization (re-validated first), whether the session expired or was revoked and re-established; nobody else signing in on the device can read it. Signing out with unsent photos asks for confirmation, because it deletes them.
 
 ---
 
@@ -509,4 +509,4 @@ The Layer 1 kickoff (ADR-0018) settled the MFA rule, client token handling, lock
 | ~~Content Security Policy for the admin SPA (§5)~~ Closed: ADR-0022 | M1.11 |
 | Keychain access-control flags for the patient app, where biometrics are optional (§5) | L5 kickoff |
 | Service-to-service mechanism for ai-gateway: IAM-signed requests or mTLS | L7 kickoff (M7.1) |
-| Offline duration and replay after re-sign-in (§9) | L2 kickoff (UD-25) |
+| ~~Offline duration and replay after re-sign-in (§9)~~ Closed: ADR-0023 K2-17 | L2 kickoff |

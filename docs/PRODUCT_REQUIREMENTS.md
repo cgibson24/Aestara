@@ -405,5 +405,5 @@ Every layer ends with a PASS / FAIL / DEFERRED BY SPECIFICATION table and a stop
 | UD-04 inference hosting | Adopted baseline | L7 kickoff |
 | UD-32 media grant for simulation sources; UD-29 simulation transitions | Adopted baseline | L8 kickoff |
 | UD-10 case-library permission and de-identification | Adopted baseline | L9 kickoff |
-| UD-25 offline cache policy | Adopted baseline | L2 kickoff |
+| UD-25 offline cache policy | Confirmed (ADR-0023 K2-17) | L2 kickoff |
 | The consultation cancellation policy (PR-CONSULT-01) and patient-app offline caching (F-55) | Not specified | L3 and L5 kickoffs |

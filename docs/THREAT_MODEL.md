@@ -381,8 +381,8 @@ Columns: **S** is the STRIDE letter; **Mitigation** gives SR IDs; **Spec** where
 ### AC-03 Stolen iPad
 
 - **Scenario:** a provider iPad is stolen locked, or picked up unlocked in a clinic (A5).
-- **Controls:** Data Protection *Complete*, SQLCipher and CryptoKit encryption with Keychain keys (SR-DPR-08); biometric unlock after 5 minutes in background (SR-IDN-13); cache limits and purge on sign-out (SR-DEV-06); admin device revocation that revokes sessions server-side (SR-IDN-08); originals purged after verified upload (SR-DEV-05); offline audit (SR-DEV-07).
-- **Residual:** Medium. An unlocked device is exposed for up to the 5-minute window; a device that never reconnects keeps its encrypted cache and cannot receive a purge; passcode strength and remote wipe are not specified (open item 3).
+- **Controls:** Data Protection *Complete* and CryptoKit AES-GCM encryption with Keychain keys (SR-DPR-08; ADR-0023 K2-17); biometric unlock after 5 minutes in background (SR-IDN-13); cache limits and purge on sign-out (SR-DEV-06); admin device revocation that revokes sessions server-side (SR-IDN-08); originals purged after verified upload (SR-DEV-05); offline audit (SR-DEV-07).
+- **Residual:** Medium. An unlocked device is exposed for up to the 5-minute window; a device that never reconnects keeps its encrypted cache and cannot receive a purge; remote wipe belongs to the customer's MDM, and offline use ends at the session's absolute expiry (open item 3, closed).
 - **Verified by:** iOS tests for encryption at rest, purge on sign-out and revocation; revocation immediacy test.
 
 ### AC-04 Refresh-token theft
@@ -442,12 +442,12 @@ These are the Medium and High residuals that matter most, linked to the risk reg
 |---|---|---|---|---|---|
 | 1 | Human production access (console, database owner role) can reach PHI or alter audit | High | T14.3, T14.4 | "Human production access to PHI (operators, support) is not yet specified" (added by ADR-0017) | Design the spec §10.4 controls (no standing access; break-glass with approval, session recording and audit) before the first environment that holds PHI (open item 13) |
 | 2 | A defect in the in-house authentication module | Medium | T2.1, AC-04 | "In-house authentication (D-02) has a security defect" | Vetted libraries, reuse detection, pen test before production (SR-IDN-18) |
-| 3 | Offline devices hold PHI | Medium | T6.1, AC-03 | "Offline devices hold PHI" | Cache limits (UD-25); device-management decision (open item 3) |
+| 3 | Offline devices hold PHI | Medium | T6.1, AC-03 | "Offline devices hold PHI" | Cache limits and offline expiry (UD-25, ADR-0023 K2-17); MDM is the customer's (open item 3, closed) |
 | 4 | Supply-chain compromise | Medium | T13.1, T13.2, T13.4, T13.8 | "Supply-chain compromise (dependencies, CI actions, container images)" (added by ADR-0017) | Dependency scanning is in place; gitleaks, CodeQL and SHA-pinned actions arrive in M1.2 (ADR-0018 K-21); deploy credentials remain (open item 12) |
 | 5 | Vendors handling PHI without BAAs | Medium | T12.1, T12.4 | "Vendor dependencies without BAAs" | Each vendor through a UD or ADR (SR-VEN-07) |
 | 6 | AI output misread as a prediction, or identity drift | Medium | AC-09 | "AI visualization quality or identity drift"; "Regulatory scope creep" | Harness thresholds, disclaimer by construction, intended-use review (SR-AI-06, SR-AI-11, SR-AI-15) |
 | 7 | Within-organization browsing enabled by organization-wide reads | Medium (accepted, ADR-0001) | AC-06 | "Cross-organization data exposure" (the cross-organization part is Low) | Detective controls: `PATIENT_VIEWED`, access reports, alerts |
-| 8 | Decoder exploit through a crafted image | Medium | T5.2, AC-05 | "Malicious image files (crafted HEIC/JPEG/PNG)" (added by ADR-0017) | Sandboxing decision (open item 6); scanning; patching |
+| 8 | Decoder exploit through a crafted image | Medium | T5.2, AC-05 | "Malicious image files (crafted HEIC/JPEG/PNG)" (added by ADR-0017) | Sandboxing (ADR-0023 K2-01); JPEG and PNG only (K2-02); scanning of every upload (K2-04); patching |
 | 9 | Account takeover for roles without mandatory MFA | Medium | T1.1, T7.3 | Related to "In-house authentication" | Organizations may require MFA for clinical roles (ADR-0018 K-03); patient MFA is decided in Layer 5 (open item 21) |
 
 ## 10. Review cadence
@@ -472,11 +472,11 @@ Each is a gap in the sources, not a decided control. Closed items keep their row
 |---|---|---|---|
 | 1 | Closed: the admin SPA's Content Security Policy is decided in ADR-0022 | T8.1 | M1.11 |
 | 2 | Lifetime of staff and patient invitation tokens. Reset tokens are single use and valid 30 minutes, and every token travels in the request body (ADR-0018 K-09, K-15) | T7.7, T10.3 | M1.6 (staff invitations); Layer 5 (patient invitations) |
-| 3 | Device passcode enforcement, device management and remote wipe for clinical devices | AS4, T6.1, AC-03 | Layer 2 kickoff, with UD-25 |
+| 3 | Closed at the Layer 2 kickoff: a device passcode is required because the Keychain class needs one (ADR-0018 K-22); device management and remote wipe belong to the customer's MDM; server-side revocation purges the cache at the next contact, and offline use ends at the session's absolute expiry (ADR-0023 K2-17) | AS4, T6.1, AC-03 | Closed (ADR-0023 K2-17) |
 | 4 | Closed: a privacy cover hides the app-switcher snapshot; screenshots are not blockable on iOS (ADR-0022) | T6.7 | M1.9 |
 | 5 | Closed for Layer 1: no jailbreak detection; App Attest is reconsidered with the patient app (ADR-0022) | T6.9 | M1.9; Layer 5 |
-| 6 | Runtime sandboxing of image decoding and inference | T5.2, AC-05 | Layer 2 (UD-06), Layer 7 (UD-04) |
-| 7 | Dead-letter and poison-message handling for imaging and AI queues | T5.8 | Layer 2, Layer 7 |
+| 6 | Image decoding closed at the Layer 2 kickoff: image-processing calls only the JPEG and PNG loaders, blocks untrusted loaders, refuses images over 100 megapixels before decoding, limits each job to 60 seconds, has no database access and runs as a non-root, read-only container reaching only S3 and SQS (ADR-0023 K2-01). Inference stays open | T5.2, AC-05 | Inference: Layer 7 (UD-04) |
+| 7 | Imaging closed at the Layer 2 kickoff: every queue has a dead-letter queue and an alarm; transient failures retry three times, undecodable files fail at once (ADR-0023 K2-06, K2-07). AI queues stay open | T5.8 | AI: Layer 7 |
 | 8 | Egress allow-list for `integration-service` (SSRF) | T11.6 | Layer 10 kickoff |
 | 9 | What session metadata is sent to the telehealth vendor | T12.4 | Layer 6, with UD-05 |
 | 10 | Email sender authentication for patient messages | T10.2 | Layer 5 kickoff |
@@ -488,7 +488,7 @@ Each is a gap in the sources, not a decided control. Closed items keep their row
 | 16 | Denial-of-service protection beyond AWS WAF (AWS Shield Advanced is the named candidate) | T1.5 | Production readiness ([`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
 | 17 | Rules for raw SQL in application code | T3.2 | Layer 1 (M1.1) |
 | 18 | How "no timing difference" for cross-tenant 404s is measured | AC-01 | Layer 1 (M1.4) |
-| 19 | Malware scanning of staff-uploaded documents | AC-05 | Layer 2 kickoff, with UD-22 |
+| 19 | Closed at the Layer 2 kickoff: every uploaded object is scanned, whatever its source, including staff documents when they arrive (ADR-0023 K2-04) | AC-05 | Closed (ADR-0023 K2-04) |
 | 20 | Closed at the Layer 1 kickoff: MFA is always required for admin roles and the admin web, and an organization may require it for clinical roles too, never fewer (SR-IDN-03; ADR-0018 K-03) | T1.1 | Closed (ADR-0018 K-03) |
 | 21 | MFA or biometrics for patients (optional today) | T7.3 | Layer 5 kickoff (UD-18) |
 | 22 | Identity verification before an admin-initiated MFA reset; the reset itself is decided (SR-IDN-20; ADR-0018 K-15; see [`AUTHENTICATION_ARCHITECTURE.md`](AUTHENTICATION_ARCHITECTURE.md) §14) | T10.4 | M1.6 |

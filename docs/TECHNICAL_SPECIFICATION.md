@@ -131,7 +131,7 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 
 | Area | Choice | Version | Source | Why |
 |---|---|---|---|---|
-| Runtime | Node.js **24 LTS "Krypton"** | 24.x | [B §31] "current supported LTS" | Active LTS today, supported to April 2028. Node 26 enters LTS in October 2026; re-evaluate at Layer 2. |
+| Runtime | Node.js **24 LTS "Krypton"** | 24.x | [B §31] "current supported LTS" | Active LTS today, supported to April 2028. Node 26 enters LTS in October 2026; kept on 24 through Layer 2 and re-evaluated at the Layer 3 kickoff [ADR-0023 K2-22]. |
 | Language | TypeScript | **6.0.x** | [B §25.1] | NestJS 12's CLI ships TypeScript ~6.0. TypeScript 7.0 (native compiler) is out but not yet supported by the NestJS toolchain (decorator metadata). Adopt 7.x when NestJS supports it. |
 | Monorepo | **pnpm workspaces** + Turborepo | pnpm 12.x, turbo 2.x | [B §31] pnpm · [P] Turborepo | Turborepo adds cached, dependency-aware task runs across ~15 packages. It is optional and can be removed without changing structure. |
 | API framework | **NestJS 12** on the **Fastify** adapter | @nestjs/core 12.1 | [B §25.1] NestJS · [P] Fastify | Nest gives modules, guards and interceptors that map directly onto authz/audit/tenancy. Fastify gives lower latency and schema-first request handling. |
@@ -142,13 +142,13 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | Object storage | **Amazon S3**, private, SSE-KMS, versioning, Block Public Access | — | [B §25.3] | No public buckets and no public CDN for patient media [B §21.2, §25.3]. |
 | Queues & events | **SQS** (work queues) + **EventBridge** (domain events), fed by a **transactional outbox** | — | [B §25.3] · [P] outbox | The outbox (`OutboxEvent`) guarantees events are published only when the DB change commits: no lost or phantom events. |
 | Workers | NestJS worker processes (same codebase, separate deployables) | — | [B §25.2] "worker" | Exports, sync, derivatives, retention jobs; the UI always exposes job status [B §22.4]. |
-| Image processing | **Python 3.13** service using OpenCV + libvips (pyvips) | — | [P] · [UD-06] | Registration and alignment need OpenCV. Keeping all pixel work in one language avoids two imaging stacks. Bible §25.1 prefers TypeScript "or another approved strongly typed framework", so Python (typed, mypy strict) is adopted by delegation (ADR-0008). |
+| Image processing | **Python 3.13** service using libvips (pyvips); OpenCV joins in Layer 3 for registration | pyvips-binary (libvips 8.18) | [P] · [UD-06, confirmed ADR-0023 K2-01] | Registration and alignment need OpenCV. Keeping all pixel work in one language avoids two imaging stacks. Bible §25.1 prefers TypeScript "or another approved strongly typed framework", so Python (typed, mypy strict) is adopted by delegation (ADR-0008). |
 | AI gateway | NestJS (TypeScript) | — | [P] | Authenticated internal job API, model routing, provenance [B §25.2]. |
 | AI inference | Python + PyTorch / ONNX Runtime in a **private** GPU environment (no public egress) | — | [B §2.1] "Private AI Jobs" (privacy) · [P] Python · [UD-04] hosting | Patient images never go to third-party AI APIs unless a separately approved BAA-covered service is chosen. Python is the de facto ML runtime but is not the Bible's preferred backend language (§25.1), so it is adopted by delegation (ADR-0008). |
 | Notifications | APNs (token auth), Amazon SES (email), AWS End User Messaging (SMS) | — | [P] | SES and End User Messaging are HIPAA-eligible AWS services; APNs is Apple's service and receives only generic text plus a deep-link identifier. Payloads are generic text only [B §14.3]. |
 | Authentication | First-party OIDC-compatible auth module: `jose` (JWT), `@node-rs/argon2` (Argon2id), `otplib` (TOTP), `@simplewebauthn/server` (passkeys) | jose 6.2, argon2 2.2, otplib 13.5, simplewebauthn 14.0 | [B §21.1] OIDC-compatible · **D-02** first-party | See §4.2. Enterprise SSO federation can be added later behind an identity-provider adapter. |
 | Telehealth video | Vendor adapter (BAA-capable vendor) | — | [UD-05] | Layer 6 decision; the schema is vendor-agnostic (`TelehealthSession.vendor`). |
-| Malware scanning | Scanning worker on quarantined uploads | — | [UD-22] | Required for patient uploads and attachments [B §13.4, §14.4]. |
+| Malware scanning | Amazon GuardDuty Malware Protection for S3, if within the BAA's scope; otherwise a ClamAV worker behind the same interface | — | [UD-22, confirmed ADR-0023 K2-04] | **Every uploaded object is scanned**, whatever its source; required at least for patient uploads and attachments [B §13.4, §14.4]. Locally and in CI, a scanner that flags only the EICAR test file. |
 | Logging | `pino` structured JSON with **allow-list** redaction | pino 10.3 | [B §26] · [P] | Only IDs and codes are logged, never request bodies. |
 | Tracing & metrics | OpenTelemetry SDK → AWS Distro for OpenTelemetry → CloudWatch / X-Ray | @opentelemetry/sdk-node 0.222 | [B §26] · [P] | Distributed tracing using safe identifiers only. |
 
@@ -161,7 +161,7 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | iOS packages | Swift Package Manager, one local package per module from Bible §24.4 | [B §24.3–24.4] | 20 provider modules (AppShell … AuditSupport). Patient app reuses CoreNetworking, CoreSecurity, DesignSystem. |
 | Xcode project generation | **Tuist** (Swift manifests) | [B §31] "reproducible method" · [P] | Built for heavily modular apps; XcodeGen is the fallback. |
 | iOS API client | Apple **swift-openapi-generator** from the OpenAPI 3.1 contract | [P] | The client is generated, never hand-written, so it can't drift from the server. |
-| iOS offline store | **GRDB** (SQLite) + **SQLCipher**, key held in Keychain; Data Protection class *Complete* | [B §23.3] "all cached sensitive data encrypted" · [P] | Explicit schema/migrations plus a deterministic mutation queue (§8). |
+| iOS offline store | **CryptoKit AES-GCM**-sealed records and media files, key held in Keychain (`WhenUnlockedThisDeviceOnly`); Data Protection class *Complete* | [B §23.3] "all cached sensitive data encrypted" · [P] · ADR-0023 K2-17 | A small store; no third-party cryptography dependency. Deterministic mutation queue (§8). |
 | Minimum OS | iOS/iPadOS **26** | **D-05** | Current major minus one at September 2026. Owner requirement: **controls must be intuitive** on both iPhone and iPad. The interaction rules are in `DESIGN_SYSTEM.md`. |
 | Admin web | **React 19 + TypeScript + Vite 8** single-page app, TanStack Router/Query, generated TS client | **D-03** | The Bible does not name a web framework. A static SPA fits "CloudFront/WAF (admin/public static assets only)" [B §25.3]: no server-side rendering tier handles PHI. |
 
@@ -176,7 +176,7 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | IaC | **Terraform** (AWS provider), one root module per environment: dev / staging / production | [B §25.1, §28.1] |
 | CI/CD | **GitHub Actions** (repo is on GitHub). Gates from [B §28.2]: format/lint, typecheck, unit/API/DB tests, migration validation, dependency scan (OSV-Scanner + Dependabot), container scan (Trivy), `terraform validate`/`tflint`/`checkov` plus plan review, iOS build/tests on macOS runners | [B §28.2] · [P] tools |
 | Test tooling | Vitest (unit/domain), **Testcontainers** + real PostgreSQL (DB/API/authz/tenant tests, never mocks for authz), Playwright (admin web E2E), Swift Testing/XCTest + XCUITest (iOS) | [B §27.1] · [P] tools |
-| Local development | Docker Compose: `postgres:18`, LocalStack (S3, SQS, EventBridge, KMS, Secrets Manager), a local SMTP catcher | [P] |
+| Local development | Docker Compose: `postgres:18`, **moto** (S3, SQS, EventBridge, KMS; LocalStack now needs an account token, ADR-0023 K2-08), Mailpit | [P] |
 
 ### 2.4 Deliberately *not* in the stack
 
@@ -600,7 +600,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 |---|---|---|---|
 | AIModel | Registry entry (platform-level) | Unique `key` | 7 |
 | AIModelVersion | Immutable version: artifact digest, parameter allow-list, thresholds, intended use | Immutable except lifecycle status | 7 |
-| AIJob | Any AI/imaging job with idempotency key | Unique `(organizationId, idempotencyKey)`; created in Layer 3 for automatic registration; model FK added in Layer 7 | 3 |
+| AIJob | Any AI/imaging job with idempotency key | Unique `(organizationId, idempotencyKey)`; created in Layer 2 for image derivatives (`IMAGE_DERIVATIVE`, ADR-0023 K2-06), used in Layer 3 for automatic registration; model FK added in Layer 7 | 2 |
 | AIValidationRecord | Per-check evidence (quality, identity similarity, artifacts, benchmarks) | Tenant required for job/output records | 7 |
 | Simulation | Canonical §9.3 state machine; draft parameters until `/generate` | Release requires version, time and actor | 8 |
 | SimulationVersion | One generation attempt with full provenance (§9.4) | Provenance immutable; fully immutable after completion | 8 |
@@ -824,7 +824,8 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 | Object | States |
 |---|---|
 | Patient | `ACTIVE`, `INACTIVE` and `DECEASED` change into one another only through an update (`patient.update`, If-Match, audited `PATIENT_UPDATED`). `ACTIVE \| INACTIVE \| DECEASED → ARCHIVED` only through `/archive` (`patient.archive`). An update never sets or clears `ARCHIVED`, and nothing changes a patient's status automatically [ADR-0018 K-20] |
-| PatientPhoto | `UPLOAD_PENDING → ACCEPTED` (staff capture) · `UPLOAD_PENDING → QUARANTINED → PENDING_REVIEW → ACCEPTED \| RETAKE_REQUESTED \| REJECTED` (patient upload) · `ACCEPTED → ARCHIVED` |
+| PatientPhoto | `UPLOAD_PENDING → QUARANTINED` (upload verified; every source is scanned) · `QUARANTINED → ACCEPTED` (staff capture, clean scan, system) · `QUARANTINED → PENDING_REVIEW → ACCEPTED \| RETAKE_REQUESTED \| REJECTED` (patient upload, clean scan) · `QUARANTINED → REJECTED` (scan found malware or could not complete, system, `PHOTO_REJECTED`) · `ACCEPTED → ARCHIVED` (`PHOTO_ARCHIVED`). Enforced by a trigger [ADR-0023 K2-04, K2-05] |
+| PhotographyProtocol | `DRAFT → ACTIVE` (`/activate`; activating a successor retires its predecessor in the same transaction) · `ACTIVE → RETIRED` (`/retire`) · `DRAFT → RETIRED` (discard a draft). No deletes. Fields and views frozen once not `DRAFT` (trigger); only `ACTIVE` protocols start sessions [ADR-0023 K2-10] |
 | AIJob | `QUEUED → RUNNING → SUCCEEDED \| FAILED \| TIMED_OUT`; `QUEUED \| RUNNING → CANCELLED` |
 | PhotoRequest | `OPEN → SUBMITTED → COMPLETED`; `OPEN → CANCELLED \| EXPIRED` |
 | Procedure | `PLANNED → SCHEDULED → COMPLETED`; `PLANNED \| SCHEDULED → CANCELLED` |
@@ -841,6 +842,9 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 | Role assignment scope shape; no duplicate active assignment; no self-assignment | CHECKs + partial unique (NULLS NOT DISTINCT) | B2–B5, R4 |
 | System role keys unique | Partial unique index | B1 |
 | Original photo identity immutable | Trigger | C1–C2 |
+| Photo status follows the §5.4.10 machine | Trigger (transition table) | C11 |
+| Protocol status forward-only; fields and views frozen once not `DRAFT` | Triggers | C12–C14 |
+| Every audit row is fed to the WORM copy | Trigger inserts an outbox row in the same transaction | G5 |
 | Storage objects write-once after verification; keys never change | Triggers | C3–C4, C10 |
 | Before/after = two different photos of the same patient | Composite FK + CHECK | C5–C7 |
 | Derivatives immutable | Trigger | C8–C9 |
@@ -881,8 +885,8 @@ The **whole** schema is designed now so later layers can't force a redesign. **T
 | Layer | Migration creates |
 |---|---|
 | 1 | Organization, Practice, Location, User, UserCredential, UserToken ⁱ, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, IdempotencyKey ⁱ, OrganizationSetting ⁱ |
-| 2 | StorageObject, PhotographyProtocol, PhotographyProtocolView, PhotoSession, PatientPhoto, PhotoDerivative, PhotoTag, PhotoPermission, MediaRelease, MediaReleasePermission, OutboxEvent, FeatureFlag, PracticeSetting, RetentionPolicy |
-| 3 | Consultation, ConsultationNote, ConsultationConcern, PatientConcern, PatientMedicalHistory, PhotoAnnotation, BeforeAfterSet, Document, DocumentVersion, AIJob ⁱⁱ |
+| 2 | StorageObject, PhotographyProtocol, PhotographyProtocolView, PhotoSession, PatientPhoto, PhotoDerivative, PhotoTag, PhotoPermission, MediaRelease, MediaReleasePermission, OutboxEvent, FeatureFlag, PracticeSetting, RetentionPolicy, AIJob ⁱⁱ |
+| 3 | Consultation, ConsultationNote, ConsultationConcern, PatientConcern, PatientMedicalHistory, PhotoAnnotation, BeforeAfterSet, Document, DocumentVersion |
 | 4 | TreatmentCategory, Treatment, TreatmentPlan, TreatmentPlanItem, Procedure, Estimate, Quote, InvoiceReference, ConsentTemplate, ConsentTemplateVersion, ConsentAssignment, ConsentSignature, EducationContent, EducationContentVersion, ContentAssignment, PatientInstruction, DataExportJob |
 | 5 | PatientUserLink, PhotoRequest, MessageThread, ThreadParticipant, Message, MessageAttachment, Notification |
 | 6 | AppointmentType, Appointment, TelehealthSession |
@@ -891,7 +895,7 @@ The **whole** schema is designed now so later layers can't force a redesign. **T
 | 9 | CaseLibraryEntry, SimilarCaseMatch, OutcomeMeasurement |
 | 10 | Integration, IntegrationMapping, EMRSyncEvent, IntegrationDeadLetter |
 
-ⁱ Beyond the literal Bible §32 scope, justified [P]: `UserToken` because staff invitations, password reset and MFA challenges need single-use, hashed, expiring tokens [B §21.1] (ADR-0018 K-09, K-15); `IdempotencyKey` because patient creation must be retry-safe [B §20.3, §23.3]; `OrganizationSetting` because the MFA/session policy and the "primary practice optional/required by deployment policy" rule [B §4.2, §21.1] are Layer 1 behavior. ⁱⁱ `AIJob` is the generic job record; Layer 3 needs it for automatic before/after registration [B §34.1 #17] (image processing, no model), and Layer 7 adds the model FK.
+ⁱ Beyond the literal Bible §32 scope, justified [P]: `UserToken` because staff invitations, password reset and MFA challenges need single-use, hashed, expiring tokens [B §21.1] (ADR-0018 K-09, K-15); `IdempotencyKey` because patient creation must be retry-safe [B §20.3, §23.3]; `OrganizationSetting` because the MFA/session policy and the "primary practice optional/required by deployment policy" rule [B §4.2, §21.1] are Layer 1 behavior. ⁱⁱ `AIJob` is the generic job record. Layer 2 creates it for image derivatives (job type `IMAGE_DERIVATIVE`, image processing, no model; ADR-0023 K2-06), Layer 3 uses it for automatic before/after registration [B §34.1 #17], and Layer 7 adds the model FK.
 
 Some forward references are nullable (e.g. `Appointment.consultationId`, `PhotoSession.procedureId`, `PhotoDerivative.generatedByJobId`). They are added by the later layer's migration together with their FK, so no layer contains a dangling reference. The matching `constraints.sql` fragments are ordered by layer in the same way.
 
@@ -968,10 +972,10 @@ Keys are scoped per actor and retained **7 days** [P], long enough to cover the 
 
 #### 6.1.9 Media access [B §14.4, §20.3, §21.2]
 
-- **Uploads:** `POST …/uploads` returns a presigned S3 `PUT` URL valid **10 min** [P], with required headers (`Content-Type`, `x-amz-checksum-sha256`). Then `POST …/complete-upload` makes the server verify size and checksum before anything becomes visible.
+- **Uploads:** `POST …/uploads` returns a presigned S3 `PUT` URL valid **10 min** [P], with required headers (`Content-Type`, `x-amz-checksum-sha256`, `If-None-Match: *`, so an object is never overwritten). One `PUT` per object, no multipart. While the photo is `UPLOAD_PENDING`, replaying the intent with the same `Idempotency-Key` returns a fresh URL. Then `POST …/complete-upload` makes the server verify size, checksum and the file's first bytes before anything becomes visible: it takes the SHA-256 that S3 verified on upload, or computes it by reading the object when the store reports none [ADR-0023 K2-03].
 - **Downloads:** `POST …/access-urls` returns a presigned `GET` URL valid **120 s** [P] (exports: 10 min) for one object and variant, with `Content-Disposition` and `Cache-Control: private, no-store`. Each issuance writes the view/download audit event.
 - Object keys are **opaque random paths with no PHI**. They appear only inside short-lived signed URLs and are never returned as data or in errors. There are no permanent or public URLs.
-- Size and type allow-lists are enforced both at intent time and at completion: HEIC/JPEG/PNG for photos, PDF for documents, plus configured attachment types.
+- Size and type allow-lists are enforced both at intent time and at completion: **JPEG and PNG for photos**, at most **50 MiB** and **100 megapixels** (HEIC is not accepted until an HEVC decoder licence is reviewed, re-decided in Layer 5) [ADR-0023 K2-02]; PDF for documents; configured attachment types. The file's first bytes must match the declared type.
 
 #### 6.1.10 Other rules
 
@@ -1006,6 +1010,7 @@ Keys are scoped per actor and retained **7 days** [P], long enough to cover the 
 | 413 | `PAYLOAD_TOO_LARGE` | Upload exceeds limit |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | File type not allowed |
 | 422 | `UPLOAD_VERIFICATION_FAILED` | Size/checksum mismatch on completion |
+| 422 | `REQUIRED_VIEWS_MISSING` | Completing a photo session with required views missing, without `acknowledgeMissingRequiredViews`; `details.viewKeys` [ADR-0023 K2-13] |
 | 422 | `INPUT_QUALITY_INSUFFICIENT` | AI input fails quality checks; `details.reasons` holds actionable codes (e.g. `LIGHTING_TOO_DARK`) [B §34.2 #24] |
 | 422 | `UNSUPPORTED_SIMULATION_INPUT` | View/category outside the validated model domain |
 | 428 | `PRECONDITION_REQUIRED` | `If-Match` missing |
@@ -1098,15 +1103,16 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 |---|---|---|---|---|---|
 | `GET/POST /photography-protocols` · `GET/PATCH …/{id}` · `POST …/{id}/activate` · `/retire` | Protocols & views (frozen when active; edits supersede) | photo.capture or photo.view (read) / practice.manage | – | CONFIGURATION_CHANGED* | 2 |
 | `GET …/photo-sessions` · `POST …/photo-sessions` | List / start session (client ID allowed) | photo.view / photo.capture | R | – | 2 |
-| `GET …/photo-sessions/{sid}` · `POST …/{sid}/complete` | View / complete | photo.view / photo.capture | – | – | 2 |
+| `GET …/photo-sessions/{sid}` · `POST …/{sid}/complete` | View (reports missing required views) / complete (`422 REQUIRED_VIEWS_MISSING` unless `acknowledgeMissingRequiredViews`) [ADR-0023 K2-13] | photo.view / photo.capture | – | – | 2 |
 | `GET …/photos` | List (filter by session, view, date, status) | photo.view | – | – | 2 |
 | `POST …/photos/uploads` | Upload intent → photo ID + presigned PUT | photo.capture | R | – | 2 |
 | `POST …/photos/{phid}/complete-upload` | Verify checksum/size, finalize ORIGINAL, queue derivatives | photo.capture | R | PHOTO_CAPTURED | 2 |
 | `GET …/photos/{phid}` | Metadata + derivative availability | photo.view | – | – | 2 |
 | `POST …/photos/{phid}/access-urls` | Signed GET for a variant (THUMBNAIL, DISPLAY_PREVIEW; ORIGINAL needs `photo.export`) | photo.view | – | PHOTO_VIEWED | 2 |
+| ✚ `POST …/photos/access-urls` | Signed THUMBNAIL or DISPLAY_PREVIEW URLs for up to 60 photos in one request (galleries); never ORIGINAL [ADR-0023 K2-14] | photo.view | – | PHOTO_VIEWED (one per photo) | 2 |
 | `PUT …/photos/{phid}/tags` | Replace tags | photo.annotate | – | – | 2 |
 | `POST …/photos/{phid}/review` | Intake decision: ACCEPT / REQUEST_RETAKE / REJECT | photo.capture | – | PHOTO_INTAKE_REVIEWED* | 5 |
-| `POST …/photos/{phid}/archive` | Archive photo (original retained) | photo.capture | – | – | 2 |
+| `POST …/photos/{phid}/archive` | Archive photo (original retained; hidden from lists by default, never reused) [ADR-0023 K2-14] | photo.capture | – | PHOTO_ARCHIVED* | 2 |
 | `GET/POST …/photos/{phid}/annotations` · `PATCH/DELETE …/annotations/{aid}` | Vector annotations (client ID allowed) | photo.view / photo.annotate | R (create) | PHOTO_ANNOTATED* | 3 |
 | `POST …/photos/{phid}/exports` | Purpose-specific export derivative (checks current grant) | photo.export | R | PHOTO_EXPORTED | 3 |
 | `GET /patients/{pid}/photo-permissions` · `GET …/history` | Current state per category/scope; full version history | photo.permission.read | – | – | 2 |
@@ -1114,7 +1120,7 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `GET/POST /patients/{pid}/media-releases` · `POST …/{id}/revoke` | Release assets for a purpose (PATIENT_APP, WEBSITE, …); pins every permission version relied on | photo.export (non-patient purposes) / consultation.complete (PATIENT_APP) | R | MEDIA_RELEASED* / MEDIA_RELEASE_REVOKED* | 2 |
 | `GET/POST /patients/{pid}/photo-requests` · `POST …/{id}/cancel` | Request patient uploads | photo.capture | R | – | 5 |
 
-`ORIGINAL` variant access requires the `photo.export` permission (never a role check [B §3.3]) and is always audited [P].
+`ORIGINAL` variant access requires the `photo.export` permission (never a role check [B §3.3]) and is always audited [P]. Quarantined and rejected photos are never served. A scan that finds malware or cannot complete rejects the photo with `PHOTO_REJECTED*` (system actor) [ADR-0023 K2-04].
 
 #### Before / after (`/patients/{pid}/before-after`) [B §8, §34.1]
 
@@ -1227,8 +1233,8 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | `GET /ai-models` · `GET /ai-models/{id}/versions` | Registry visibility | ai.model.read* | – | – | 7 |
 | `POST /ai-models/{id}/rollouts` | Activate/deactivate/rollback version (platform or org) | ai.model.manage* | R | AI_MODEL_ROLLOUT_CHANGED* | 7 |
 | `GET/PUT /settings/organization/{key}` | Organization policy settings (MFA, sessions, primary-practice rule) (If-Match) | configuration.manage* | – | CONFIGURATION_CHANGED* | 1 |
-| `GET/PUT /feature-flags/{key}` · `GET/PUT /settings/practices/{practiceId}/{key}` | Flags & practice settings (If-Match) | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
-| `GET/POST /retention-policies` | Retention policy per record category | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
+| `GET/PUT /feature-flags/{key}` · `GET/PUT /settings/practices/{practiceId}/{key}` | Flags & practice settings (If-Match). Keys are registered in code with their defaults; a practice row wins over an organization row, which wins over the default; no platform-wide rows in Layer 2 [ADR-0023 K2-18] | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
+| `GET/POST /retention-policies` | Retention policy per record category. `ARCHIVE` and `REVIEW` only; `DELETE` is refused until legal hold is modelled; no retention job runs in Layer 2 [ADR-0023 K2-19] | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
 
 Integration **worker** activity writes INTEGRATION_SYNC_SUCCEEDED / INTEGRATION_SYNC_FAILED, and **export completion** writes DATA_EXPORT_COMPLETED (actor type `SERVICE`).
 
@@ -1288,14 +1294,14 @@ Canonical definitions will live as Zod schemas in `packages/api-contracts`. Thes
 // POST /api/v1/patients/{pid}/photos/uploads   (Idempotency-Key required)
 { "id": "0192f7e0-…",                     // optional client UUIDv7 (offline capture)
   "photoSessionId": "0192f7df-…", "viewKey": "LEFT_45",
-  "contentType": "image/heic", "byteSize": 4821933,
+  "contentType": "image/jpeg", "byteSize": 4821933,
   "sha256": "9f2c…e1", "capturedAt": "2026-09-25T14:05:02.000Z",
   "captureMetadata": { "deviceModel": "iPad16,3", "yawDeg": 44.1, "pitchDeg": 1.2, "positionMatchScore": 0.93 } }
 
 // 201 Created
 { "data": { "photoId": "0192f7e0-…", "status": "UPLOAD_PENDING",
     "upload": { "method": "PUT", "url": "https://…signed…", "expiresAt": "2026-09-25T14:15:02.000Z",
-                "headers": { "Content-Type": "image/heic", "x-amz-checksum-sha256": "…" } } } }
+                "headers": { "Content-Type": "image/jpeg", "x-amz-checksum-sha256": "…", "If-None-Match": "*" } } } }
 ```
 
 #### 6.6.3 Simulation (staff view)
@@ -1371,7 +1377,7 @@ Clients and server share these enums so the provider app, patient app and API sp
 |---|---|---|---|
 | AI job submission | api → ai-gateway | `POST /internal/v1/ai-jobs {jobId, organizationId, jobType, modelKey, inputs:[{objectRef, role}], parameters}` (opaque object references only, no demographics) | Service-to-service: IAM-signed requests or mTLS inside the VPC [P] |
 | AI job results | ai-gateway → api | Event on SQS `ai.job.completed` / `ai.job.failed` with scores and output object refs; api persists `AIValidationRecord`, `PhotoDerivative` and transitions | Queue IAM policy |
-| Image jobs | api → image-processing → api | SQS `image.derivative.requested` / `image.derivative.completed`; `image.registration.*` | Queue IAM policy |
+| Image jobs | api → image-processing → api | SQS `image.derivative.requested {jobId, attempt, source:{url, contentType, sha256}, outputs:[{kind, url, maxEdgePx}]}` with presigned per-object URLs (≤ 10 min) for output objects the api registered first / `image.derivative.completed` or `.failed`; `image.registration.*` (Layer 3) [ADR-0023 K2-06] | Queue IAM policy |
 | Notifications | api → notifications | SQS `notification.requested {notificationId, userId, channel, templateKey, deepLink}`; **no content field exists** | Queue IAM policy |
 | Integration | api ↔ integration-service | `IntegrationAdapter` interface (`fetchChanges`, `upsert`, `mapToCanonical`, `mapFromCanonical`); vendor specifics stay inside adapters [B §18.1] | Internal |
 | Vendor webhooks | vendor → `/webhooks/v1/{vendor}` | HMAC/signature verified, replay-protected, then enqueued | Vendor signature |
@@ -1395,10 +1401,10 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 | Rule | Mechanism |
 |---|---|
 | TLS in transit | TLS 1.2+ (1.3 preferred) at ALB/CloudFront; TLS to RDS enforced (`rds.force_ssl`); internal service traffic stays inside the VPC over TLS |
-| Encryption at rest (DB, objects, backups, local cache) | RDS + snapshots encrypted with KMS CMK; S3 SSE-KMS (bucket key); iOS: Data Protection *Complete* + SQLCipher database + CryptoKit AES-GCM for cached media, keys in Keychain |
+| Encryption at rest (DB, objects, backups, local cache) | RDS + snapshots encrypted with KMS CMK; S3 SSE-KMS (bucket key); iOS: Data Protection *Complete* + CryptoKit AES-GCM-sealed records and media, keys in Keychain [ADR-0023 K2-17] |
 | KMS / envelope encryption | Per-environment CMKs; TOTP seeds and integration payloads envelope-encrypted; per-tenant keys evaluated at the ~1,000-practice tier |
 | No sensitive data in logs/analytics/crash/push | §7.2 |
-| No public buckets / permanent URLs | S3 Block Public Access (account-level), bucket policies deny non-TLS and non-VPC-endpoint access for services, presigned URLs ≤ 10 min |
+| No public buckets / permanent URLs | S3 Block Public Access (account-level), bucket policies deny non-TLS and non-VPC-endpoint access for services, presigned URLs ≤ 10 min signed by a dedicated presigning role that devices can use [ADR-0023 K2-09] |
 | Tenant isolation, tested automatically | §3.5, §7.5 |
 | Signed temporary media access | §6.1.9 |
 | WAF / rate limits / abuse monitoring | AWS WAF managed rules + rate rules; login lockout; anomaly alerts on `ACCESS_DENIED` bursts |
@@ -1451,6 +1457,7 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 | PATIENT_ACCOUNT_LINKED | Patient app account creation [B §13] |
 | CONSULTATION_STATUS_CHANGED | "Audit lifecycle events" [B §5.1] |
 | PHOTO_ANNOTATED · PHOTO_INTAKE_REVIEWED · BEFORE_AFTER_CREATED | Clinical media changes; intake "Audit events" [B §13.4] |
+| PHOTO_REJECTED · PHOTO_ARCHIVED | A scan blocked a photo (system actor; security event [B §26]); a clinical photo was archived (parity with PATIENT_ARCHIVED) [ADR-0023 K2-20] |
 | MEDIA_RELEASED · MEDIA_RELEASE_REVOKED | Release and revocation tracking [B §7] |
 | SIMILAR_CASES_SHOWN | "Records which historical cases were shown" [B §10] |
 | AI_MODEL_ROLLOUT_CHANGED | Never silently replace a model [B §9.7] |
@@ -1463,12 +1470,12 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 
 **Event contents [B §22.2]:** actor (type, user or service), organization, resource type and ID, action, outcome, timestamp, request ID, session and device, IP/user agent, `patientId` (identifier only, enabling per-patient access reports), and non-clinical metadata.
 
-**Tamper resistance [B §21.2]:** (1) DB triggers block UPDATE/DELETE/TRUNCATE; (2) the application DB role has only `INSERT, SELECT` on audit tables; (3) the outbox relay streams audit rows to an **S3 bucket with Object Lock (compliance mode)** as the long-term WORM copy; (4) a daily job reconciles DB against WORM counts and alerts on divergence. Layer 1 relies on (1) and (2); (3) and (4) arrive with the outbox in Layer 2 [ADR-0018 K-18].
+**Tamper resistance [B §21.2]:** (1) DB triggers block UPDATE/DELETE/TRUNCATE; (2) the application DB role has only `INSERT, SELECT` on audit tables; (3) the outbox relay streams audit rows to an **S3 bucket with Object Lock (compliance mode)** as the long-term WORM copy; (4) a daily job reconciles DB against WORM counts and alerts on divergence. Layer 1 relies on (1) and (2); (3) and (4) arrive with the outbox in Layer 2 [ADR-0018 K-18]. For (3), a trigger on `AuditEvent` inserts an outbox row in the same transaction, and the relay writes batches of audit rows to the `audit-archive` bucket (Object Lock compliance mode, 6 years, in staging and production; governance mode, 1 day, in dev) [ADR-0023 K2-07].
 
 ### 7.4 Media storage layout [B §6.6, §21.2]
 
-- One private bucket per environment for clinical media, plus separate buckets for exports and for integration payloads (different lifecycle and IAM).
-- Keys are `{objectClass}/{random UUIDv7}`: opaque, no tenant/patient/PHI in the key, never overwritten. S3 versioning is on, and non-admin roles are denied `s3:DeleteObject` and `s3:PutObject` on existing keys.
+- One private bucket per environment for clinical media, plus separate buckets for exports and for integration payloads (different lifecycle and IAM). `clinical-media` holds every object class except `DATA_EXPORT` (`exports`) and `INTEGRATION_PAYLOAD` (`integration-payloads`); `audit-archive` holds the WORM audit copy [ADR-0023 K2-09].
+- Keys are `{objectClass}/{random UUIDv7}`: opaque, no tenant/patient/PHI in the key, never overwritten. S3 versioning is on, and non-admin roles are denied `s3:DeleteObject` and `s3:PutObject` on existing keys: the bucket policy refuses a `PUT` without `If-None-Match: *` (S3 conditional writes) [ADR-0023 K2-09].
 - Uploads verify `x-amz-checksum-sha256` at S3 and again in the API (§3.4 A).
 
 ### 7.5 Security & isolation testing [B §27.1, §36]
@@ -1522,8 +1529,8 @@ Detailed in the Layer 0 `INFRASTRUCTURE.md`, `DEPLOYMENT.md` and `TESTING_STRATE
 3. Retries use the same `Idempotency-Key`, so they can **never** duplicate photos, notes, signatures or AI jobs. Signatures and AI jobs are not offline operations anyway.
 4. `412 VERSION_CONFLICT` is **surfaced to the user** with both versions. The client never auto-resolves by newest timestamp for clinical or consent data [B §23.3].
 5. On reconnect, cached authorization is re-validated (`GET /auth/session`) before replay. Deep links always re-authorize [B §24.5].
-6. Offline photo originals are stored encrypted with their SHA-256. After `complete-upload` succeeds and the server confirms the checksum, the local original is purged per cache policy [B §23.3].
-7. The cache policy (max patients, max age, auto-purge on sign-out or device revocation) is a `PracticeSetting` [UD-25].
+6. Offline photo originals are stored encrypted with their SHA-256 (CryptoKit AES-GCM, Data Protection *Complete*). The local original is kept until the photo is accepted (verified and scanned clean), then purged per cache policy [B §23.3] [ADR-0023 K2-17].
+7. The cache policy is the `PracticeSetting` `offline.cachePolicy`: by default 25 recent patients and 7 days, purged on sign-out, on device revocation (at the next contact) and when the session's absolute lifetime ends. Offline use ends at that absolute expiry. The queue belongs to one user in one organization and replays only after that user signs in again to it; signing out with unsent photos needs confirmation [UD-25, confirmed ADR-0023 K2-17].
 8. **Offline views are still audited** [B §4.3, §22.1]: opening a cached patient or photo offline writes a local audit record (encrypted, with a UUIDv7 used as the idempotency key, the original timestamp and `offline = true`). On reconnect these replay through `POST /audit/offline-events` before other mutations. A device revoked while offline has its unsent records reported by the security runbook. [P]
 
 ---
@@ -1596,7 +1603,7 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 2. English-only UI at launch; strings are externalized from day one so localization can follow.
 3. Pilot scale is ~10 practices; the design must not block ~1,000 [B §1.1, §25.4].
 4. The platform operator runs a single shared multi-tenant deployment (not one deployment per customer).
-5. Clinical media are photographs (HEIC/JPEG/PNG). Video capture of patients is out of scope. Education *content* may be video.
+5. Clinical media are photographs (JPEG/PNG; HEIC after an HEVC licence review, ADR-0023 K2-02). Video capture of patients is out of scope. Education *content* may be video.
 6. All AI models are commercially licensable for this use, run privately, and are introduced only through the registry with validation evidence (Layers 7–8).
 
 ### 10.2 Decision register
@@ -1624,10 +1631,10 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 | UD-19 | Audit naming + proposed events | §7.3 as written | L1 |
 | UD-24 | Retention defaults, legal hold | No automated deletion without a customer policy; legal hold before any DELETE policy | L1–L2 |
 | UD-27 | Rate-limit store | WAF + DB-backed lockout in L1; Valkey when > 1 API task | L1 |
-| UD-06 | image-processing language | Python (OpenCV/libvips) | L2 |
-| UD-21 | Permission scope granularity in UI | Patient-wide + per-photo exceptions | L2 |
-| UD-22 | Malware scanning | Managed scanning if in BAA scope, else ClamAV worker | L2 |
-| UD-25 | Offline cache policy | 25 recent patients, 7 days, purge on sign-out | L2 |
+| UD-06 | image-processing language | Python (OpenCV/libvips) · **confirmed ADR-0023 K2-01** | L2 |
+| UD-21 | Permission scope granularity in UI | Patient-wide + per-photo exceptions; most specific current row wins · **confirmed ADR-0023 K2-15** | L2 |
+| UD-22 | Malware scanning | Managed scanning if in BAA scope, else ClamAV worker; every upload scanned · **confirmed ADR-0023 K2-04** | L2 |
+| UD-25 | Offline cache policy | 25 recent patients, 7 days, purge on sign-out · **confirmed ADR-0023 K2-17** | L2 |
 | UD-15 | Final notes | Immutable; corrections as addenda | L3 |
 | UD-28 | Consultation P transitions | §5.4.1 P rows | L3 |
 | UD-33 | Completion preconditions | §5.4.1 table | L3 |
@@ -1646,6 +1653,8 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 
 **Confirmed at the Layer 1 kickoff (ADR-0018, 2026-09-29):** UD-16, UD-17, UD-07, UD-18 and UD-19 with the corrections ADR-0018 lists, and UD-24 and UD-27 unchanged.
 
+**Confirmed at the Layer 2 kickoff (ADR-0023, 2026-10-01):** UD-06, UD-21, UD-22 and UD-25 as noted in the table, and UD-24 again (no automated deletion; `DELETE` policies wait for legal hold; K2-19).
+
 **Raised in Layer 0 (2026-09-28).** New decisions found while building the Layer 0 pack. The full list of Layer 0 findings, with their dispositions, is in `ACCEPTANCE_CRITERIA.md` §5.
 
 | ID | Topic | Working baseline | Confirm at |
@@ -1662,7 +1671,7 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 
 With the owner's delegation (2026-09-25), **every item tagged [P] in §§2–8 is adopted** and becomes a Layer 0 ADR. Any of them can still be changed through change control. The most consequential ones:
 
-1. Toolchain details: TypeScript 6.0 (until NestJS supports 7), Fastify adapter, Turborepo, Zod → OpenAPI 3.1, Tuist, swift-openapi-generator, GRDB + SQLCipher, GitHub Actions, Vitest/Testcontainers/Playwright.
+1. Toolchain details: TypeScript 6.0 (until NestJS supports 7), Fastify adapter, Turborepo, Zod → OpenAPI 3.1, Tuist, swift-openapi-generator, a CryptoKit-sealed offline store (GRDB + SQLCipher until ADR-0023 K2-17), GitHub Actions, Vitest/Testcontainers/Playwright.
 2. PostgreSQL 18 target (≥ 15 required); Prisma 7.x (not 8 RC).
 3. api owns the schema; the media module lives inside api; imaging/AI services never touch the DB or demographics.
 4. Composite tenant/patient foreign keys everywhere; DB-level immutability triggers (`constraints.sql`).

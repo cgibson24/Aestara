@@ -53,8 +53,8 @@ These hold in every layer. Section 16 lists what enforces each one.
 | Patient app | Requested photo capture and upload into quarantine | None | [B §13.4]; spec §3.4 flow C |
 | `services/api` media module | Upload intents, completion and verification, signed URLs, `StorageObject` ledger, permissions, releases, audit, outbox | Yes (sole schema owner) | spec §3.1 |
 | worker | Outbox relay, retention jobs, permission-expiry job | Yes | spec §3.1 |
-| `services/image-processing` (Python, UD-06) | Thumbnails, display previews, normalization, before/after registration, annotated and export renders | **None**; jobs over SQS, objects via signed per-object URLs | spec §3.1, §6.7 |
-| Malware scanning | Scans quarantined uploads (UD-22) | Not specified | spec §2.1 |
+| `services/image-processing` (Python, UD-06, ADR-0023 K2-01) | Thumbnails, display previews, normalization, before/after registration, annotated and export renders | **None**; jobs over SQS, objects via signed per-object URLs | spec §3.1, §6.7 |
+| Malware scanning | Scans every uploaded object (GuardDuty Malware Protection for S3, or ClamAV); results reach the worker as events (ADR-0023 K2-04) | None; the worker records results | spec §2.1 |
 | Amazon S3 | Private, versioned, SSE-KMS buckets | — | spec §2.1, §7.4 |
 | SQS / EventBridge | `image.derivative.requested` / `.completed`, `image.registration.*`, outbox events such as `photo.captured` and `photo_permission.revoked` | — | spec §3.4, §5.4.5, §6.7 |
 
@@ -109,15 +109,16 @@ Bible §6.3 defines the capture workflow; spec §3.4 flow A defines the upload c
 |---|---|---|---|
 | 1 | Choose patient and protocol; start a session | App → `POST …/photo-sessions` | `photo.capture`; `Idempotency-Key` required; client UUIDv7 allowed (spec §6.1.8) |
 | 2 | Choose a view, live guidance, capture, post-capture checks, accept or retake | App, on device | [PHOTO_PROTOCOLS.md](PHOTO_PROTOCOLS.md) |
-| 3 | Protect locally | App | Original written to the encrypted store with its SHA-256: CryptoKit AES-GCM for media, SQLCipher for metadata, keys in Keychain, Data Protection *Complete* (spec §7.1, §8 rule 6) |
+| 3 | Protect locally | App | Original written to the encrypted store with its SHA-256: CryptoKit AES-GCM for media and metadata, keys in Keychain, Data Protection *Complete* (ADR-0023 K2-17; spec §7.1, §8 rule 6) |
 | 4 | Queue | App | Queued operation carries `operationId` (sent as `Idempotency-Key`) and the client photo `id` (spec §8 rule 1) |
-| 5 | Upload intent | `POST …/photos/uploads` | `photo.capture`; type allow-list HEIC/JPEG/PNG and size limit checked; creates `StorageObject` `PENDING_UPLOAD` and `PatientPhoto` `UPLOAD_PENDING`; returns a presigned `PUT` valid 10 min with `Content-Type` and `x-amz-checksum-sha256` headers (spec §6.1.9, §6.6.2) |
+| 5 | Upload intent | `POST …/photos/uploads` | `photo.capture`; type allow-list JPEG/PNG and the 50 MiB limit checked (ADR-0023 K2-02); creates `StorageObject` `PENDING_UPLOAD` and `PatientPhoto` `UPLOAD_PENDING`; returns a presigned `PUT` valid 10 min with `Content-Type`, `x-amz-checksum-sha256` and `If-None-Match: *` headers; replaying the intent returns a fresh URL (spec §6.1.9, §6.6.2; ADR-0023 K2-03) |
 | 6 | Upload bytes | App → S3 | S3 rejects a body whose SHA-256 differs from the signed header (spec §7.4) |
-| 7 | Complete | `POST …/photos/{phid}/complete-upload` | `Idempotency-Key` required; the API re-reads size and checksum from S3; in one transaction: `StorageObject` `AVAILABLE` + `verifiedAt` (write-once from here), `PatientPhoto` `ACCEPTED`, audit `PHOTO_CAPTURED`, outbox `photo.captured` (spec §3.3 step 10, §3.4 flow A) |
-| 8 | Derivatives | image-processing | `THUMBNAIL` and `DISPLAY_PREVIEW` written as new objects; the API persists `PhotoDerivative` rows from the result event (spec §6.7) |
-| 9 | Purge local original | App | After the server has confirmed the checksum, per cache policy [B §23.3]; spec §8 rule 6 |
+| 7 | Complete | `POST …/photos/{phid}/complete-upload` | `Idempotency-Key` required; the API re-reads size and checksum from S3; checks the first bytes; in one transaction: `StorageObject` `AVAILABLE` + `verifiedAt` (write-once from here), `PatientPhoto` `QUARANTINED`, audit `PHOTO_CAPTURED`, outbox `photo.captured` (spec §3.3 step 10, §3.4 flow A; ADR-0023 K2-05) |
+| 7a | Scan | Malware scanner → worker | Clean: `PatientPhoto` `ACCEPTED` and the derivative job queued. Infected or failed: `REJECTED`, `PHOTO_REJECTED`, security alert; the object is never served (ADR-0023 K2-04) |
+| 8 | Derivatives | image-processing | `THUMBNAIL` (400 px) and `DISPLAY_PREVIEW` (2048 px) written through presigned `PUT`s to objects the API registered first; the API verifies them and persists `PhotoDerivative` rows from the result event (spec §6.7; ADR-0023 K2-06) |
+| 9 | Purge local original | App | After the photo is accepted (verified and scanned clean), per cache policy [B §23.3]; spec §8 rule 6 |
 
-Nothing becomes visible to any user before step 7 succeeds (spec §6.1.9).
+Nothing becomes visible to any user before steps 7 and 7a succeed (spec §6.1.9).
 
 ### 5.2 Sequence: capture, upload, verify, derive
 
@@ -142,10 +143,11 @@ sequenceDiagram
   S3-->>Queue: 200 after S3 verifies the checksum
   Queue->>API: POST complete-upload for photoId
   API->>S3: HEAD object for size and checksum
-  API->>API: One transaction - StorageObject AVAILABLE, PatientPhoto ACCEPTED, audit PHOTO_CAPTURED, outbox row
+  API->>API: One transaction - StorageObject AVAILABLE, PatientPhoto QUARANTINED, audit PHOTO_CAPTURED, outbox row
   API-->>Queue: 200 PhotoDTO
-  Queue->>Store: Purge local original per cache policy
   Relay->>Bus: Publish committed outbox events
+  Bus->>API: Scan result CLEAN, worker accepts the photo and queues the derivative job
+  Queue->>Store: Purge local original once the photo is accepted
   Bus->>IP: Derivative job for THUMBNAIL and DISPLAY_PREVIEW
   IP->>S3: GET original through a signed per-object URL
   IP->>S3: PUT each derivative as a new object
@@ -158,21 +160,22 @@ sequenceDiagram
 | Situation | Result | Source |
 |---|---|---|
 | File type not allowed | `415 UNSUPPORTED_MEDIA_TYPE`, at intent or completion | spec §6.1.9, §6.2 |
-| File too large | `413 PAYLOAD_TOO_LARGE` (the limit value is an open item) | spec §6.2 |
+| File too large | `413 PAYLOAD_TOO_LARGE` (50 MiB or 100 megapixels, ADR-0023 K2-02) | spec §6.2 |
 | Size or checksum mismatch at completion | `422 UPLOAD_VERIFICATION_FAILED`; the photo stays invisible | spec §6.1.9, §6.2 |
 | Retry with the same key after success | Original status and current representation replayed | spec §6.1.8 |
 | Same key still processing / reused with another body | `409 IDEMPOTENCY_IN_PROGRESS` + `Retry-After` / `409 IDEMPOTENCY_KEY_REUSED` | spec §6.1.8 |
 | Client ID collides with an existing record | Generic `409 CONFLICT` | spec §6.1.8 |
 | Patient not visible, or in another organization | `404 PATIENT_NOT_FOUND`, identical body either way | spec §6.1.10 |
 | Storage outage | `503 SERVICE_UNAVAILABLE` + `Retry-After`; storage-outage runbook [B §26] | spec §6.2, §7.6 |
-| Derivative job fails | The original stays `ACCEPTED`; `GET …/photos/{phid}` reports derivative availability. Retry policy for derivative jobs is an open item. | spec §6.3 |
+| Derivative job fails | The original stays `ACCEPTED`; `GET …/photos/{phid}` reports each derivative as pending, available or failed. Transient failures retry three times (1, 5, 30 minutes); undecodable files fail at once (ADR-0023 K2-06) | spec §6.3 |
+| Scan finds malware or cannot complete | `REJECTED`; never served; `PHOTO_REJECTED`; the app offers to upload the kept local original again or to retake (ADR-0023 K2-04) | spec §5.4.10 |
 
 ### 5.4 Resumability
 
-Resumability is defined at the **operation** level. The intent, the `PUT` and the completion are queued operations retried with the same `Idempotency-Key` and client photo ID, so a retry can never create a second photo (spec §8 rules 1–3). Two details are not specified and are decided at Layer 2 (M2.1):
+Resumability is defined at the **operation** level. The intent, the `PUT` and the completion are queued operations retried with the same `Idempotency-Key` and client photo ID, so a retry can never create a second photo (spec §8 rules 1–3). ADR-0023 K2-03 settles the rest:
 
-- byte-range or multipart resumption of a single large `PUT`;
-- how a client obtains a fresh upload URL after the 10-minute URL expires (an idempotent replay of the intent returns the current representation of the created resource, spec §6.1.8, and the spec does not say whether that includes a new URL).
+- there is no byte-range or multipart resumption: an original is at most 50 MiB and goes in one `PUT`;
+- after the 10-minute URL expires, the client replays the intent with the same key: while the photo is `UPLOAD_PENDING`, its current representation includes a fresh URL.
 
 ---
 
@@ -196,7 +199,7 @@ Rules:
 - Every derivative references its source photo and carries `generationMetadata` (generator name and version, parameters, transforms) and, where a job produced it, `generatedByJobId` [B §6.6].
 - Derivatives are immutable. Regenerating one inserts a new row and a new object (verified C8–C9).
 - Annotations are separate rows and never alter pixels of the original. Only a render creates pixels, and it is a new derivative.
-- Archiving a photo (`POST …/photos/{phid}/archive`, `ACCEPTED → ARCHIVED`) changes its status only; the original is retained (spec §6.3, §5.4.10). How archived photos appear in lists and viewers is not specified (open item).
+- Archiving a photo (`POST …/photos/{phid}/archive`, `ACCEPTED → ARCHIVED`) changes its status only; the original is retained (spec §6.3, §5.4.10). Archived photos are hidden from lists by default, shown by a filter with an "Archived" badge, and never reused (ADR-0023 K2-14).
 - `ORIGINAL` bytes are served only through `access-urls` with the `photo.export` permission, and every issuance is audited (spec §6.3).
 
 ---
@@ -209,15 +212,15 @@ From spec §7.4 and §7.1, and as built in `infrastructure/terraform/modules/sto
 |---|---|
 | Buckets | One private bucket per environment for clinical media, plus separate buckets for exports and for integration payloads (different lifecycle and IAM). Terraform names them `clinical-media`, `exports` and `integration-payloads` |
 | Keys | `{objectClass}/{random UUIDv7}`: opaque, with no tenant, patient or PHI in the key, and never overwritten. `objectClass` is a `StorageObjectClass` value (`CLINICAL_ORIGINAL`, `CLINICAL_DERIVATIVE`, `AI_ARTIFACT`, `DOCUMENT`, `SIGNATURE`, `MESSAGE_ATTACHMENT`, `CONTENT_MEDIA`, `DATA_EXPORT`, `INTEGRATION_PAYLOAD`) |
-| Overwrite and delete protection | S3 versioning on every bucket. The `clinical-media` bucket policy denies `s3:DeleteObject` and `s3:DeleteObjectVersion` to every principal until a retention role is approved (UD-24, ADR-0014). Spec §7.4 also denies `s3:PutObject` on existing keys to non-admin roles; that belongs to the per-service IAM roles (spec §7.1), which do not exist before Layer 1 |
+| Overwrite and delete protection | S3 versioning on every bucket. The `clinical-media` bucket policy denies `s3:DeleteObject` and `s3:DeleteObjectVersion` to every principal until a retention role is approved (UD-24, ADR-0014), and denies `s3:PutObject` without `If-None-Match: *`, so no key is ever overwritten (spec §7.4; ADR-0023 K2-09) |
 | Encryption at rest | SSE-KMS with bucket keys, using the per-environment customer-managed `media` KMS key; the bucket policy rejects uploads encrypted with any other key. `StorageObject.kmsKeyAlias` records the key |
-| Public access | S3 Block Public Access at account and bucket level; bucket policies deny non-TLS access. Spec §7.1 also denies service access that does not come through the VPC endpoint; the S3 gateway endpoint exists (`modules/network`), but that bucket-policy condition is not yet in `modules/storage` (open item) |
+| Public access | S3 Block Public Access at account and bucket level; bucket policies deny non-TLS access, and deny service-role access that does not come through the VPC endpoint (spec §7.1). Devices use presigned URLs signed by a separate presigning role limited to putting and getting clinical objects (ADR-0023 K2-09) |
 | IAM | One role per service; S3 access scoped per object class |
 | Checksums | SHA-256 declared at intent, verified by S3 on `PUT` and again by the API on completion |
-| Device | Data Protection *Complete*, SQLCipher database, CryptoKit AES-GCM for cached media, keys in Keychain |
+| Device | Data Protection *Complete*, CryptoKit AES-GCM-sealed records and media, keys in Keychain (ADR-0023 K2-17) |
 | CDN | None for patient media [B §25.3] |
 
-Which bucket holds each object class other than clinical photos, exports and integration payloads is not stated in spec §7.4 (open item).
+`clinical-media` holds every object class except `DATA_EXPORT` (`exports`) and `INTEGRATION_PAYLOAD` (`integration-payloads`); the WORM audit copy goes to `audit-archive`, with Object Lock (ADR-0023 K2-07, K2-09).
 
 ---
 
@@ -266,7 +269,7 @@ stateDiagram-v2
 
 | Aspect | Design | Source |
 |---|---|---|
-| Scope | `PATIENT_WIDE`, `PHOTO_SESSION` or `PHOTO`; shape enforced by CHECK. Baseline granularity in the UI: patient-wide plus per-photo exceptions | spec §5.2; UD-21 |
+| Scope | `PATIENT_WIDE`, `PHOTO_SESSION` or `PHOTO`; shape enforced by CHECK. The UI offers patient-wide plus per-photo exceptions. The most specific current row wins (photo, then session, then patient-wide); no row means `NOT_REQUESTED` | spec §5.2; UD-21 (ADR-0023 K2-15) |
 | Evidence | `SIGNED_CONSENT` (must reference an executed consent; available from Layer 4), `PATIENT_APP_ACTION`, `STAFF_ATTESTATION`, `INTEGRATION_IMPORT` | `schema.prisma`; `constraints.sql` Layer 2/4 |
 | History | Append-only; one current row per (patient, category, scope target); a superseded row is frozen; no deletes | verified D1–D9 |
 | Expiry | `expiresAt`; a system job moves `GRANTED → EXPIRED`, and use-time checks also honour `expiresAt` | spec §5.4.5 |
@@ -314,7 +317,7 @@ flowchart TD
   D --> E["Deferred trigger at commit: at least one pin exists"]
 ```
 
-Whether revoking a permission also revokes the existing `MediaRelease` rows that pinned it is not specified. It does not need to be for the patient app, because portal visibility re-checks the current grant on every read (spec §4.7); the "downstream compliance workflow" of [B §7.3] is an open item.
+A permission change that leaves a release's effective grant other than `GRANTED` (revocation, expiry, or a more specific decline) also revokes the dependent active releases in the same transaction, with `MEDIA_RELEASE_REVOKED`, so a later re-grant never revives an old release. Every use still re-checks the grant at read time, and the outbox event `photo_permission.revoked` lists the affected releases for the downstream compliance workflow [B §7.3] (ADR-0023 K2-15).
 
 ---
 
@@ -341,9 +344,10 @@ Patient uploads arrive in Layer 5 (spec §3.4 flow C). The provider creates a `P
 ```mermaid
 stateDiagram-v2
   [*] --> UPLOAD_PENDING
-  UPLOAD_PENDING --> ACCEPTED: staff capture verified
-  UPLOAD_PENDING --> QUARANTINED: patient upload
-  QUARANTINED --> PENDING_REVIEW: malware and file-type validation passed
+  UPLOAD_PENDING --> QUARANTINED: upload verified, any source
+  QUARANTINED --> ACCEPTED: staff capture, clean scan
+  QUARANTINED --> REJECTED: malware found or scan failed
+  QUARANTINED --> PENDING_REVIEW: patient upload, clean scan
   PENDING_REVIEW --> ACCEPTED: staff accept
   PENDING_REVIEW --> RETAKE_REQUESTED: staff request retake
   PENDING_REVIEW --> REJECTED: staff reject
@@ -352,10 +356,7 @@ stateDiagram-v2
 
 Diagram of the `PatientPhoto` machine in spec §5.4.10 (P, adopted by ADR-0008). Staff review uses `POST …/photos/{phid}/review` with `photo.capture` and writes `PHOTO_INTAKE_REVIEWED*`.
 
-Malware scanning (UD-22, confirmed at Layer 2): managed scanning if it is in BAA scope, otherwise a ClamAV worker. `StorageObject.scanStatus` records `NOT_REQUIRED`, `PENDING`, `CLEAN`, `INFECTED` or `ERROR`. Scanning is required for patient uploads and message attachments [B §13.4, §14.4]; spec §2.1. Not specified, and decided with UD-22 at Layer 2:
-
-- whether provider-app captures are scanned or marked `NOT_REQUIRED`;
-- what happens to an `INFECTED` or `ERROR` result: the `PatientPhoto` machine has no `QUARANTINED → REJECTED` edge, although `StorageObjectStatus` has `REJECTED`.
+Malware scanning (UD-22, confirmed by ADR-0023 K2-04): Amazon GuardDuty Malware Protection for S3 if it is in BAA scope, otherwise a ClamAV worker; every uploaded object is scanned, whatever its source. `StorageObject.scanStatus` records `NOT_REQUIRED`, `PENDING`, `CLEAN`, `INFECTED` or `ERROR`. Scanning is required for patient uploads and message attachments [B §13.4, §14.4]; spec §2.1. ADR-0023 extends it to provider captures (K2-04) and adds the scan step to every source: an `INFECTED` or `ERROR` result moves the photo `QUARANTINED → REJECTED` and the object to `REJECTED` (K2-05).
 
 ---
 
@@ -369,7 +370,7 @@ Capture works offline; server-dependent steps do not [B §23.1–23.2]; spec §8
 | Ordering | Operations replay in order per aggregate (the session before its photos); a failed dependency pauses its dependents only | spec §8 rule 2 |
 | No duplicates | Retries reuse the same `Idempotency-Key` | spec §8 rule 3 |
 | Local originals | Stored encrypted with their SHA-256; purged after `complete-upload` confirms the checksum | spec §8 rule 6 |
-| Cache policy | `PracticeSetting`; baseline 25 recent patients, 7 days, purge on sign-out or device revocation | spec §8 rule 7; UD-25 |
+| Cache policy | `PracticeSetting` `offline.cachePolicy`: 25 recent patients, 7 days, purge on sign-out, device revocation or session expiry; the queue belongs to one user in one organization | spec §8 rule 7; UD-25 (ADR-0023 K2-17) |
 | Re-authorization | On reconnect the app re-validates the session (`GET /auth/session`) before replay | spec §8 rule 5 |
 | Offline views | Opening a cached patient or photo writes an encrypted local audit record, replayed first through `POST /audit/offline-events` with `offline = true` and the original timestamp | spec §8 rule 8 |
 | Online only | Export, release, permission changes | spec §8 |
@@ -404,7 +405,9 @@ Excerpt; the catalog and event contents are normative in spec §7.3. Audit metad
 | `PHOTO_ANNOTATED*` | Annotation created or changed |
 | `BEFORE_AFTER_CREATED*` | Before/after set created |
 | `PHOTO_INTAKE_REVIEWED*` | Staff decision on a patient upload |
-| `CONFIGURATION_CHANGED*` | Protocol and retention-policy changes |
+| `PHOTO_REJECTED*` | A scan blocked a photo (system actor) |
+| `PHOTO_ARCHIVED*` | A photo was archived |
+| `CONFIGURATION_CHANGED*` | Protocol, flag, setting and retention-policy changes |
 | `ACCESS_DENIED*` | Authorization failure on a sensitive endpoint |
 
 ---
@@ -442,20 +445,30 @@ See [TESTING_STRATEGY.md](TESTING_STRATEGY.md) for tooling and [SECURITY_REQUIRE
 
 ---
 
-## 18. Open items
+## 18. Decisions and open items
+
+The Layer 2 kickoff decided every Layer 2 item ([LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md), ADR-0023):
+
+| Item | Decision |
+|---|---|
+| UD-06 image-processing language | Python 3.13 with pyvips; no database access; presigned per-object URLs per job; JPEG and PNG loaders only, under a pixel limit and a time limit (K2-01) |
+| Photo formats and size limits | JPEG originals; JPEG and PNG accepted; no HEIC until an HEVC licence review (Layer 5); 50 MiB and 100 megapixels (K2-02) |
+| Multipart resumption; renewing an expired upload URL | One `PUT` per original, no multipart; replaying the intent returns a fresh URL (K2-03) |
+| UD-22 malware scanning, provider captures, `INFECTED` / `ERROR` | Every upload is scanned; an infected or failed scan rejects the photo through `QUARANTINED → REJECTED` (K2-04, K2-05) |
+| Derivative retry | `AIJob` of type `IMAGE_DERIVATIVE`; three attempts for transient failures; dead-letter queues (K2-06) |
+| Bucket placement | `clinical-media` for every class except `DATA_EXPORT` and `INTEGRATION_PAYLOAD`; new `audit-archive` (K2-09) |
+| Spec §7.1/§7.4 controls not yet in Terraform (F-61) | Overwrite denial through conditional writes; VPC-endpoint-only service access; a presigning role for devices (K2-09) |
+| How `ARCHIVED` photos appear | Hidden by default, shown by a filter with a badge, never reused (K2-14) |
+| UD-21 granularity and precedence | Patient-wide plus per-photo exceptions; the most specific current row wins (K2-15) |
+| Whether revoking a permission revokes the releases that pinned it | Yes, when the release's effective grant ends; reads still re-check (K2-15) |
+| What `CLINICAL_USE` gates | Not capture or staff viewing; the uses the spec names (K2-16) |
+| UD-25 offline cache policy | Practice setting, 25 patients and 7 days; CryptoKit AES-GCM store (K2-17) |
+| UD-24 retention defaults and legal hold | Policies recorded; `DELETE` refused until legal hold; no retention job in Layer 2 (K2-19) |
+
+Still open:
 
 | Item | Decided at |
 |---|---|
-| UD-06 image-processing language (Python baseline) | Layer 2 kickoff |
-| UD-21 permission scope granularity, including which scope wins when a patient-wide row and a per-photo row disagree | Layer 2 kickoff |
-| UD-22 malware scanning: provider captures, and handling of `INFECTED` / `ERROR` results | Layer 2 kickoff |
-| UD-25 offline cache policy | Layer 2 kickoff |
-| UD-24 retention defaults and legal hold (re-confirmed unchanged for Layer 1 in ADR-0018: nothing is deleted automatically) | Layer 2 |
-| Upload size limit; multipart resumption; renewing an expired upload URL; retry policy for derivative jobs | Layer 2 (M2.1, M2.6) |
-| Bucket placement of object classes other than clinical photos, exports and integration payloads | Layer 2 (M2.1) |
-| Spec §7.1/§7.4 storage controls not yet in Terraform: the VPC-endpoint condition in the bucket policies, and the denial of `s3:PutObject` on existing keys (per-service IAM roles) | Layer 1 (first IAM roles) and Layer 2 (M2.1) |
-| How `ARCHIVED` photos appear in lists and viewers | Layer 2 (M2.7) |
-| What `CLINICAL_USE` gates beyond simulation sources (UD-32); neither the Bible nor the spec says whether it gates capture or staff viewing | Layer 2 kickoff |
 | Which export purposes produce `MARKETING_DERIVATIVE` versus `EXPORT_DERIVATIVE`; the "compatible view" rule for before/after | Layer 3 (M3.5, M3.7) |
-| Whether revoking a permission also revokes the releases that pinned it (downstream compliance workflow, [B §7.3]) | Layer 2 (M2.8) |
 | UD-20 `PATIENT_APP` grant for the patient's own media | Layer 5 kickoff |
+| HEIC uploads (needs an HEVC decoder licence) | Layer 5 kickoff |
