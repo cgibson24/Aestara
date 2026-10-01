@@ -1,18 +1,20 @@
-// End-to-end UI tests of the provider app against the real Layer 1 api
-// (Bible §32 #9, #12, #13; docs/TESTING_STRATEGY.md §18.1). CI starts the api
-// with services/api/scripts/local-stack.ts, which prepares one clinician per
-// device, and passes the sign-in through TEST_RUNNER_* variables:
+// End-to-end UI tests of the provider app against the real api, worker,
+// image-processing and AWS emulator (Bible §32 #9, #12, #13; Layer 2 exit:
+// a standard photo session end to end; docs/TESTING_STRATEGY.md §18.1). CI
+// starts them with services/api/scripts/local-stack.ts, which prepares one
+// clinician per device, and passes the sign-in through TEST_RUNNER_* variables:
 // UITEST_EMAIL, UITEST_PASSWORD, UITEST_TOTP_SECRET, UITEST_TOTP_LAST_STEP.
-// All data is synthetic.
+// The simulator has no camera: the Debug-only synthetic frame source stands in
+// (ADR-0023 K2-12). All data is synthetic.
 import CryptoKit
 import XCTest
 
 @MainActor
 final class ProviderFlowTests: XCTestCase {
-    func testSignInCreateSearchAndOpenAPatient() throws {
+    func testSignInCreateAPatientRunAPhotoSessionAndSearch() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-AestaraSyntheticCamera", "YES"]
         let env = ProcessInfo.processInfo.environment
         let email = try XCTUnwrap(env["UITEST_EMAIL"], "UITEST_EMAIL is not set")
         let password = try XCTUnwrap(env["UITEST_PASSWORD"], "UITEST_PASSWORD is not set")
@@ -91,7 +93,9 @@ final class ProviderFlowTests: XCTestCase {
         }
         XCTAssertTrue(onScreen(photos), "The Photos tab cannot be reached. Screen: \(screen(app))")
         photos.tap()
-        XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 5), "Photos empty state. Screen: \(screen(app))")
+        XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 10), "Photos empty state. Screen: \(screen(app))")
+
+        try photoSession(app)
 
         // Search finds the patient by name prefix.
         // On iPhone the profile covers the list: go back. On iPad the list stays beside it.
@@ -107,6 +111,117 @@ final class ProviderFlowTests: XCTestCase {
         let row = app.collectionViews.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS %@", lastName)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15), "Search did not find the patient. Screen: \(screen(app))")
+    }
+
+    /// Layer 2 exit (roadmap M2.11): the standard Face protocol, every view captured with
+    /// guidance, uploaded, the session completed, thumbnails shown, a tag and a permission.
+    private func photoSession(_ app: XCUIApplication) throws {
+        let start = app.buttons["photos.startSession"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "No way to start a photo session. Screen: \(screen(app))")
+        start.tap()
+        let face = app.buttons["session.protocol.Face"]
+        XCTAssertTrue(face.waitForExistence(timeout: 15), "The Face protocol is not offered. Screen: \(screen(app))")
+        face.tap()
+
+        let remaining = app.staticTexts["session.remaining"]
+        XCTAssertTrue(remaining.waitForExistence(timeout: 15), "The session did not open. Screen: \(screen(app))")
+        XCTAssertEqual(remaining.label, "5 required views left")
+        app.buttons["session.captureNext"].tap()
+
+        // Guided capture: one instruction at a time; the shutter never blocks on it.
+        let shutter = app.buttons["capture.shutter"]
+        let guidance = app.descendants(matching: .any)["capture.guidance"]
+        XCTAssertTrue(shutter.waitForExistence(timeout: 20), "The camera did not open. Screen: \(screen(app))")
+        XCTAssertTrue(app.staticTexts["capture.noReference"].waitForExistence(timeout: 15),
+                      "A first session has no reference photo. Screen: \(screen(app))")
+        var audited = false
+        for view in ["FRONT", "LEFT_45", "RIGHT_45", "LEFT_PROFILE", "RIGHT_PROFILE"] {
+            let item = app.buttons["capture.view.\(view)"]
+            XCTAssertTrue(waitUntil(timeout: 10) { item.isSelected }, "View \(view) is not current. Screen: \(screen(app))")
+            XCTAssertTrue(waitUntil(timeout: 20) { guidance.exists && guidance.label.contains("Hold still") },
+                          "Guidance never settled for \(view). Screen: \(screen(app))")
+            if !audited {
+                audit(app, screen: "capture")
+                audited = true
+            }
+            XCTAssertTrue(waitUntil(timeout: 10) { shutter.isEnabled }, "The shutter stayed disabled. Screen: \(screen(app))")
+            shutter.tap()
+            let accept = app.buttons["capture.accept"]
+            XCTAssertTrue(accept.waitForExistence(timeout: 20), "No review after capture. Screen: \(screen(app))")
+            XCTAssertTrue(element(in: app, containing: "Camera level").exists, "The review lists no checks. Screen: \(screen(app))")
+            accept.tap()
+        }
+
+        // Every required view is in; complete once the photos have reached the server.
+        XCTAssertTrue(waitUntil(timeout: 20) { remaining.exists && remaining.label == "Every required view is captured" },
+                      "The session does not count the photos. Screen: \(screen(app))")
+        let complete = app.buttons["session.complete"]
+        XCTAssertTrue(waitUntil(timeout: 120) {
+            if !complete.exists { return true }
+            if complete.isEnabled { complete.tap() }
+            RunLoop.current.run(until: Date().addingTimeInterval(3))
+            return !complete.exists
+        }, "The session could not be completed. Screen: \(screen(app))")
+
+        // The gallery: thumbnails from image-processing replace the "being checked" states.
+        let tile = app.buttons["photos.tile.FRONT"]
+        XCTAssertTrue(tile.waitForExistence(timeout: 30), "The captured photo is not in the gallery. Screen: \(screen(app))")
+        XCTAssertTrue(waitUntil(timeout: 180) {
+            let label = tile.label
+            return !label.contains("Being checked") && !label.contains("Preparing preview") && !label.contains("could not be checked")
+        }, "The thumbnail never arrived: \(tile.label). Screen: \(screen(app))")
+        audit(app, screen: "gallery")
+
+        // One photo: its preview and a tag.
+        tile.tap()
+        let tagField = app.textFields["photo.tagField"]
+        XCTAssertTrue(tagField.waitForExistence(timeout: 20), "The photo did not open. Screen: \(screen(app))")
+        tagField.tap()
+        tagField.typeText("Baseline")
+        app.buttons["photo.addTag"].tap()
+        XCTAssertTrue(app.staticTexts["baseline"].waitForExistence(timeout: 15), "The tag was not saved. Screen: \(screen(app))")
+        app.navigationBars.buttons["Close"].tap()
+
+        // Media permissions: requested, then granted by staff attestation.
+        let permissions = app.buttons["photos.permissions"]
+        XCTAssertTrue(permissions.waitForExistence(timeout: 10), "No media permissions. Screen: \(screen(app))")
+        permissions.tap()
+        let website = app.buttons["permissions.category.WEBSITE"]
+        XCTAssertTrue(website.waitForExistence(timeout: 15), "The permission list did not load. Screen: \(screen(app))")
+        audit(app, screen: "permissions")
+        website.tap()
+        let save = app.buttons["permission.save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10), "The change sheet did not open. Screen: \(screen(app))")
+        XCTAssertTrue(waitUntil(timeout: 5) { save.isEnabled }, "Requested was not preselected. Screen: \(screen(app))")
+        save.tap()
+        XCTAssertTrue(waitUntil(timeout: 15) { website.exists && website.label.contains("Requested") },
+                      "The request was not recorded. Screen: \(screen(app))")
+        website.tap()
+        XCTAssertTrue(save.waitForExistence(timeout: 10), "The change sheet did not open again. Screen: \(screen(app))")
+        app.buttons["permission.change"].tap()
+        let granted = app.buttons["Granted"]
+        XCTAssertTrue(granted.waitForExistence(timeout: 5), "Granted is not offered after a request. Screen: \(screen(app))")
+        granted.tap()
+        save.tap()
+        XCTAssertTrue(waitUntil(timeout: 15) { website.exists && website.label.contains("Granted") },
+                      "The grant was not recorded. Screen: \(screen(app))")
+        app.navigationBars.buttons["Close"].tap()
+    }
+
+    /// The XCUITest accessibility audit (ADR-0023 K2-21). Findings are recorded without
+    /// stopping the flow, so one run reports them all. The synthetic camera's caption is
+    /// Debug-only scaffolding and is left out.
+    private func audit(_ app: XCUIApplication, screen name: String) {
+        let previous = continueAfterFailure
+        continueAfterFailure = true
+        defer { continueAfterFailure = previous }
+        do {
+            try app.performAccessibilityAudit { issue in
+                issue.element?.label == "Synthetic camera"
+            }
+        } catch {
+            XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
+        }
     }
 
     /// What is on screen, for failure messages: texts, buttons and fields with their identifiers.

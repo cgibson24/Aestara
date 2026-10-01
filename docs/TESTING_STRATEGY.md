@@ -213,7 +213,7 @@ A coverage check lists every `AuditAction` value whose layer exists and fails if
 | Kind | Tool | What it covers |
 |---|---|---|
 | Unit and domain | Swift Testing | ViewModels, domain rules, the generated client against a stub transport, Keychain and session service, the offline queue |
-| Snapshot | Tool chosen with the first clinical screens in Layer 2 (ADR-0022; open item 2) | Every data-backed view in all six states (DESIGN_SYSTEM.md §6), light and dark, iPad landscape and iPhone portrait, default and accessibility text sizes |
+| Snapshot | swift-snapshot-testing (ADR-0023 K2-21); the reference images must be recorded on a Mac, so the Layer 2 snapshots are an acceptance-review item (ADR-0025) | Every data-backed view in all six states (DESIGN_SYSTEM.md §6), light and dark, iPad landscape and iPhone portrait, default and accessibility text sizes |
 | UI | XCUITest | Critical flows per layer, deep-link re-authorization [B §24.5], the consent hand-off lock (DESIGN_SYSTEM.md §2, C13), offline banners and disabled actions |
 
 **Accessibility (DESIGN_SYSTEM.md §5):**
@@ -222,11 +222,11 @@ A coverage check lists every `AuditAction` value whose layer exists and fails if
 |---|---|
 | Contrast: text 4.5:1, UI 3:1, both themes | `packages/design-tokens` contrast test (63 pair checks) in the `workspace` job (ADR-0011) |
 | Dynamic Type | Snapshots at accessibility sizes; nothing truncates a patient name |
-| VoiceOver | UI tests find controls by accessibility label, so an unlabeled control fails the test; an automated accessibility audit on critical screens arrives with the snapshot tool in Layer 2 (ADR-0022; open item 2) |
+| VoiceOver | UI tests find controls by accessibility label, so an unlabeled control fails the test; `performAccessibilityAudit()` runs on the capture, gallery and permission screens and reports every finding (ADR-0023 K2-21; ADR-0025) |
 | 44 pt targets, Reduce Motion | UI and snapshot tests on critical screens |
 | Admin web semantics | Biome's recommended rules, which include its accessibility group, run repo-wide (`pnpm lint`); Playwright checks labels on critical flows |
 
-The `ios` CI job generates both Tuist projects, builds both apps for the simulator and runs the DesignSystem tests on an iPhone simulator (Xcode 26.6). Each layer adds its module tests to the job.
+The `ios` CI job generates both Tuist projects, builds both apps for the simulator and runs the module tests on an iPhone simulator (Xcode 26.6): DesignSystem, CoreNetworking, PatientDomain, CoreSecurity, AuditSupport, Media and Photography, each with a minimum test count. The UI tests run against the real api, worker, image-processing and AWS emulator, and include a standard Face photo session end to end on the Debug-only synthetic camera. Each layer adds its module tests to the job.
 
 ## 11. Offline and sync tests
 
@@ -238,9 +238,9 @@ Each rule of the offline contract (spec §8) has a test.
 | 2. In-order replay per aggregate; a failed dependency pauses dependents | Queue ordering test with a stub server | iOS unit | 2 |
 | 3. Retries reuse the key and never duplicate | Same `Idempotency-Key` replayed returns the original resource; no second row | API integration | 2 |
 | 4. Version conflicts surfaced; no newest-timestamp resolution | 412 path shows both versions to the user | API integration, XCUITest | 2, 3 |
-| 5. Session re-validated before replay; deep links re-authorize | Revoked session before reconnect blocks replay | iOS unit, XCUITest | 2 |
-| 6. Offline originals encrypted with SHA-256; purged after the server confirms | Purge happens only after `complete-upload` succeeds | iOS unit | 2 |
-| 7. Cache policy (maximum patients, age, purge on sign-out or revocation) | Policy limits enforced; sign-out empties the store | iOS unit | 2 |
+| 5. Session re-validated before replay; deep links re-authorize | A session that no longer validates replays nothing (`nothingReplaysWhenTheSessionNoLongerValidates`) | iOS unit, XCUITest | 2 |
+| 6. Offline originals encrypted with SHA-256; kept until the photo is accepted | The original stays through upload and scanning, leaves once accepted, and stays for a rejected photo to go again as a new one (`UploadQueueTests`) | iOS unit | 2 |
+| 7. Cache policy (maximum patients, age, purge on sign-out or revocation) | Policy limits on derivatives and patient summaries; the caches and the queue empty on sign-out while offline view records stay (`MediaCacheTests`, `PatientCacheTests`, `UploadQueueTests`) | iOS unit | 2 |
 | 8. Offline views audited and replayed first | Replay order and `metadata.offline` | iOS unit, API integration | 2 |
 
 The Bible §23.2 operations (AI generation, EMR sync, release, export, consent completion) are disabled offline with a visible reason, checked by XCUITest.

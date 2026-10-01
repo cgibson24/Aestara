@@ -9,11 +9,14 @@ let package = Package(
     products: [.library(name: "Photography", targets: ["Photography"])],
     dependencies: [
         .package(path: "../DesignSystem"),
+        .package(path: "../CoreNetworking"),
+        .package(path: "../CoreSecurity"),
         .package(path: "../Media"),
         .package(path: "../PatientDomain"),
         .package(path: "../AuditSupport"),
     ],
     targets: [
-        .target(name: "Photography", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "Media", package: "Media"), .product(name: "PatientDomain", package: "PatientDomain"), .product(name: "AuditSupport", package: "AuditSupport")]),
+        .target(name: "Photography", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "CoreSecurity", package: "CoreSecurity"), .product(name: "Media", package: "Media"), .product(name: "PatientDomain", package: "PatientDomain"), .product(name: "AuditSupport", package: "AuditSupport")]),
+        .testTarget(name: "PhotographyTests", dependencies: ["Photography", .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "CoreSecurity", package: "CoreSecurity"), .product(name: "Media", package: "Media")]),
     ]
 )

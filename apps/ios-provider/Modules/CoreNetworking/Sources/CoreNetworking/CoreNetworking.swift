@@ -49,6 +49,23 @@ public func newIdempotencyKey() -> String { UUID().uuidString.lowercased() }
 /// An `If-Match` value for a resource version (spec §6.1.7).
 public func ifMatch(_ version: Int) -> String { "\"v\(version)\"" }
 
+/// Maps an app enum onto the generated enum with the same raw values (the
+/// contract's values, which both sides spell identically). Generated types stop
+/// at the repositories (ADR-0022), so this is the only crossing.
+public func wire<Source: RawRepresentable, Target: RawRepresentable>(_ value: Source) -> Target
+    where Source.RawValue == String, Target.RawValue == String {
+    guard let mapped = Target(rawValue: value.rawValue) else {
+        preconditionFailure("\(value.rawValue) is not a value of \(Target.self)")
+    }
+    return mapped
+}
+
+/// Maps a generated enum back onto the app enum with the same raw values, when it has one.
+public func unwire<Source: RawRepresentable, Target: RawRepresentable>(_ value: Source) -> Target?
+    where Source.RawValue == String, Target.RawValue == String {
+    Target(rawValue: value.rawValue)
+}
+
 /// Runs a generated-client call and surfaces the server's error as `APIError`.
 public func callAPI<T: Sendable>(_ operation: @Sendable () async throws -> T) async throws(APIError) -> T {
     do {

@@ -2,6 +2,18 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-01: Layer 2 provider app: capture, gallery, permissions, offline (ADR-0025)
+
+- **ADR-0025** records the implementation decisions of the provider app's Layer 2 work. Like ADR-0024, it was written while the work was in progress, not ahead of it.
+- **Guided capture** (M2.5): the camera behind a frame source (AVFoundation, Vision and Core Motion on a device; a Debug-only synthetic source in the simulator and the UI tests), the framing oval, one instruction at a time from the 13 Bible codes, the ghost overlay with adjustable opacity and a choice of reference, the position-match score with its fixed label, a shutter that never moves, and the review with every check in words. No check blocks acceptance.
+- **Sessions:** start from the active protocols (offline too), the required views left in words, completion with the acknowledgement when required views are missing, and the photos of the session still on the device.
+- **Gallery and photo** (M2.7): thumbnails in one request, states in words for photos being checked or rejected, archived photos behind a toggle, the display preview, tags and archiving.
+- **Media permissions and releases** (M2.8): per category, patient-wide and per photo, with only the spec §5.4.5 transitions offered and grants recorded as staff attestation; the full history; releases for the outward purposes confirmed on their own sheet, and revocation with a reason.
+- **Offline** (M2.9): the encrypted store per user and organization, the upload queue, the derivative cache, the patient-summary cache, and offline view records that replay first. Sign-out asks before deleting photos that have not uploaded.
+- **Shell:** the Photos tab of the patient profile, sync after sign-in, on returning to the foreground and on reconnect, the offline copies of the recent patients and opened profiles, and the camera usage description.
+- **Tests:** module tests for CoreSecurity, AuditSupport, Media, PatientDomain and Photography in CI. The UI test runs a standard Face session end to end with accessibility audits. The snapshot tests of K2-21 wait for reference images recorded on a Mac (Layer 2 acceptance review).
+- **Admin portal:** the offline-policy "Saved." notice now survives the reload a save causes.
+
 ## 2026-10-01: Layer 2 backend and image-processing (ADR-0024)
 
 - **ADR-0024** records the implementation decisions of the Layer 2 backend: the worker and protocol-seed database roles, either-permission endpoints, photo sub-resource visibility, storage object states, the flag `PUT`, offline view replay, the relay and WORM copy, derivative jobs, malware scan results, and the image-processing service. It was written while the work was in progress, not ahead of it as change control asks.

@@ -6,7 +6,7 @@
 import CoreNetworking
 import Foundation
 
-public struct PatientSummary: Sendable, Equatable, Identifiable, Hashable {
+public struct PatientSummary: Sendable, Equatable, Identifiable, Hashable, Codable {
     public let id: String
     public let firstName: String
     public let lastName: String
@@ -21,7 +21,7 @@ public struct PatientSummary: Sendable, Equatable, Identifiable, Hashable {
     }
 }
 
-public struct Patient: Sendable, Equatable, Identifiable {
+public struct Patient: Sendable, Equatable, Identifiable, Codable {
     public let id: String
     public let firstName: String
     public let middleName: String?
@@ -38,7 +38,7 @@ public struct Patient: Sendable, Equatable, Identifiable {
 }
 
 /// The twelve profile tabs (Bible §4.3; PR-PATIENT-06). Readability comes from the server.
-public enum ProfileTab: String, CaseIterable, Sendable, Identifiable {
+public enum ProfileTab: String, CaseIterable, Sendable, Identifiable, Codable {
     case overview = "OVERVIEW"
     case timeline = "TIMELINE"
     case consultations = "CONSULTATIONS"
@@ -89,7 +89,7 @@ public enum ProfileTab: String, CaseIterable, Sendable, Identifiable {
     }
 }
 
-public struct PatientProfile: Sendable, Equatable {
+public struct PatientProfile: Sendable, Equatable, Codable {
     public let patient: Patient
     /// Tabs the caller's role may read (spec §6.3 read permissions).
     public let readableTabs: Set<ProfileTab>

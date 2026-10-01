@@ -55,6 +55,8 @@ let project = Project(
                 "AestaraAPIBaseURL": "$(AESTARA_API_BASE_URL)",
                 // Face ID guards the saved sign-in (spec §4.2).
                 "NSFaceIDUsageDescription": "Face ID unlocks Aestara and keeps patient information private.",
+                // Clinical photography (Bible §6.3); frames are analysed on the device only.
+                "NSCameraUsageDescription": "The camera takes clinical photos for the patient's record. Pose guidance runs on this device.",
                 // Only a local development server may use plain HTTP (localhost and .local names).
                 "NSAppTransportSecurity": [
                     "NSAllowsLocalNetworking": true,

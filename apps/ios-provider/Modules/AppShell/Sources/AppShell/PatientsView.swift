@@ -1,16 +1,20 @@
 // Patient list, search and the profile shell (Bible §4; spec §6.3 "Patients";
 // roadmap M1.10). The search term is sent in a request body, never in a URL
-// (ADR-0020). Permissions here only shape the UI; the server decides.
-// Bible §4 · tier: app · Layer 1.
+// (ADR-0020). Offline, the recent patients saved on the device are shown and
+// search waits for the connection (ADR-0023 K2-17). Permissions here only
+// shape the UI; the server decides.
+// Bible §4, §23 · tier: app · Layers 1–2.
 import Authentication
 import CoreNetworking
 import DesignSystem
 import PatientDomain
+import Photography
 import SwiftUI
 
 struct PatientsSplitView: View {
     let repository: PatientRepository
     let session: SessionSummary?
+    let photography: PhotographyContext
     @State private var selection: PatientSummary.ID?
     /// A patient to open once the reloaded list shows it (see PatientListView.load).
     @State private var pendingSelection: PatientSummary.ID?
@@ -19,7 +23,8 @@ struct PatientsSplitView: View {
 
     var body: some View {
         NavigationSplitView {
-            PatientListView(repository: repository, selection: $selection, pendingSelection: $pendingSelection, reload: reload)
+            PatientListView(repository: repository, cache: photography.patients, selection: $selection,
+                            pendingSelection: $pendingSelection, reload: reload)
                 .navigationTitle("Patients")
                 .toolbar {
                     if session?.can("patient.create") == true {
@@ -31,7 +36,7 @@ struct PatientsSplitView: View {
                 }
         } detail: {
             if let selection {
-                PatientProfileView(repository: repository, patientId: selection)
+                PatientProfileView(repository: repository, photography: photography, patientId: selection)
                     .id(selection)
             } else {
                 DSStateView(.empty(title: "No patient selected", message: "Search for a patient or choose one from the list."))
@@ -53,11 +58,14 @@ struct PatientsSplitView: View {
 
 struct PatientListView: View {
     let repository: PatientRepository
+    /// The recent list saved on this device, shown when offline (ADR-0023 K2-17).
+    let cache: PatientCache
     @Binding var selection: PatientSummary.ID?
     @Binding var pendingSelection: PatientSummary.ID?
     let reload: Int
     @State private var text = ""
     @State private var state: ListState = .loading
+    @State private var offline = false
 
     enum ListState: Equatable {
         case loading
@@ -90,6 +98,12 @@ struct PatientListView: View {
                 PatientRow(patient: patient).tag(patient.id)
             }
             .listStyle(.sidebar)
+            .safeAreaInset(edge: .top) {
+                if offline {
+                    DSBanner("You are offline. These are the recent patients saved on this device.", tone: .info)
+                        .padding(.horizontal, DSSpacing.lg)
+                }
+            }
         }
     }
 
@@ -114,10 +128,17 @@ struct PatientListView: View {
                 patients = try await repository.recent()
             }
             if Task.isCancelled { return }
+            if query == nil { await cache.saveRecent(patients) }
+            offline = false
             state = .loaded(patients)
         } catch {
             if Task.isCancelled { return }
-            state = .failed(error.viewState)
+            if error.status == 0, query == nil, let saved = await cache.recent() {
+                offline = true
+                state = .loaded(saved)
+            } else {
+                state = .failed(error.viewState)
+            }
         }
         // Select only after the list holds the patient's row. On iPhone the list's
         // selection drives the pushed profile: selecting first and then adding the

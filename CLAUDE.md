@@ -35,7 +35,7 @@ If something conflicts, the higher source wins. If behaviour is genuinely undefi
 | Path | What |
 |---|---|
 | `apps/design-prototype` | Static design prototype (React + Vite, hard-coded data). `pnpm dev:prototype` |
-| `apps/ios-provider`, `apps/ios-patient` | Tuist projects; 20 module packages in `apps/ios-provider/Modules` with a checked tier graph (`modules.json`, ADR-0015). Provider app: sign-in, patients, profile shell (Layer 1, ADR-0022); hosted and UI tests in `Tests/`, `UITests/` |
+| `apps/ios-provider`, `apps/ios-patient` | Tuist projects; 20 module packages in `apps/ios-provider/Modules` with a checked tier graph (`modules.json`, ADR-0015). Provider app: sign-in, patients, profile shell (Layer 1, ADR-0022); guided capture, gallery, media permissions, offline queue and caches (Layer 2, ADR-0025); hosted and UI tests in `Tests/`, `UITests/` |
 | `apps/admin-web` | Admin portal (React, TanStack Router/Query): sign-in, users and roles, audit, account; CSP in `security-headers.ts`; Vitest + Playwright e2e (ADR-0022) |
 | `services/api` | Staff and admin API (NestJS on Fastify), Layers 1–2 (ADR-0021, ADR-0024), and the worker (`src/worker`, a separate process: outbox relay, audit WORM copy, scans, derivative jobs); `scripts/local-stack.ts` starts a throwaway local stack |
 | `services/image-processing` | Derivative rendering (Python 3.13, pyvips, uv); no database access (ADR-0023 K2-01, ADR-0024) |

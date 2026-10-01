@@ -13,5 +13,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "AuditSupport", dependencies: [.product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "CoreSecurity", package: "CoreSecurity")]),
+        .testTarget(name: "AuditSupportTests", dependencies: ["AuditSupport", .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "CoreSecurity", package: "CoreSecurity")]),
     ]
 )

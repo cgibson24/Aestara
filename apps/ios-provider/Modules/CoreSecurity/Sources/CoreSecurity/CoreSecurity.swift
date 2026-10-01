@@ -4,8 +4,8 @@
 // §7; ADR-0018 K-22). The refresh token is readable only on this device, only
 // with a passcode set, and only after Face ID or Touch ID with the currently
 // enrolled biometrics: there is no passcode fallback. The encrypted local
-// store arrives with Layer 2 (M2.9).
-// Bible §21.2, §23.3 · tier: foundation · Layer 1.
+// store is in EncryptedStore.swift (Layer 2, M2.9).
+// Bible §21.2, §23.3 · tier: foundation · Layers 1–2.
 import Foundation
 import LocalAuthentication
 import Security
@@ -15,6 +15,21 @@ public enum KeychainError: Error, Sendable, Equatable {
     case userCancelled
     case biometryUnavailable
     case unexpected(OSStatus)
+}
+
+/// When a stored item can be read. Both are this-device-only: never in backups or iCloud.
+public enum KeychainAccessibility: Sendable {
+    /// After the first unlock since restart: device values such as the installation ID.
+    case afterFirstUnlock
+    /// Only while the device is unlocked: keys that protect patient data.
+    case whenUnlocked
+
+    var attribute: CFString {
+        switch self {
+        case .afterFirstUnlock: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        case .whenUnlocked: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        }
+    }
 }
 
 /// Generic-password items of the provider app.
@@ -48,14 +63,15 @@ public struct Keychain: Sendable {
         }
     }
 
-    /// Stores a non-secret device value, readable after the first unlock, never synced.
-    public func set(_ value: Data, account: String) throws(KeychainError) {
+    /// Stores a value on this device only, never synced: by default readable after the first
+    /// unlock (device values); `.whenUnlocked` for keys that protect patient data (ADR-0023 K2-17).
+    public func set(_ value: Data, account: String, accessibility: KeychainAccessibility = .afterFirstUnlock) throws(KeychainError) {
         try delete(account: account)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrAccessible as String: accessibility.attribute,
             kSecValueData as String: value,
         ]
         let status = SecItemAdd(query as CFDictionary, nil)

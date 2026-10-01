@@ -36,6 +36,7 @@ Status values:
 | [0022](#adr-0022) | Layer 1 clients: iOS provider shell and admin web portal | Adopted (delegated) | 2026-10-01 |
 | [0023](#adr-0023) | Layer 2 kickoff decisions | Accepted | 2026-10-01 |
 | [0024](#adr-0024) | Layer 2 backend implementation decisions | Adopted (delegated) | 2026-10-01 |
+| [0025](#adr-0025) | Layer 2 provider app implementation decisions | Adopted (delegated) | 2026-10-01 |
 
 ---
 
@@ -655,3 +656,50 @@ Status values:
   - The Layer 3 registration job reuses the sandbox and the job contract.
   - `packages/security` stays a placeholder (ADR-0023 consequences).
   - Deploying the container needs the compute module (stop timeout of at least 120 seconds, so a running job can finish) and the egress limits of K2-01.
+
+## ADR-0025
+
+**Layer 2 provider app implementation decisions**
+
+- **Status:** Adopted (delegated), 2026-10-01. These are the implementation choices inside ADR-0023 for the provider app's guided capture, gallery, media permissions and offline work (M2.5, M2.7 to M2.9). Like ADR-0024, they were recorded while the work was in progress on the Layer 2 branch, before its acceptance review. Each item matches what the code does.
+- **Decision, modules** (`modules.json`, ADR-0015):
+  - Photography depends on DesignSystem, CoreNetworking, CoreSecurity, Media, PatientDomain and AuditSupport. AppShell adds CoreSecurity for the store scope.
+  - Settings stays independent of Photography. AppShell hands it a sign-out check (what would be lost, and the purge) as two closures.
+  - One `PhotographyContext` per signed-in user and organization holds the repository, the encrypted store, the upload queue, the derivative cache, the patient summaries, the offline view records, the cache policy and the flags. Switching organization builds a new one; the previous organization's queue stays sealed.
+- **Decision, the encrypted store** (K2-17):
+  - One store per user and organization, under Application Support, excluded from backups. Records are sealed with AES-GCM; each record's name is the associated data, so a sealed file cannot be swapped for another. Files use Data Protection *Complete*.
+  - One key per user and organization in the Keychain (`WhenUnlockedThisDeviceOnly`). Tests use an in-memory key provider.
+- **Decision, capture** (K2-12):
+  - One camera session serves the whole capture screen; moving to the next view changes the target, not the session.
+  - The stage keeps the photo's 3:4 frame, so the framing oval and the ghost overlay sit on the subject on every screen. The oval follows the detected face or torso and otherwise shows the view's target.
+  - Live guidance names the subject while none is found ("Looking for the face") and says when the position is within every tolerance ("Hold still and take the photo"); neither is a guidance code. Each new instruction is announced to VoiceOver.
+  - The review lists every check in words and the position match with its label. Accept and Retake are always both available.
+  - The quality chips (lighting, distance, pose) show on iPad only (DESIGN_SYSTEM.md §4).
+  - With the ghost overlay on, the reference is the latest earlier accepted photo of the view with a display preview. The photographer may choose another from a menu. The opacity runs from 10% to 90%, 40% by default.
+  - The device's yaw convention from Vision is flipped to the protocol's (positive shows the subject's left side). This is checked on a device before the first clinical use, because the simulator has no camera.
+- **Decision, the upload queue** (spec §8 rules 1 to 6; K2-03, K2-04):
+  - A session started offline gets a client UUIDv7 and is created first on reconnect. Each photo carries its own UUIDv7, and its intent and completion keys (UUIDv7) are fixed when it is queued.
+  - Replay stops at the first network failure, `401`, `429` or `5xx`, and continues on the next sync. An upload URL that is refused or has expired is replaced by replaying the intent with the same key. A refusal no retry can fix marks that photo failed, and the others continue.
+  - The original stays on the device until the server reports the photo accepted. A rejected photo keeps its original: the photographer can upload it again as a new photo (a new ID; the rejected photo stays on record) or discard it and retake.
+  - A session completes only once none of its photos waits to upload, because the server closes a completed session to uploads.
+  - Sync runs after sign-in, after each accepted photo, when the app returns to the foreground, when the network path comes back, and every few seconds while a patient's photos are uploading or waiting for derivatives. A sync requested during a run runs once more afterwards.
+- **Decision, offline reading** (spec §8 rules 7 and 8):
+  - The patient-summary cache keeps the recent-patients list and every profile opened, within the cache policy, so a patient can be reached and photographed without a connection. Search, patient creation, permission changes, releases, archiving and tags need the connection.
+  - A patient's photo list and the active protocols are kept with the cache, and thumbnails and previews already viewed are kept in the derivative cache.
+  - Online, signed URLs are always requested, even for images already cached, because the server writes `PHOTO_VIEWED` as it issues them. Offline, a cached image is shown and each view is recorded on the device. A profile opened offline records `PATIENT_VIEWED` the same way. The records replay first on reconnect.
+- **Decision, sign-out and session end** (K2-17; spec §8 rules 7 and 8):
+  - **Sign-out** first tries once more to upload. If photos remain, the confirmation names how many and says they are deleted. Then the queue, the cached images, the patient summaries and the cached lists are deleted.
+  - **The offline view records survive the sign-out**, sealed for that user and organization, and replay at that user's next sign-in to it. Deleting them would lose audited views. A device revoked while offline is the security runbook's case (spec §8 rule 8).
+  - **The session ending without a sign-out** (absolute expiry, revocation, a failed unlock) deletes the cached images, patient summaries and lists. The queue and the offline view records stay sealed until the same user signs in to that organization again.
+- **Decision, gallery, photo and permissions** (K2-14, K2-15):
+  - The gallery is one request for thumbnails. Photos being checked or rejected show their state in words, never an image. Archived photos are hidden behind a toggle and carry a badge.
+  - Tags are trimmed and lower-cased in the app as on the server, at most 40 characters and 20 per photo. Archiving asks for confirmation, says the original is kept and that it cannot be undone.
+  - Permissions are shown per category, patient-wide with the number of exceptions, and per photo with its own exception. The app offers only the transitions of spec §5.4.5 from the current state; a grant is recorded as staff attestation and may end on a date.
+  - **Releases** are offered for the outward purposes: patient app, education, website, social media, paid advertising and research. They need a current grant for the photo and no active release for the purpose, and they are confirmed on their own sheet (DESIGN_SYSTEM.md C11). Clinical use needs no release, and AI training and evaluation datasets come from grants plus a governance approval (spec §7.7, Layer 7), not from releases. The api accepts any category; the app does not offer these three.
+- **Decision, tests:**
+  - Swift Testing covers guidance, the position match, sharpness, the quality chips, the queue (with a fake server and storage), permission precedence and transitions, the derivative and patient caches, the store and the offline view records.
+  - The UI test runs a standard Face session end to end on the Debug-only synthetic camera: guidance, capture, review, upload, completion, thumbnails from image-processing, a tag and a permission request and grant. It runs `performAccessibilityAudit()` on the capture, gallery and permission screens and reports every finding.
+  - In the UI tests, the emulator is addressed as `localhost`, which the Debug build's App Transport Security exception names, because the presigned URLs carry that host.
+- **Consequences:**
+  - The snapshot tests of K2-21 need reference images recorded on a Mac. They are listed in the Layer 2 acceptance review.
+  - Layer 3 annotation of cached photos and Layer 4 consent evidence build on the same store and permission screens.

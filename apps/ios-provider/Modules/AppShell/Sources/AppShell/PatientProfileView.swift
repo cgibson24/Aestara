@@ -1,18 +1,22 @@
 // The patient profile shell (Bible §4.3; PR-PATIENT-06; roadmap M1.10): the
 // header and all twelve tabs. The server says which tabs the caller's role may
 // read; the clinical content of each tab arrives with its layer, so a readable
-// tab shows its empty state. Opening the profile is audited by the server.
-// Bible §4.3 · tier: app · Layer 1.
+// tab without it shows its empty state. Photos arrive in Layer 2. Opening the
+// profile is audited by the server.
+// Bible §4.3 · tier: app · Layers 1–2.
 import CoreNetworking
 import DesignSystem
 import PatientDomain
+import Photography
 import SwiftUI
 
 struct PatientProfileView: View {
     let repository: PatientRepository
+    let photography: PhotographyContext
     let patientId: String
     @State private var state: LoadState = .loading
     @State private var tab: ProfileTab = .overview
+    @State private var offline = false
 
     enum LoadState: Equatable {
         case loading
@@ -30,10 +34,15 @@ struct PatientProfileView: View {
             case let .loaded(profile):
                 VStack(spacing: 0) {
                     ProfileHeader(patient: profile.patient)
+                    if offline {
+                        DSBanner("You are offline. This is the copy saved on this device; photos you take upload when you reconnect.", tone: .info)
+                            .padding(.horizontal, DSSpacing.lg)
+                            .padding(.vertical, DSSpacing.sm)
+                    }
                     TabStrip(selection: $tab)
                     Divider()
                     ScrollView {
-                        TabContent(tab: tab, profile: profile)
+                        TabContent(tab: tab, profile: profile, photography: photography)
                             .padding(DSSpacing.xxl)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -54,8 +63,17 @@ struct PatientProfileView: View {
     private func load() async {
         state = .loading
         do throws(APIError) {
-            state = .loaded(try await repository.profile(id: patientId))
+            let profile = try await repository.profile(id: patientId)
+            await photography.patients.save(profile)
+            offline = false
+            state = .loaded(profile)
         } catch {
+            if error.status == 0, let saved = await photography.patients.profile(id: patientId) {
+                offline = true
+                state = .loaded(saved)
+                await photography.recordOfflinePatientView(patientId)
+                return
+            }
             // 404 covers both "does not exist" and "not visible to you" (spec §4.6).
             state = .failed(error.status == 404
                 ? .error(message: "This patient is not available.", reference: error.requestId)
@@ -123,12 +141,15 @@ struct TabStrip: View {
 struct TabContent: View {
     let tab: ProfileTab
     let profile: PatientProfile
+    let photography: PhotographyContext
 
     var body: some View {
         if !profile.readableTabs.contains(tab) {
             DSStateView(.permissionDenied)
         } else if tab == .overview {
             OverviewTab(patient: profile.patient)
+        } else if tab == .photos {
+            PhotosTabView(context: photography, patientId: profile.patient.id)
         } else {
             DSStateView(.empty(title: "Nothing here yet", message: tab.emptyMessage))
         }

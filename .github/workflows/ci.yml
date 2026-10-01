@@ -457,7 +457,7 @@ jobs:
 
       # Each module's tests on an iPhone simulator, with a minimum count per
       # module: a green step alone does not show the tests executed.
-      - name: Test the Layer 0–1 modules on an iPhone simulator
+      - name: Test the Layer 0–2 modules on an iPhone simulator
         working-directory: apps/ios-provider/Modules
         run: |
           udid=$(xcrun simctl list devices available --json | python3 -c '
@@ -466,7 +466,7 @@ jobs:
           print(next(d["udid"] for runtime, ds in sorted(devices.items(), reverse=True)
                      if "iOS-26" in runtime for d in ds if d["name"].startswith("iPhone")))')
           echo "Simulator: $udid"
-          for entry in DesignSystem:4 CoreNetworking:4 PatientDomain:5; do
+          for entry in DesignSystem:4 CoreNetworking:6 PatientDomain:8 CoreSecurity:7 AuditSupport:4 Media:6 Photography:27; do
             module="${entry%%:*}"; minimum="${entry##*:}"
             bundle="$RUNNER_TEMP/$module.xcresult"
             echo "::group::$module"
@@ -545,7 +545,9 @@ jobs:
       - name: Provider UI tests against the real api (iPhone and iPad)
         env:
           TEST_ADMIN_DATABASE_URL: postgresql://verify@localhost:5432/postgres
-          TEST_AWS_ENDPOINT_URL: http://127.0.0.1:4566
+          # localhost, not 127.0.0.1: the simulator's App Transport Security exception names
+          # localhost, and the presigned upload and download URLs carry this host.
+          TEST_AWS_ENDPOINT_URL: http://localhost:4566
           # Every request in the job log (route template, status, duration), to diagnose a failure.
           STACK_LOG_LEVEL: info
         run: |

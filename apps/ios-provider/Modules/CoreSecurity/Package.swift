@@ -9,7 +9,9 @@ let package = Package(
     products: [.library(name: "CoreSecurity", targets: ["CoreSecurity"])],
     targets: [
         // Keychain tests need an app's entitlements: they run hosted in the
-        // provider app (apps/ios-provider/Tests, ADR-0022).
+        // provider app (apps/ios-provider/Tests, ADR-0022). The encrypted store's
+        // tests use in-memory keys and run here.
         .target(name: "CoreSecurity"),
+        .testTarget(name: "CoreSecurityTests", dependencies: ["CoreSecurity"]),
     ]
 )

@@ -171,8 +171,9 @@ The device follows spec §8 exactly; this is the implementation shape.
 | Mutation queue | Each operation stores a UUIDv7 `operationId`, which is sent as `Idempotency-Key`. Creates also store a client-generated `id`, and updates the resource `version`, which is sent as `If-Match`. Operations replay in order per aggregate; a failed dependency pauses only its dependents (spec §8 rules 1–3). |
 | Conflicts | `412 VERSION_CONFLICT` is shown to the user with both versions. Nothing is auto-resolved by timestamp [B §23.3]. |
 | Reconnect | Re-validate the session (`GET /auth/session`), replay offline audit records first (`POST /audit/offline-events`), then mutations (spec §8 rules 5 and 8). |
-| Originals | Stored encrypted with their SHA-256. They are purged locally only after the server confirms the checksum on `complete-upload` (spec §8 rule 6). |
-| Cache policy | Maximum patients, maximum age, and purge on sign-out or device revocation, from `PracticeSetting` (UD-25 baseline: 25 recent patients, 7 days). |
+| Originals | Stored encrypted with their SHA-256. The local original is kept until the server reports the photo accepted (verified and scanned clean); a rejected photo keeps it so it can be uploaded again as a new photo (spec §8 rule 6; ADR-0025). |
+| Cache policy | Maximum patients and maximum age from the `PracticeSetting` `offline.cachePolicy` (default 25 recent patients, 7 days). It covers the recent-patients list, the profiles and photo lists opened, and the thumbnails and previews viewed (spec §8 rule 7; ADR-0025). |
+| Upload queue | One per user and organization (`UploadQueue`, Photography): sessions first, then each photo's intent, write-once `PUT` and completion, with UUIDv7 IDs and keys fixed when queued. Replay stops at the first network or server failure and resumes on the next sync: after sign-in, after each accepted photo, on returning to the foreground and when the network path comes back (ADR-0025). |
 
 ## 7. Security on the device
 
@@ -182,7 +183,7 @@ The device follows spec §8 exactly; this is the implementation shape.
 | Step-up | Signing and export require a fresh biometric check on the device, and the server also requires a recent MFA verification (spec §4.2). |
 | Staff-assisted signing | The consent-scoped hand-off locks the app to the consent. Leaving it needs staff re-authentication (UD-31, DESIGN_SYSTEM.md C13). |
 | No PHI leaks | No PHI in logs, analytics, crash reports, notification payloads, URLs or pasteboard defaults (Bible §21.2, spec §7.2). Notifications carry only a deep-link identifier. |
-| Sign-out and revocation | Wipe the local database, cached media, keys and queued mutations. Unsent offline audit records are reported through the security runbook (spec §8 rule 8). |
+| Sign-out and session end | Sign-out tries once more to upload, asks for confirmation if photos would be lost, then deletes the queue, cached media, patient summaries and cached lists. Offline view records stay sealed for that user and organization and replay at their next sign-in, so no audited view is lost. A session ending without a sign-out (expiry, revocation, failed unlock) deletes the caches and keeps the queue sealed for the same user. A device revoked while offline has its unsent records reported through the security runbook (spec §8 rules 7 and 8; ADR-0025). |
 | Transport | TLS only, with App Transport Security at its defaults (no exceptions). |
 
 ## 8. Build, test and run
@@ -203,7 +204,7 @@ pnpm tokens                               # after editing packages/design-tokens
 | UI automation for critical flows | XCUITest | app targets | Layer 1 onward [B §27.1] |
 | Accessibility | UI tests find controls by label (Layer 1); XCUITest audits (Dynamic Type, VoiceOver) with the snapshot tool (Layer 2, ADR-0022); the token contrast gate | app targets | Layer 1 onward |
 
-The CI `ios` job generates both projects, builds both apps for the simulator (the provider app for iPhone and iPad), runs the module tests (DesignSystem, CoreNetworking, PatientDomain) and the hosted Keychain tests on an iPhone simulator, then starts the api with a fresh database on the runner and runs the UI tests on an iPhone and an iPad. Each layer adds its module tests to the job.
+The CI `ios` job generates both projects, builds both apps for the simulator (the provider app for iPhone and iPad), runs the module tests (DesignSystem, CoreNetworking, PatientDomain, CoreSecurity, AuditSupport, Media, Photography) and the hosted Keychain tests on an iPhone simulator. It then starts the api, the worker, image-processing and the AWS emulator with a fresh database on the runner and runs the UI tests on an iPhone and an iPad: sign-in, a new patient, a standard Face photo session on the Debug-only synthetic camera through to thumbnails, a tag, a media permission, and search, with accessibility audits of the capture, gallery and permission screens. Each layer adds its module tests to the job.
 
 ## Open items
 

@@ -64,7 +64,14 @@
       "bible": "§6",
       "layer": 2,
       "summary": "Guided clinical capture: protocols, live guidance, ghost overlay, capture review, offline upload queue.",
-      "dependsOn": ["DesignSystem", "Media", "PatientDomain", "AuditSupport"]
+      "dependsOn": [
+        "DesignSystem",
+        "CoreNetworking",
+        "CoreSecurity",
+        "Media",
+        "PatientDomain",
+        "AuditSupport"
+      ]
     },
     "Annotations": {
       "tier": "feature",
@@ -145,6 +152,7 @@
         "DesignSystem",
         "CoreNetworking",
         "Authentication",
+        "CoreSecurity",
         "PatientDomain",
         "Photography",
         "Annotations",
