@@ -1,0 +1,8 @@
+# swift-openapi-generator: the client and its types, generated at build time
+# from openapi.json (a copy of packages/api-contracts/openapi.json, kept equal by
+# `pnpm --filter @aestara/api-contracts build` and checked in CI).
+generate:
+  - types
+  - client
+accessModifier: public
+namingStrategy: idiomatic

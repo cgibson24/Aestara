@@ -1,8 +1,19 @@
 // CoreNetworking
 //
-// API client generated from packages/api-contracts/openapi.json, request correlation, idempotency keys, error-envelope handling.
-// Bible §20 · tier: foundation · built from Layer 1.
-//
-// Layer 0 defines this module's boundary and allowed dependencies only
-// (modules.json, docs/IOS_ARCHITECTURE.md). Its code arrives in the layer named
-// above; nothing may fake behaviour before then (Bible §30).
+// The API client generated from packages/api-contracts/openapi.json, with
+// request correlation, idempotency keys and error-envelope handling.
+// Bible §20 · tier: foundation · Layer 1.
+import Foundation
+import OpenAPIRuntime
+import OpenAPIURLSession
+
+/// Builds the generated client for a server.
+public enum APIClientFactory {
+    public static func make(baseURL: URL, middlewares: [any ClientMiddleware] = []) -> Client {
+        Client(
+            serverURL: baseURL.appending(path: "api/v1"),
+            transport: URLSessionTransport(),
+            middlewares: middlewares
+        )
+    }
+}

@@ -55,6 +55,7 @@ jobs:
             packages/design-tokens/generated \
             apps/ios-provider/Modules/DesignSystem/Sources/DesignSystem/DesignTokens.swift \
             packages/api-contracts/openapi.json \
+            apps/ios-provider/Modules/CoreNetworking/Sources/CoreNetworking/openapi.json \
             packages/shared-types/generated
 
       - name: Database schema, catalog and constraint migrations match the design
@@ -324,13 +325,25 @@ jobs:
           (cd apps/ios-provider && tuist generate --no-open)
           (cd apps/ios-patient && tuist generate --no-open)
 
+      # The OpenAPI generator runs as a package build plugin (CoreNetworking).
       - name: Build provider app (iPad + iPhone, simulator)
         run: >-
           xcodebuild build
           -workspace apps/ios-provider/AestaraProvider.xcworkspace
           -scheme AestaraProvider
           -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/dd"
+          -skipPackagePluginValidation -skipMacroValidation
           CODE_SIGNING_ALLOWED=NO -quiet
+
+      - name: Show the generated API client (bootstrap, temporary)
+        run: |
+          for f in $(find "$RUNNER_TEMP/dd" -path '*OpenAPIGenerator*' -name '*.swift'); do
+            echo "=== $(basename "$f") $(wc -l < "$f") lines"
+            echo "BEGIN-$(basename "$f")"
+            gzip -9c "$f" | base64
+            echo "END-$(basename "$f")"
+          done
 
       - name: Build patient app (iPhone, simulator)
         run: >-
