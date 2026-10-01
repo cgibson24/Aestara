@@ -10,7 +10,7 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "env": ["TEST_ADMIN_DATABASE_URL"]
+      "env": ["TEST_ADMIN_DATABASE_URL", "TEST_AWS_ENDPOINT_URL", "TEST_IMAGE_PROCESSING"]
     },
     "dev": {
       "dependsOn": ["^build"],
