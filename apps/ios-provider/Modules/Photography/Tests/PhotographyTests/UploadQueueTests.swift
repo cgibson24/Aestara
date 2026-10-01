@@ -142,7 +142,8 @@ private actor FakeStorage: ObjectUploading {
     let server = FakeServer()
     let storage = FakeStorage()
     try await queue.enqueue(record(), image: Data("jpeg".utf8))
-    await storage.fail(.refused)
+    // S3 answers 403 once a presigned URL has expired.
+    await storage.fail(.refused(status: 403))
     let first = await queue.process(service: server, uploader: storage)
     #expect(first.uploaded == 0)
     #expect(await queue.captures().first?.stage == .queued)
