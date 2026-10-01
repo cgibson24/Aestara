@@ -74,6 +74,14 @@ final class ProviderFlowTests: XCTestCase {
                     "TREATMENT_PLANS", "PROCEDURES", "DOCUMENTS", "INSTRUCTIONS", "APPOINTMENTS", "MESSAGES"] {
             XCTAssertTrue(app.buttons["profile.tab.\(tab)"].exists, "Tab \(tab) is missing. Screen: \(screen(app))")
         }
+        // The tab strip scrolls sideways on narrow screens: drag it (no momentum) until Photos is reachable.
+        let tabs = ["OVERVIEW", "TIMELINE", "CONSULTATIONS", "PHOTOS"].map { app.buttons["profile.tab.\($0)"] }
+        for _ in 0..<6 where !photos.isHittable {
+            guard let handle = tabs.first(where: \.isHittable) else { break }
+            let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -150, dy: 0)))
+        }
+        XCTAssertTrue(photos.isHittable, "The Photos tab cannot be reached. Screen: \(screen(app))")
         photos.tap()
         XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 5), "Photos empty state. Screen: \(screen(app))")
 
