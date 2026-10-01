@@ -35,6 +35,7 @@ Status values:
 | [0021](#adr-0021) | Layer 1 API implementation decisions | Adopted (delegated) | 2026-10-01 |
 | [0022](#adr-0022) | Layer 1 clients: iOS provider shell and admin web portal | Adopted (delegated) | 2026-10-01 |
 | [0023](#adr-0023) | Layer 2 kickoff decisions | Accepted | 2026-10-01 |
+| [0024](#adr-0024) | Layer 2 backend implementation decisions | Adopted (delegated) | 2026-10-01 |
 
 ---
 
@@ -560,3 +561,83 @@ Status values:
   - **Spec §10.2:** UD-06, UD-21, UD-22, UD-24 and UD-25 confirmed.
   - **Schema:** `AuditAction` gains `PHOTO_REJECTED` and `PHOTO_ARCHIVED`; `AIJobType` gains `IMAGE_DERIVATIVE`. **`constraints.sql`:** the Layer 2 fragment gains the protocol freeze, the photo transition table and the audit-to-outbox feed (behaviour checks C11–C14 and G5).
 - **Consequences:** the Layer 2 tables of spec §5.8, plus `AIJob`, are created by the Layer 2 migrations. `packages/security` stays a placeholder: the worker shares the api's codebase and the image-processing service is Python, so no second TypeScript service needs it yet (ADR-0022). Before the first deployment the owner confirms GuardDuty Malware Protection for S3 is within the BAA (K2-04). HEIC needs an HEVC licence review before Layer 5 (K2-02).
+
+## ADR-0024
+
+**Layer 2 backend implementation decisions**
+
+- **Status:** Adopted (delegated), 2026-10-01. These are the implementation choices inside ADR-0023 for the database, api, worker and image-processing work of M2.1 to M2.4, M2.6, M2.8 and M2.10. They were recorded while that work was in progress on the Layer 2 branch, before its acceptance review, not ahead of the first commits as change control asks. Each item below matches what the code does.
+- **Decision, database:**
+  - **The worker's role.** `aestara_worker` is a login role without `BYPASSRLS`. Its cross-tenant reach is limited to its duties, through column grants and Row-Level Security policies for that role only:
+    - claiming and stamping `OutboxEvent` rows;
+    - reading `AuditEvent` rows for the WORM copy;
+    - finding the organization of a `StorageObject` (by bucket and key) or of an `AIJob`;
+    - listing active organizations for the scheduled jobs.
+    Every other change it makes runs in a tenant transaction under `aestara_app`, as a request does.
+  - **Seeding standard protocols.** `aestara_protocol_seed` owns the `SECURITY DEFINER` function `app_seed_standard_protocols(organizationId)`. Only `aestara_platform` may execute it, so the organization bootstrap seeds the K2-11 protocols without the platform role holding write grants on tenant tables. The function sets the tenant itself.
+  - **Shared IDs.** The audit feed's outbox row reuses the audit event's ID, so the relay and the reconciliation need no mapping.
+  - **Generated schema.** The generated schema keeps only the built layers' columns. A foreign key column whose only relation is to a later layer's table is left out until that layer (spec §5.8). The generator refuses a kept index or constraint that uses a dropped column.
+- **Decision, api:**
+  - **Either-permission endpoints.** An endpoint may accept any one of several permissions (`orPermissions` in the contract metadata). An example is a photo route that serves both clinical viewers and export holders.
+  - **Visibility of photo sub-resources.** A path that names a photo, session or release answers `404` when the caller cannot read it, so existence is not disclosed (spec §4.6). A collection under a patient answers `403` when the caller lacks the collection's permission.
+  - **Storage object states.** At upload verification the object becomes `QUARANTINED` with `verifiedAt` set, which makes it write-once. A clean scan makes it `AVAILABLE`. An infected or failed scan makes it `REJECTED`, and it is never served. The photo moves with it (K2-05). Spec §3.4 flow A is corrected to match.
+  - **Feature flags.** A flag `PUT` replaces the stored boolean without `If-Match`. `FeatureFlag` has no version column, and the request states the complete value, so the last writer's choice is the one recorded and audited. Practice settings keep `If-Match` on their `version`. The spec §6.3 row is corrected to match.
+  - **Offline view replay** (spec §8 rule 8):
+    - The client's event ID becomes the audit event's ID, so a replay is recorded at most once.
+    - The event keeps its original time and is marked `offline`.
+    - A replay is refused when the event is older than 7 days, when the patient is not in the organization, or when the caller lacks the view's read permission.
+  - **Transactions.** Queries inside one transaction run one at a time: its connection serves one query at a time anyway, and the driver is withdrawing support for queued queries.
+- **Decision, worker** (the api codebase as a separate process, K2-07):
+  - **Process and credentials.** It starts as a Nest application context with its own configuration. It holds no signing keys and no platform credentials, and connects as `aestara_worker`.
+  - **Relay:**
+    - Claims committed rows in batches with `FOR UPDATE SKIP LOCKED`.
+    - Publishes to the bus in chunks of 10 with source `aestara.api`. A failed entry backs off exponentially, at most 5 minutes, and records `attempts` and `lastErrorCode`.
+    - Writes audit rows as one JSON-lines object per UTC day of occurrence and per batch, at `audit/YYYY/MM/DD/<firstId>-<count>-<digest>.jsonl`.
+    - Writes each archive object with `If-None-Match: *`, so a batch replayed after a crash is already done. Each write carries its SHA-256, which Object Lock requires.
+    - Never counts a batch as archived unless every one of its audit rows was read.
+  - **Reconciliation.** Runs daily over the last 8 days, comparing each day's relayed audit IDs with the archived IDs. It logs `audit_worm_divergence` with counts only.
+  - **Derivative jobs.**
+    - Retries after 1, 5 and 30 minutes.
+    - An attempt with no result after 15 minutes is swept and retried.
+    - Outputs are verified (size, SHA-256, JPEG signature) before a `PhotoDerivative` is recorded.
+  - **Malware scans.** The worker reads the GuardDuty Malware Protection result event. Locally and in CI, an EICAR-only scanner reads the bucket's notifications and sends the same event shape; configuration refuses that scanner in production.
+  - **Permission expiry.** An hourly job expires media permissions.
+- **Decision, image-processing** (K2-01, K2-06):
+  - **Process model.** A single SQS consumer handles one job at a time; capacity comes from running more tasks.
+    - Each job decodes in a fresh child process, started from a clean fork server and never forked from the consumer.
+    - In the child, libvips is hardened and the data segment is limited to 3 GiB.
+    - The parent kills the child when the job's 60 seconds run out. The 60 seconds cover the download, rendering and uploads.
+  - **Rendering:**
+    - The JPEG decoder scales down while loading.
+    - Colour is converted to sRGB through the embedded profile.
+    - Alpha is flattened onto white, the image is resized with Lanczos and never enlarged, and the orientation is applied.
+    - Output is JPEG at quality 85 with no metadata, and the encoded file is checked for any remaining APPn or comment segment.
+    - Rendering is deterministic, so a repeated job writes identical bytes.
+  - **Transfers:**
+    - Redirects are not followed.
+    - URLs must be on the emulator's origin locally, and HTTPS on an `amazonaws.com` host in AWS.
+    - The source must have the ledger's size and SHA-256.
+    - Outputs go through the presigned write-once `PUT`s. A `412` means an earlier delivery of the same attempt wrote the output, and the worker's verification decides.
+  - **Results** are `image.derivative.completed` or `image.derivative.failed`, in the worker's `ImageJobResult` shape, with these codes:
+    - Retried: `JOB_EXPIRED`, `JOB_TIMEOUT`, `SOURCE_UNREADABLE`, `RENDER_TIMEOUT`, `RENDER_CRASHED`, `OUTPUT_UPLOAD_FAILED`.
+    - Failed at once: `INVALID_JOB`, `SOURCE_TOO_LARGE`, `SOURCE_INTEGRITY`, `UNSUPPORTED_FORMAT`, `DECODE_FAILED`, `PIXEL_LIMIT_EXCEEDED`, `METADATA_NOT_STRIPPED`.
+    - A message that names no job is not answered; it reaches the dead-letter queue.
+  - **Logs** carry job IDs, attempts, codes and durations. They never carry URLs, which hold signatures, or message bodies or exception messages.
+  - **Configuration.** `APP_ENV=production` refuses an emulator endpoint and requires HTTPS queue URLs.
+  - **Container:**
+    - Built on `python:3.13-slim` pinned by digest, with the locked virtual environment installed by uv.
+    - Runs as UID 10001 with a read-only root filesystem and a tmpfs `/tmp`.
+    - The health check reads a heartbeat that the consumer loop writes.
+- **Decision, tests and CI:**
+  - **api tests:** each api test file provisions its own emulator resources, so parallel files never consume each other's messages.
+  - **Python tests:** they run moto in-process, so they need no Docker.
+  - **End to end:** the api suite runs the real image-processing service when `TEST_IMAGE_PROCESSING=1`, and CI sets it.
+  - **image-processing CI job**, in this order:
+    - checks the lockfile, ruff and strict mypy, and runs pytest;
+    - builds the image and runs it as a locked-down container;
+    - scans it with Trivy, which fails on HIGH or CRITICAL findings that have a fixed version. Findings with no fix yet do not fail the build; each run re-checks them.
+  - **OSV-Scanner** covers `uv.lock`.
+- **Consequences:**
+  - The Layer 3 registration job reuses the sandbox and the job contract.
+  - `packages/security` stays a placeholder (ADR-0023 consequences).
+  - Deploying the container needs the compute module (stop timeout of at least 120 seconds, so a running job can finish) and the egress limits of K2-01.

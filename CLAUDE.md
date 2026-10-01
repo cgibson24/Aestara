@@ -37,7 +37,8 @@ If something conflicts, the higher source wins. If behaviour is genuinely undefi
 | `apps/design-prototype` | Static design prototype (React + Vite, hard-coded data). `pnpm dev:prototype` |
 | `apps/ios-provider`, `apps/ios-patient` | Tuist projects; 20 module packages in `apps/ios-provider/Modules` with a checked tier graph (`modules.json`, ADR-0015). Provider app: sign-in, patients, profile shell (Layer 1, ADR-0022); hosted and UI tests in `Tests/`, `UITests/` |
 | `apps/admin-web` | Admin portal (React, TanStack Router/Query): sign-in, users and roles, audit, account; CSP in `security-headers.ts`; Vitest + Playwright e2e (ADR-0022) |
-| `services/api` | Staff and admin API (NestJS on Fastify), Layer 1 (ADR-0021); `scripts/local-stack.ts` starts a throwaway local stack |
+| `services/api` | Staff and admin API (NestJS on Fastify), Layers 1–2 (ADR-0021, ADR-0024), and the worker (`src/worker`, a separate process: outbox relay, audit WORM copy, scans, derivative jobs); `scripts/local-stack.ts` starts a throwaway local stack |
+| `services/image-processing` | Derivative rendering (Python 3.13, pyvips, uv); no database access (ADR-0023 K2-01, ADR-0024) |
 | `services/*` (others) | Backend services (placeholders until their layer) |
 | `packages/design-tokens` | **Single source** of colours/type/spacing for iOS (Swift) and web (CSS) |
 | `packages/api-contracts` | Zod → OpenAPI 3.1 (`openapi.json`); Layer 0 holds the shared primitives only (ADR-0013) |
@@ -54,7 +55,7 @@ pnpm install              # dependencies (Node 24 LTS, pnpm via corepack)
 pnpm check                # lint + typecheck + test + build (what CI runs)
 pnpm dev:prototype        # run the design prototype at http://localhost:5173
 pnpm tokens               # regenerate design tokens after editing packages/design-tokens/tokens.json
-pnpm services:up          # local PostgreSQL 18 (docker compose)
+pnpm services:up          # local PostgreSQL 18, Mailpit and moto on :4566 (docker compose)
 pnpm verify:spec          # Bible → spec traceability (needs: pip install pypdf)
 DATABASE_URL=… pnpm verify:schema   # design schema + all behaviour fragments on an EMPTY database
 ADMIN_DATABASE_URL=… pnpm --filter @aestara/database db:test   # real migrations as non-superuser, drift, RLS, Layer 1 checks
@@ -62,7 +63,8 @@ ADMIN_DATABASE_URL=… pnpm --filter @aestara/database bench:rls # RLS performan
 DATABASE_URL=… pnpm --filter @aestara/database db:seed:dev      # local synthetic organization + invited admin
 ADMIN_DATABASE_URL=… pnpm dev:stack       # local api on :3000 (fresh DB, seed, Mailpit email); prints the admin invitation link
 pnpm dev:admin                            # admin portal on http://localhost:5174 (proxies /api to :3000)
-TEST_ADMIN_DATABASE_URL=… pnpm --filter @aestara/api test        # api unit + HTTP tests against real PostgreSQL
+TEST_ADMIN_DATABASE_URL=… TEST_AWS_ENDPOINT_URL=http://localhost:4566 pnpm --filter @aestara/api test   # api + worker tests on real PostgreSQL and moto (TEST_IMAGE_PROCESSING=1 adds the real image-processing)
+cd services/image-processing && uv sync && uv run pytest     # image-processing tests (ruff, mypy: see its README)
 TEST_ADMIN_DATABASE_URL=… pnpm --filter @aestara/admin-web e2e   # Playwright against the real api (after pnpm build)
 python3 docs/technical-spec/verification/check_docs.py    # documentation pack, references, links
 python3 apps/ios-provider/scripts/check_module_graph.py   # iOS module architecture rules

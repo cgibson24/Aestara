@@ -113,8 +113,8 @@ Bible §6.3 defines the capture workflow; spec §3.4 flow A defines the upload c
 | 4 | Queue | App | Queued operation carries `operationId` (sent as `Idempotency-Key`) and the client photo `id` (spec §8 rule 1) |
 | 5 | Upload intent | `POST …/photos/uploads` | `photo.capture`; type allow-list JPEG/PNG and the 50 MiB limit checked (ADR-0023 K2-02); creates `StorageObject` `PENDING_UPLOAD` and `PatientPhoto` `UPLOAD_PENDING`; returns a presigned `PUT` valid 10 min with `Content-Type`, `x-amz-checksum-sha256` and `If-None-Match: *` headers; replaying the intent returns a fresh URL (spec §6.1.9, §6.6.2; ADR-0023 K2-03) |
 | 6 | Upload bytes | App → S3 | S3 rejects a body whose SHA-256 differs from the signed header (spec §7.4) |
-| 7 | Complete | `POST …/photos/{phid}/complete-upload` | `Idempotency-Key` required; the API re-reads size and checksum from S3; checks the first bytes; in one transaction: `StorageObject` `AVAILABLE` + `verifiedAt` (write-once from here), `PatientPhoto` `QUARANTINED`, audit `PHOTO_CAPTURED`, outbox `photo.captured` (spec §3.3 step 10, §3.4 flow A; ADR-0023 K2-05) |
-| 7a | Scan | Malware scanner → worker | Clean: `PatientPhoto` `ACCEPTED` and the derivative job queued. Infected or failed: `REJECTED`, `PHOTO_REJECTED`, security alert; the object is never served (ADR-0023 K2-04) |
+| 7 | Complete | `POST …/photos/{phid}/complete-upload` | `Idempotency-Key` required; the API re-reads size and checksum from S3; checks the first bytes; in one transaction: `StorageObject` `QUARANTINED` + `verifiedAt` (write-once from here), `PatientPhoto` `QUARANTINED`, audit `PHOTO_CAPTURED`, outbox `photo.captured` (spec §3.3 step 10, §3.4 flow A; ADR-0023 K2-05) |
+| 7a | Scan | Malware scanner → worker | Clean: `StorageObject` `AVAILABLE`, `PatientPhoto` `ACCEPTED` and the derivative job queued. Infected or failed: both `REJECTED`, `PHOTO_REJECTED`, security alert; the object is never served (ADR-0023 K2-04; ADR-0024) |
 | 8 | Derivatives | image-processing | `THUMBNAIL` (400 px) and `DISPLAY_PREVIEW` (2048 px) written through presigned `PUT`s to objects the API registered first; the API verifies them and persists `PhotoDerivative` rows from the result event (spec §6.7; ADR-0023 K2-06) |
 | 9 | Purge local original | App | After the photo is accepted (verified and scanned clean), per cache policy [B §23.3]; spec §8 rule 6 |
 
@@ -143,7 +143,7 @@ sequenceDiagram
   S3-->>Queue: 200 after S3 verifies the checksum
   Queue->>API: POST complete-upload for photoId
   API->>S3: HEAD object for size and checksum
-  API->>API: One transaction - StorageObject AVAILABLE, PatientPhoto QUARANTINED, audit PHOTO_CAPTURED, outbox row
+  API->>API: One transaction - StorageObject QUARANTINED, PatientPhoto QUARANTINED, audit PHOTO_CAPTURED, outbox row
   API-->>Queue: 200 PhotoDTO
   Relay->>Bus: Publish committed outbox events
   Bus->>API: Scan result CLEAN, worker accepts the photo and queues the derivative job
@@ -198,6 +198,7 @@ Rules:
 
 - Every derivative references its source photo and carries `generationMetadata` (generator name and version, parameters, transforms) and, where a job produced it, `generatedByJobId` [B §6.6].
 - Derivatives are immutable. Regenerating one inserts a new row and a new object (verified C8–C9).
+- `THUMBNAIL` and `DISPLAY_PREVIEW` are JPEG in sRGB with the orientation applied and never enlarged. Every metadata block is removed: EXIF with any GPS position, XMP, IPTC, ICC profiles and comments. Each is rendered in a disposable child process within the 100-megapixel and 60-second limits (ADR-0023 K2-01, K2-06; ADR-0024).
 - Annotations are separate rows and never alter pixels of the original. Only a render creates pixels, and it is a new derivative.
 - Archiving a photo (`POST …/photos/{phid}/archive`, `ACCEPTED → ARCHIVED`) changes its status only; the original is retained (spec §6.3, §5.4.10). Archived photos are hidden from lists by default, shown by a filter with an "Archived" badge, and never reused (ADR-0023 K2-14).
 - `ORIGINAL` bytes are served only through `access-urls` with the `photo.export` permission, and every issuance is audited (spec §6.3).

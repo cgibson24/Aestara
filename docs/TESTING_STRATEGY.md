@@ -73,7 +73,10 @@ The summary also lists the SR IDs the micro-prompt satisfies and any threat-mode
 | `workspace` | Biome lint and format, typecheck, Vitest unit tests, build, generated-file drift (design tokens, OpenAPI), `oasdiff` breaking-change gate, iOS module architecture rules (`check_module_graph.py`) | Node 24, frozen lockfile |
 | `spec` | Bible → spec traceability, Bible export drift, documentation pack and reference check (`check_docs.py`), schema validity plus database behaviour suite on PostgreSQL 18 | `run_schema_checks.sh` on an empty database |
 | `terraform` | `fmt`, `validate`, `tflint` (Terraform and AWS rulesets), `checkov` | The bootstrap root and the dev, staging and production roots |
-| `security` | OSV-Scanner on `pnpm-lock.yaml` (ADR-0016) | Dependabot update pull requests run through the same jobs. GitHub CodeQL (SAST) and gitleaks (secret scanning) join in M1.2, when third-party actions are also pinned to commit SHAs (ADR-0018 K-21) |
+| `database` | Migrations as a non-superuser, drift, ownership and RLS checks, behaviour suite, RLS benchmark | PostgreSQL 18 |
+| `api` | api and worker tests on PostgreSQL 18 and moto, including derivatives through the real image-processing service; the RLS gate; admin portal Playwright tests | `TEST_IMAGE_PROCESSING=1` |
+| `image-processing` | uv lockfile check, ruff, strict mypy, pytest, container build, the container run locked down, Trivy image scan | Python 3.13, uv |
+| `security` | OSV-Scanner on `pnpm-lock.yaml` and `services/image-processing/uv.lock` (ADR-0016) | Dependabot update pull requests run through the same jobs. GitHub CodeQL (SAST) and gitleaks (secret scanning) join in M1.2, when third-party actions are also pinned to commit SHAs (ADR-0018 K-21) |
 | `ios` | Module architecture rules, Tuist generate, build of both apps for the simulator, DesignSystem tests on an iPhone simulator | macOS 26 runner, Xcode 26.6; each layer adds its module tests |
 
 Every job must be green before the owner approves a merge to `main` (DEVELOPMENT_ROADMAP.md §2).
@@ -84,10 +87,10 @@ Every job must be green before the owner approves a merge to `main` (DEVELOPMENT
 |---|---|---|
 | Formatting and linting | `workspace` | In place |
 | Type checking | `workspace` | In place |
-| Unit, API and database tests | `workspace` (unit), `spec` (database) | API tests arrive with the M1.2 contract-test harness; their job placement is decided then (open item 4) |
+| Unit, API and database tests | `workspace` (unit), `spec` and `database` (database), `api` (api and worker), `image-processing` (Python) | In place |
 | Migration validation | `spec` | Today the draft schema plus `constraints.sql`; real per-layer migrations from M1.1 (§6) |
 | Dependency and security scanning | `security` (OSV-Scanner); Dependabot weekly updates (`.github/dependabot.yml`) | In place (ADR-0016); CodeQL and gitleaks from M1.2 (ADR-0018 K-21) |
-| Container scanning | None yet | Trivy from the first container image in Layer 1 (spec §2.3, §7.1; ADR-0018 K-21) |
+| Container scanning | `image-processing` (Trivy on the image) | In place from the first container image, the image-processing service: HIGH and CRITICAL findings with a fix fail the build (ADR-0024) |
 | Terraform validation and plan review | `terraform` (validation) | Plan review is a human step before apply ([`DEPLOYMENT.md`](DEPLOYMENT.md)) |
 | iOS build and tests | `ios` | In place |
 | No deployment when required gates fail | Deployment pipeline | Defined in [`DEPLOYMENT.md`](DEPLOYMENT.md); SR-SCI-01 |

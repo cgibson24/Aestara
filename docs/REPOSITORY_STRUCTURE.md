@@ -21,7 +21,7 @@ This document explains where everything lives, what state each part is in, and t
 ├── services/
 │   ├── api/                 NestJS 12 + Fastify; owns the database schema             · from Layer 1
 │   ├── ai-gateway/          Internal AI job API and model routing                     · from Layer 7
-│   ├── image-processing/    Derivatives, normalization, registration (Python, UD-06)  · from Layer 2
+│   ├── image-processing/    Derivatives (Python 3.13 + pyvips, ADR-0023 K2-01)         · from Layer 2
 │   ├── notifications/       APNs/email/SMS without sensitive payloads                 · from Layer 5
 │   └── integration-service/ FHIR/vendor adapters                                      · from Layer 10
 ├── packages/
@@ -52,7 +52,8 @@ This document explains where everything lives, what state each part is in, and t
 | `apps/design-prototype` | Static mock-up of the core scenes | 173 scene × state tests |
 | `packages/database` | Layer 1 tables (21), generated from the design schema; migrations for tables, constraints (including patient search keys), security (roles, forced RLS, sign-in lookup) and the permission catalog; ownership classification; local seed; RLS benchmark | 45 unit tests; `schema:check` drift gate; CI `database` job: migrations as a non-superuser, drift, `check-rls.ts`, 61 database checks |
 | `packages/shared-types` | Enum values generated from `packages/database/prisma/schema.prisma` | 2 tests; CI drift check |
-| `services/api` | Layer 1 API: authentication, tenancy and authorization, organizations, users and roles, patients, audit, settings (ADR-0021) | Unit and HTTP tests on PostgreSQL 18, generated authorization and cross-tenant tests, end-to-end RLS gate |
+| `services/api` | Layer 1 API: authentication, tenancy and authorization, organizations, users and roles, patients, audit, settings (ADR-0021). Layer 2: protocols, sessions, uploads, photos, media permissions and releases, flags, practice settings, retention, offline view replay; and the **worker** (`src/worker`, a separate process): outbox relay, audit WORM copy and reconciliation, scan results, derivative jobs, permission expiry (ADR-0024) | Unit and HTTP tests on PostgreSQL 18 and moto, generated authorization and cross-tenant tests, end-to-end RLS gate, derivatives through the real image-processing service |
+| `services/image-processing` | Layer 2 derivatives: thumbnail and display preview, metadata stripped, rendered in a sandboxed child process; no database access (ADR-0023 K2-01, K2-06; ADR-0024) | pytest with an in-process moto, ruff, strict mypy; container test and Trivy in CI |
 | `apps/admin-web` | Layer 1 admin portal: sign-in, users and roles, audit, account (ADR-0022) | Vitest; Playwright against the real api |
 | Other `services/*`, `packages/security` | Placeholder README only. Each names the layer that builds it. | Bible §31: "no fake business implementation" |
 | `docs/` | Layer 0 documentation pack | `check_docs.py`, `check_traceability.py` |

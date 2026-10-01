@@ -262,8 +262,9 @@ sequenceDiagram
   App->>S3: PUT original (S3 verifies checksum)
   App->>API: POST /patients/{id}/photos/{photoId}/complete-upload
   API->>S3: HEAD object (size, checksum)
-  API->>API: StorageObject AVAILABLE + verifiedAt (now write-once) · PatientPhoto ACCEPTED · audit PHOTO_CAPTURED · outbox photo.captured
+  API->>API: StorageObject QUARANTINED + verifiedAt (now write-once) · PatientPhoto QUARANTINED · audit PHOTO_CAPTURED · outbox photo.captured
   API-->>App: 200 PhotoDTO
+  S3-->>API: malware scan result (worker) -> clean: StorageObject AVAILABLE, PatientPhoto ACCEPTED · otherwise both REJECTED [ADR-0023 K2-05, ADR-0024]
   Q->>IP: derivative job (THUMBNAIL, DISPLAY_PREVIEW)
   IP->>S3: write derivatives (new objects, never overwrite)
   IP-->>Q: result event -> api persists PhotoDerivative rows
@@ -1233,7 +1234,7 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | `GET /ai-models` · `GET /ai-models/{id}/versions` | Registry visibility | ai.model.read* | – | – | 7 |
 | `POST /ai-models/{id}/rollouts` | Activate/deactivate/rollback version (platform or org) | ai.model.manage* | R | AI_MODEL_ROLLOUT_CHANGED* | 7 |
 | `GET/PUT /settings/organization/{key}` | Organization policy settings (MFA, sessions, primary-practice rule) (If-Match) | configuration.manage* | – | CONFIGURATION_CHANGED* | 1 |
-| `GET/PUT /feature-flags/{key}` · `GET/PUT /settings/practices/{practiceId}/{key}` | Flags & practice settings (If-Match). Keys are registered in code with their defaults; a practice row wins over an organization row, which wins over the default; no platform-wide rows in Layer 2 [ADR-0023 K2-18] | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
+| `GET/PUT /feature-flags/{key}` · `GET/PUT /settings/practices/{practiceId}/{key}` | Flags (a replace: a flag has no version) & practice settings (If-Match on `version`) [ADR-0024]. Keys are registered in code with their defaults; a practice row wins over an organization row, which wins over the default; no platform-wide rows in Layer 2 [ADR-0023 K2-18] | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
 | `GET/POST /retention-policies` | Retention policy per record category. `ARCHIVE` and `REVIEW` only; `DELETE` is refused until legal hold is modelled; no retention job runs in Layer 2 [ADR-0023 K2-19] | configuration.manage* | – | CONFIGURATION_CHANGED* | 2 |
 
 Integration **worker** activity writes INTEGRATION_SYNC_SUCCEEDED / INTEGRATION_SYNC_FAILED, and **export completion** writes DATA_EXPORT_COMPLETED (actor type `SERVICE`).

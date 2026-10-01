@@ -2,6 +2,39 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-01: Layer 2 backend and image-processing (ADR-0024)
+
+- **ADR-0024** records the implementation decisions of the Layer 2 backend: the worker and protocol-seed database roles, either-permission endpoints, photo sub-resource visibility, storage object states, the flag `PUT`, offline view replay, the relay and WORM copy, derivative jobs, malware scan results, and the image-processing service. It was written while the work was in progress, not ahead of it as change control asks.
+- **Database** (M2.1–M2.4, M2.8, M2.10):
+  - the Layer 2 tables and `AIJob`, with constraints, triggers, Row-Level Security and the two new roles;
+  - the standard protocols seeded in every organization;
+  - 36 tables in all.
+- **api:** protocols, photo sessions, uploads with verification, photos, tags, archive and signed viewing (including the batch endpoint), media permissions and releases, feature flags, practice settings, the offline cache policy, retention policies and offline view replay. There are 33 new operations in `openapi.json`, and both clients are regenerated.
+- **Worker** (`services/api/src/worker`, a separate process):
+  - the outbox relay to EventBridge;
+  - the audit WORM copy in an Object Lock bucket, with a daily reconciliation;
+  - malware scan results, with an EICAR-only local scanner;
+  - derivative jobs with retries and a stuck-job sweep;
+  - hourly permission expiry.
+- **image-processing** (M2.6): Python 3.13, pyvips and uv.
+  - It renders the thumbnail and display preview as JPEG in sRGB, with the orientation applied and every metadata block removed.
+  - Rendering runs in a disposable child process, with only the JPEG and PNG loaders, under the 100-megapixel and 60-second limits.
+  - Outputs are written through write-once presigned URLs.
+  - It has no database access and logs no URLs.
+  - It ships as a non-root container that runs with a read-only root filesystem.
+- **Spec corrected (ADR-0024):**
+  - §3.4 flow A: the storage object is `QUARANTINED` at verification and becomes `AVAILABLE` on a clean scan.
+  - §6.3: a flag `PUT` is a replace; practice settings keep `If-Match`.
+- **Local and CI:**
+  - moto joins `docker-compose.yml`.
+  - `local-stack.ts` provisions its own emulator resources and starts the worker and image-processing, for `pnpm dev:stack`, the admin portal end-to-end tests and the iOS UI tests (moto from pip on the macOS runner).
+  - A new CI job runs image-processing's ruff, strict mypy, pytest, a container test and a Trivy image scan. This is the first container scan.
+  - OSV-Scanner now covers `uv.lock`.
+  - The api job runs derivatives through the real service.
+- **Fixed on the way:**
+  - The audit archive `PUT` lacked the checksum-algorithm header that Object Lock requires.
+  - A batch whose audit rows could not all be read could have been counted as archived.
+
 ## 2026-10-01: Layer 2 kickoff confirmed (ADR-0023)
 
 - The owner confirmed every recommendation in `LAYER_2_KICKOFF.md` (K2-01 to K2-22), choosing explicitly that every standard view is required, every upload is scanned and `CLINICAL_USE` does not gate staff capture or viewing. Recorded as ADR-0023; ADR-0010 amended (moto replaces LocalStack).

@@ -195,6 +195,8 @@ jobs:
     env:
       TEST_ADMIN_DATABASE_URL: postgresql://verify:verify@localhost:5432/aestara_verify
       TEST_AWS_ENDPOINT_URL: http://localhost:4566
+      # test/derivatives-e2e.test.ts runs the real image-processing service.
+      TEST_IMAGE_PROCESSING: "1"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -202,6 +204,16 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: image-processing for the derivative tests (uv, locked)
+        working-directory: services/image-processing
+        run: |
+          python -m pip install --quiet uv==0.8.17
+          uv sync --frozen --no-dev
 
       - name: Wait for the AWS emulator
         run: |
@@ -256,6 +268,63 @@ jobs:
           name: playwright-report
           path: apps/admin-web/playwright-report
           retention-days: 7
+
+  image-processing:
+    name: image-processing · ruff · mypy · pytest · container image · Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/image-processing
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: python -m pip install --quiet uv==0.8.17
+
+      - name: The lockfile matches pyproject.toml
+        run: uv lock --check
+
+      - name: Install (locked)
+        run: uv sync --frozen
+
+      - name: Format and lint (ruff)
+        run: |
+          uv run --frozen ruff format --check .
+          uv run --frozen ruff check .
+
+      - name: Typecheck (mypy, strict)
+        run: uv run --frozen mypy
+
+      # Rendering, metadata stripping, limits, loader blocking, the sandbox, and the
+      # consumer against an in-process S3 and SQS emulator (ADR-0023 K2-01, K2-06).
+      - name: Tests (pytest)
+        run: uv run --frozen pytest
+
+      - name: Build the container image
+        run: docker build -t aestara-image-processing:ci .
+
+      # Non-root, read-only root filesystem, no capabilities: the deployed shape.
+      - name: The image renders a job as a locked-down container
+        env:
+          IMAGE_UNDER_TEST: aestara-image-processing:ci
+        run: uv run --frozen pytest tests/test_container.py
+
+      # The first container image (ADR-0018 K-21): OS packages and Python dependencies.
+      # Findings with no fixed version are reported by the fs scan's advisories, not failed here.
+      - name: Trivy, container image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: aestara-image-processing:ci
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
 
   terraform:
     name: Terraform · fmt · validate · tflint · checkov
@@ -319,7 +388,8 @@ jobs:
       - name: OSV-Scanner (spec §2.3, Bible §28.2)
         run: |
           go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
-          "$(go env GOPATH)/bin/osv-scanner" scan source --lockfile pnpm-lock.yaml
+          "$(go env GOPATH)/bin/osv-scanner" scan source \
+            --lockfile pnpm-lock.yaml --lockfile services/image-processing/uv.lock
 
       - name: gitleaks, history and working tree (ADR-0018 K-21)
         run: |
@@ -327,7 +397,7 @@ jobs:
           "$(go env GOPATH)/bin/gitleaks" git --no-banner --redact .
           "$(go env GOPATH)/bin/gitleaks" dir --no-banner --redact .
 
-      # Container images are scanned once the first image is built for deployment.
+      # The image-processing container image is scanned in its own job.
       - name: Trivy, dependencies and secrets (ADR-0018 K-21)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -458,9 +528,24 @@ jobs:
           "$pgbin/initdb" -D "$RUNNER_TEMP/pg" -U verify --auth=trust > /dev/null
           "$pgbin/pg_ctl" -D "$RUNNER_TEMP/pg" -l "$RUNNER_TEMP/pg.log" -o "-p 5432 -k $RUNNER_TEMP" -w start
 
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      # The stack the UI tests use includes the worker and image-processing: moto from
+      # pip (this runner has no Docker; ADR-0023 K2-08) and the service's locked environment.
+      - name: AWS emulator and image-processing for the UI tests
+        run: |
+          python -m pip install --quiet uv==0.8.17 "moto[server]==5.2.3"
+          nohup moto_server -H 127.0.0.1 -p 4566 > "$RUNNER_TEMP/moto.log" 2>&1 &
+          (cd services/image-processing && uv sync --frozen --no-dev)
+          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4566/moto-api/ > /dev/null && exit 0; sleep 1; done
+          echo "moto did not start"; cat "$RUNNER_TEMP/moto.log"; exit 1
+
       - name: Provider UI tests against the real api (iPhone and iPad)
         env:
           TEST_ADMIN_DATABASE_URL: postgresql://verify@localhost:5432/postgres
+          TEST_AWS_ENDPOINT_URL: http://127.0.0.1:4566
           # Every request in the job log (route template, status, duration), to diagnose a failure.
           STACK_LOG_LEVEL: info
         run: |

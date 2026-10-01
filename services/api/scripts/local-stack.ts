@@ -1,9 +1,12 @@
-// A complete local Layer 1 stack: a fresh database migrated by a non-superuser
-// (as in a deployed environment), the synthetic development seed (one
-// organization, an invited administrator), and the api from dist/ connecting
-// as login users of aestara_app and aestara_platform. The database is dropped
-// when the stack stops. Synthetic data only; local databases only. Needs a
-// prior `pnpm build`.
+// A complete local stack (Layers 1 and 2): a fresh database migrated by a
+// non-superuser (as in a deployed environment), the synthetic development seed
+// (one organization, an invited administrator), its own resources on the local
+// AWS emulator (moto, ADR-0023 K2-08), the api and the worker from dist/
+// connecting as login users of aestara_app, aestara_platform and
+// aestara_worker, and image-processing through uv. The database is dropped
+// when the stack stops. Synthetic data only; local databases and a local
+// emulator only. Needs a prior `pnpm build`, a running emulator (`pnpm
+// services:up`, or `moto_server -p 4566` from pip) and uv.
 //
 // Used by the admin portal's Playwright suite (apps/admin-web/e2e), and from
 // the command line:
@@ -17,16 +20,23 @@
 //     each sets up an authenticator) and writes their sign-in details.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { awsEnv, provisionLocalAws } from "../src/aws/local-resources.ts";
 import { Authenticator } from "./totp.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, "../../..");
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-const LOGINS = { migrator: "aestara_e2e_migrator", app: "aestara_e2e_app", platform: "aestara_e2e_platform" };
+const LOGINS = {
+  migrator: "aestara_e2e_migrator",
+  app: "aestara_e2e_app",
+  platform: "aestara_e2e_platform",
+  worker: "aestara_e2e_worker",
+};
 
 export interface Stack {
   readonly apiUrl: string;
@@ -51,6 +61,26 @@ async function waitFor(url: string, child: ChildProcess, name: string): Promise<
   throw new Error(`${name} did not start`);
 }
 
+/** image-processing writes its heartbeat once its consumer loop runs. */
+async function waitForFile(path: string, child: ChildProcess, name: string): Promise<void> {
+  // The first run may install the locked environment.
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error(`${name} exited with ${child.exitCode}`);
+    if (existsSync(path)) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`${name} did not start`);
+}
+
+async function emulatorRunning(endpoint: string): Promise<boolean> {
+  try {
+    return (await fetch(`${endpoint}/moto-api/`)).ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function startStack(options: {
   apiPort: number;
   origins: string[];
@@ -60,8 +90,23 @@ export async function startStack(options: {
   if (!adminUrl) throw new Error("Set ADMIN_DATABASE_URL to a local PostgreSQL superuser URL");
   if (!LOCAL_HOSTS.has(new URL(adminUrl).hostname))
     throw new Error("The test stack runs only on a local database");
-  const database = `aestara_e2e_${Date.now()}`;
+  const awsEndpoint =
+    process.env.TEST_AWS_ENDPOINT_URL ?? process.env.AWS_ENDPOINT_URL ?? "http://localhost:4566";
+  if (!LOCAL_HOSTS.has(new URL(awsEndpoint).hostname))
+    throw new Error("The test stack runs only on a local AWS emulator");
+  if (!(await emulatorRunning(awsEndpoint)))
+    throw new Error(
+      `No AWS emulator at ${awsEndpoint}: run \`pnpm services:up\`, or \`pip install "moto[server]"\` and \`moto_server -p 4566\``,
+    );
+  try {
+    execFileSync("uv", ["--version"], { stdio: "ignore" });
+  } catch {
+    throw new Error("image-processing needs uv (https://docs.astral.sh/uv/): `pip install uv`");
+  }
+  const stamp = Date.now();
+  const database = `aestara_e2e_${stamp}`;
   const password = randomBytes(12).toString("hex");
+  const aws = await provisionLocalAws(awsEndpoint, `e2e-${stamp}`);
 
   const admin = new pg.Client({ connectionString: adminUrl });
   await admin.connect();
@@ -101,6 +146,7 @@ export async function startStack(options: {
   for (const [login, role] of [
     [LOGINS.app, "aestara_app"],
     [LOGINS.platform, "aestara_platform"],
+    [LOGINS.worker, "aestara_worker"],
   ] as const) {
     await admin.query(`DO $$ BEGIN
       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${login}') THEN
@@ -141,11 +187,56 @@ export async function startStack(options: {
       WEBAUTHN_ORIGINS: options.origins.join(","),
       // Request lines carry the route template, status and duration only (spec §7.2).
       LOG_LEVEL: process.env.STACK_LOG_LEVEL ?? "warn",
+      ...awsEnv(aws),
       ...options.env,
     },
     stdio: ["ignore", "inherit", "inherit"],
     detached: true,
   });
+  // The worker: outbox relay, the local scanner, scan results, derivative jobs (ADR-0024).
+  const worker = spawn("node", ["dist/worker.js"], {
+    cwd: join(repo, "services/api"),
+    env: {
+      ...process.env,
+      NODE_ENV: "test",
+      DATABASE_URL: at(LOGINS.app, password),
+      WORKER_DATABASE_URL: at(LOGINS.worker, password),
+      LOG_LEVEL: process.env.STACK_LOG_LEVEL ?? "warn",
+      ...awsEnv(aws),
+    },
+    stdio: ["ignore", "inherit", "inherit"],
+    detached: true,
+  });
+  // image-processing (ADR-0023 K2-01), from its locked environment.
+  const heartbeat = join(mkdtempSync(join(tmpdir(), "aestara-ip-")), "heartbeat");
+  const imageProcessing = spawn(
+    "uv",
+    [
+      "run",
+      "--frozen",
+      "--no-dev",
+      "--project",
+      join(repo, "services/image-processing"),
+      "python",
+      "-m",
+      "aestara_image_processing",
+    ],
+    {
+      env: {
+        PATH: process.env.PATH ?? "",
+        HOME: process.env.HOME ?? "",
+        APP_ENV: "development",
+        AWS_ENDPOINT_URL: aws.endpoint,
+        IMAGE_JOBS_QUEUE_URL: aws.queues.imageJobs,
+        IMAGE_RESULTS_QUEUE_URL: aws.queues.imageResults,
+        HEARTBEAT_FILE: heartbeat,
+        LOG_LEVEL: process.env.STACK_LOG_LEVEL === "info" ? "info" : "warning",
+      },
+      stdio: ["ignore", "inherit", "inherit"],
+      detached: true,
+    },
+  );
+  const children = [api, worker, imageProcessing];
 
   const dropDatabase = async () => {
     const cleanup = new pg.Client({ connectionString: adminUrl });
@@ -153,19 +244,22 @@ export async function startStack(options: {
     await cleanup.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
     await cleanup.end();
   };
-  const stopApi = () => {
-    if (api.pid !== undefined && api.exitCode === null)
-      try {
-        process.kill(-api.pid, "SIGTERM");
-      } catch {
-        // already gone
-      }
+  const stopProcesses = () => {
+    for (const child of children)
+      if (child.pid !== undefined && child.exitCode === null)
+        try {
+          process.kill(-child.pid, "SIGTERM");
+        } catch {
+          // already gone
+        }
   };
   const apiUrl = `http://127.0.0.1:${options.apiPort}/api/v1`;
   try {
     await waitFor(`${apiUrl}/health/live`, api, "api");
+    await waitForFile(heartbeat, imageProcessing, "image-processing");
+    if (worker.exitCode !== null) throw new Error(`the worker exited with ${worker.exitCode}`);
   } catch (error) {
-    stopApi();
+    stopProcesses();
     await dropDatabase();
     throw error;
   }
@@ -184,7 +278,7 @@ export async function startStack(options: {
       }
     },
     async stop() {
-      stopApi();
+      stopProcesses();
       await dropDatabase();
     },
   };

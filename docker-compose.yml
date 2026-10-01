@@ -1,6 +1,6 @@
 # Local development services. Start: pnpm services:up · Stop: pnpm services:down
 # Services are added by the layer that first needs them (docs/DEVELOPMENT_ROADMAP.md):
-# PostgreSQL and Mailpit now (Layer 1; ADR-0018 K-14); S3/SQS emulation arrives with Layer 2.
+# PostgreSQL and Mailpit (Layer 1; ADR-0018 K-14); the moto AWS emulator (Layer 2; ADR-0023 K2-08).
 name: aestara
 
 services:
@@ -27,6 +27,13 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
+
+  # S3, SQS and EventBridge for the api, the worker and image-processing (ADR-0023 K2-08).
+  # In-memory: resources vanish on restart; local-stack.ts and the tests provision their own.
+  moto:
+    image: motoserver/moto:5.2.3
+    ports:
+      - "4566:5000"
 
 volumes:
   pgdata:
