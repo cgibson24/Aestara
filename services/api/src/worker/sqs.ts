@@ -34,17 +34,26 @@ export class QueueConsumer {
   /** Receives and handles one batch; returns how many messages it handled. Used by tests too. */
   async pollOnce(waitSeconds = this.waitSeconds): Promise<number> {
     const out = await this.sqs.send(
-      new ReceiveMessageCommand({ QueueUrl: this.queueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: waitSeconds }),
+      new ReceiveMessageCommand({
+        QueueUrl: this.queueUrl,
+        MaxNumberOfMessages: 10,
+        WaitTimeSeconds: waitSeconds,
+      }),
     );
     let handled = 0;
     for (const message of out.Messages ?? []) {
       try {
         await this.handler(JSON.parse(message.Body ?? "null"));
-        await this.sqs.send(new DeleteMessageCommand({ QueueUrl: this.queueUrl, ReceiptHandle: message.ReceiptHandle }));
+        await this.sqs.send(
+          new DeleteMessageCommand({ QueueUrl: this.queueUrl, ReceiptHandle: message.ReceiptHandle }),
+        );
         handled += 1;
       } catch (error) {
         // Identifiers only: the queue name and the message ID, never the body.
-        this.logger.warn({ queue: this.name, messageId: message.MessageId, err: error }, "message handling failed");
+        this.logger.warn(
+          { queue: this.name, messageId: message.MessageId, err: error },
+          "message handling failed",
+        );
       }
     }
     return handled;

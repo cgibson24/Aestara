@@ -15,7 +15,10 @@ export class WorkerDb implements OnModuleDestroy {
   }
 
   /** The organization an opaque object key belongs to; undefined when no ledger row has it. */
-  async organizationOfObject(bucket: string, objectKey: string): Promise<{ organizationId: string; id: string } | undefined> {
+  async organizationOfObject(
+    bucket: string,
+    objectKey: string,
+  ): Promise<{ organizationId: string; id: string } | undefined> {
     const rows = await this.client.$queryRaw<{ id: string; organizationId: string }[]>`
       SELECT id, "organizationId" FROM "StorageObject" WHERE "objectKey" = ${objectKey} AND bucket = ${bucket}`;
     return rows[0];

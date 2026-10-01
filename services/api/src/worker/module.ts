@@ -3,9 +3,9 @@
 // jobs and records their results, applies malware scan results, and runs the
 // scheduled jobs. It holds no signing keys and no platform credentials.
 import "reflect-metadata";
+import type { INestApplicationContext } from "@nestjs/common";
 import { type DynamicModule, Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import type { INestApplicationContext } from "@nestjs/common";
 import type { DestinationStream, Logger } from "pino";
 import { AuditWriter } from "../audit/audit-writer.ts";
 import { AwsClients } from "../aws/clients.ts";
@@ -69,7 +69,10 @@ export class Worker {
       new QueueConsumer(aws.sqs, url, name, handler, logger);
     this.consumers.push(
       consumer(config.WORKER_EVENTS_QUEUE_URL, "worker-events", async (body) => {
-        const event = body as { "detail-type"?: string; detail?: { payload?: { jobId?: string; attempt?: number } } };
+        const event = body as {
+          "detail-type"?: string;
+          detail?: { payload?: { jobId?: string; attempt?: number } };
+        };
         if (event["detail-type"] === "image.derivative.requested" && event.detail?.payload?.jobId)
           await derivatives.dispatch(event.detail.payload.jobId, event.detail.payload.attempt ?? 1);
       }),
@@ -78,7 +81,9 @@ export class Worker {
     );
     if (config.MALWARE_SCANNER === "local" && config.SCAN_REQUESTS_QUEUE_URL !== undefined) {
       const scanner = context.get(LocalScanner);
-      this.consumers.push(consumer(config.SCAN_REQUESTS_QUEUE_URL, "scan-requests", (body) => scanner.handle(body)));
+      this.consumers.push(
+        consumer(config.SCAN_REQUESTS_QUEUE_URL, "scan-requests", (body) => scanner.handle(body)),
+      );
     }
   }
 

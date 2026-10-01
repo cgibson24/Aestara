@@ -6,12 +6,13 @@
 //   - publishes every other event to the EventBridge bus;
 // then stamps publishedAt. A failure backs the row off and records the attempt.
 // Delivery is at least once; consumers recognise an event by its ID.
+
+import { createHash } from "node:crypto";
+import type { Prisma } from "@aestara/database";
 import { PutEventsCommand } from "@aws-sdk/client-eventbridge";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { Inject, Injectable } from "@nestjs/common";
-import type { Prisma } from "@aestara/database";
 import type { Logger } from "pino";
-import { createHash } from "node:crypto";
 import { AwsClients } from "../aws/clients.ts";
 import { CONFIG, type WorkerConfig } from "../config.ts";
 import { WORKER_LOGGER } from "./logger.ts";
@@ -65,7 +66,10 @@ export class OutboxRelay {
         const audits = rows.filter((r) => r.eventType === "audit.recorded");
         if (audits.length > 0) {
           try {
-            await this.archive(tx, audits.map((a) => a.aggregateId));
+            await this.archive(
+              tx,
+              audits.map((a) => a.aggregateId),
+            );
             done.push(...audits.map((a) => a.id));
           } catch (error) {
             this.logger.error({ err: error, count: audits.length }, "audit archive write failed");
@@ -97,7 +101,12 @@ export class OutboxRelay {
             chunk.forEach((e, j) => {
               const entry = out.Entries?.[j];
               if (entry?.EventId) done.push(e.id);
-              else failed.push({ id: e.id, code: entry?.ErrorCode ?? "PUT_EVENTS_FAILED", attempts: e.attempts });
+              else
+                failed.push({
+                  id: e.id,
+                  code: entry?.ErrorCode ?? "PUT_EVENTS_FAILED",
+                  attempts: e.attempts,
+                });
             });
           } catch (error) {
             this.logger.error({ err: error, count: chunk.length }, "event publication failed");
@@ -142,7 +151,10 @@ export class OutboxRelay {
         await this.aws.s3.send(
           new PutObjectCommand({
             Bucket: this.config.AUDIT_ARCHIVE_BUCKET,
-            Key: archiveKey(day, dayRows.map((r) => String(r.id))),
+            Key: archiveKey(
+              day,
+              dayRows.map((r) => String(r.id)),
+            ),
             Body: body,
             ContentType: "application/x-ndjson",
             IfNoneMatch: "*",

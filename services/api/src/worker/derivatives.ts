@@ -6,14 +6,14 @@
 // minutes. image-processing has no database access and sees no PHI. Results
 // are verified (size, SHA-256, JPEG signature) before a derivative is recorded.
 import { createHash } from "node:crypto";
-import { SendMessageCommand } from "@aws-sdk/client-sqs";
 import { DERIVATIVE_MAX_EDGE_PX } from "@aestara/api-contracts";
 import { uuidv7 } from "@aestara/database";
+import { SendMessageCommand } from "@aws-sdk/client-sqs";
 import { Inject, Injectable } from "@nestjs/common";
 import type { Logger } from "pino";
 import { z } from "zod";
-import { lockRow } from "../common/concurrency.ts";
 import { AwsClients } from "../aws/clients.ts";
+import { lockRow } from "../common/concurrency.ts";
 import { CONFIG, type WorkerConfig } from "../config.ts";
 import { Database, type Tx } from "../db/database.ts";
 import { matchesSignature } from "../media/formats.ts";
@@ -35,7 +35,12 @@ const MAX_DERIVATIVE_BYTES = 16 * 1024 * 1024;
 export interface ImageJobMessage {
   readonly jobId: string;
   readonly attempt: number;
-  readonly source: { readonly url: string; readonly contentType: string; readonly byteSize: number; readonly sha256: string };
+  readonly source: {
+    readonly url: string;
+    readonly contentType: string;
+    readonly byteSize: number;
+    readonly sha256: string;
+  };
   readonly outputs: readonly {
     readonly kind: Kind;
     readonly url: string;
@@ -93,9 +98,17 @@ export class DerivativeJobs {
       const input = job.inputSummary as JobInput;
       const photo = await tx.patientPhoto.findUnique({
         where: { id: input.photoId },
-        include: { original: { select: { objectKey: true, contentType: true, byteSize: true, sha256: true, status: true } } },
+        include: {
+          original: {
+            select: { objectKey: true, contentType: true, byteSize: true, sha256: true, status: true },
+          },
+        },
       });
-      if (photo === null || !["ACCEPTED", "ARCHIVED"].includes(photo.status) || photo.original.status !== "AVAILABLE") {
+      if (
+        photo === null ||
+        !["ACCEPTED", "ARCHIVED"].includes(photo.status) ||
+        photo.original.status !== "AVAILABLE"
+      ) {
         await tx.aIJob.update({
           where: { id: jobId },
           data: { status: "CANCELLED", errorCode: "SOURCE_UNAVAILABLE", finishedAt: new Date() },
@@ -128,7 +141,10 @@ export class DerivativeJobs {
           attempt,
           startedAt: new Date(),
           errorCode: null,
-          inputSummary: { photoId: photo.id, outputs: Object.fromEntries(outputs.map((o) => [o.kind, o.id])) },
+          inputSummary: {
+            photoId: photo.id,
+            outputs: Object.fromEntries(outputs.map((o) => [o.kind, o.id])),
+          },
         },
       });
       return { photo, outputs };
@@ -153,13 +169,24 @@ export class DerivativeJobs {
       outputs: await Promise.all(
         outputs.map(async (o) => {
           const put = await this.store.presignUpload({ key: o.key, contentType: "image/jpeg" });
-          return { kind: o.kind, url: put.url, headers: put.headers, maxEdgePx: DERIVATIVE_MAX_EDGE_PX[o.kind], contentType: "image/jpeg" as const };
+          return {
+            kind: o.kind,
+            url: put.url,
+            headers: put.headers,
+            maxEdgePx: DERIVATIVE_MAX_EDGE_PX[o.kind],
+            contentType: "image/jpeg" as const,
+          };
         }),
       ),
       expiresAt: source.expiresAt.toISOString(),
     };
     // If this send is lost, the stuck-job sweep retries the attempt.
-    await this.aws.sqs.send(new SendMessageCommand({ QueueUrl: this.config.IMAGE_JOBS_QUEUE_URL, MessageBody: JSON.stringify(message) }));
+    await this.aws.sqs.send(
+      new SendMessageCommand({
+        QueueUrl: this.config.IMAGE_JOBS_QUEUE_URL,
+        MessageBody: JSON.stringify(message),
+      }),
+    );
   }
 
   /** Handles a result from image-processing. Duplicates and stale attempts are ignored. */
@@ -178,15 +205,34 @@ export class DerivativeJobs {
       if (job === null || job.status !== "RUNNING" || job.attempt !== result.attempt) return;
       const input = job.inputSummary as JobInput;
       if (result.status === "FAILED") {
-        await this.failAttempt(tx, job.id, organizationId, input, result.attempt, result.errorCode ?? "FAILED", result.retryable);
+        await this.failAttempt(
+          tx,
+          job.id,
+          organizationId,
+          input,
+          result.attempt,
+          result.errorCode ?? "FAILED",
+          result.retryable,
+        );
         return;
       }
       const verified = await this.verifyOutputs(tx, input, result.outputs);
       if (!verified) {
-        await this.failAttempt(tx, job.id, organizationId, input, result.attempt, "OUTPUT_VERIFICATION_FAILED", true);
+        await this.failAttempt(
+          tx,
+          job.id,
+          organizationId,
+          input,
+          result.attempt,
+          "OUTPUT_VERIFICATION_FAILED",
+          true,
+        );
         return;
       }
-      const photo = await tx.patientPhoto.findUniqueOrThrow({ where: { id: input.photoId }, select: { patientId: true } });
+      const photo = await tx.patientPhoto.findUniqueOrThrow({
+        where: { id: input.photoId },
+        select: { patientId: true },
+      });
       for (const output of result.outputs) {
         const objectId = input.outputs?.[output.kind] ?? "";
         await tx.storageObject.update({
@@ -224,7 +270,9 @@ export class DerivativeJobs {
         data: {
           status: "SUCCEEDED",
           finishedAt: new Date(),
-          resultSummary: { outputs: result.outputs.map((o) => ({ kind: o.kind, widthPx: o.widthPx, heightPx: o.heightPx })) },
+          resultSummary: {
+            outputs: result.outputs.map((o) => ({ kind: o.kind, widthPx: o.widthPx, heightPx: o.heightPx })),
+          },
         },
       });
     });
@@ -240,7 +288,10 @@ export class DerivativeJobs {
     for (const output of outputs) {
       const objectId = input.outputs?.[output.kind];
       if (objectId === undefined) return false;
-      const object = await tx.storageObject.findUnique({ where: { id: objectId }, select: { objectKey: true } });
+      const object = await tx.storageObject.findUnique({
+        where: { id: objectId },
+        select: { objectKey: true },
+      });
       if (object === null) return false;
       let bytes: Buffer;
       try {
@@ -274,7 +325,10 @@ export class DerivativeJobs {
       });
     const delay = RETRY_DELAYS_MS[attempt - 1];
     if (retryable && delay !== undefined) {
-      await tx.aIJob.update({ where: { id: jobId }, data: { status: "QUEUED", errorCode: errorCode.slice(0, 60) } });
+      await tx.aIJob.update({
+        where: { id: jobId },
+        data: { status: "QUEUED", errorCode: errorCode.slice(0, 60) },
+      });
       await this.outbox.add(tx, {
         organizationId,
         eventType: "image.derivative.requested",
@@ -286,7 +340,11 @@ export class DerivativeJobs {
     }
     await tx.aIJob.update({
       where: { id: jobId },
-      data: { status: timedOut ? "TIMED_OUT" : "FAILED", errorCode: errorCode.slice(0, 60), finishedAt: new Date() },
+      data: {
+        status: timedOut ? "TIMED_OUT" : "FAILED",
+        errorCode: errorCode.slice(0, 60),
+        finishedAt: new Date(),
+      },
     });
     this.logger.warn({ event: "derivative_job_failed", jobId, errorCode }, "a derivative job failed");
   }
@@ -295,14 +353,27 @@ export class DerivativeJobs {
   async sweepStuck(organizationId: string, now = new Date()): Promise<number> {
     return this.db.tenant(organizationId, async (tx) => {
       const stuck = await tx.aIJob.findMany({
-        where: { jobType: "IMAGE_DERIVATIVE", status: "RUNNING", startedAt: { lt: new Date(now.getTime() - STUCK_AFTER_MS) } },
+        where: {
+          jobType: "IMAGE_DERIVATIVE",
+          status: "RUNNING",
+          startedAt: { lt: new Date(now.getTime() - STUCK_AFTER_MS) },
+        },
         take: 100,
       });
       for (const job of stuck) {
         await lockRow(tx, "AIJob", job.id);
         const fresh = await tx.aIJob.findUniqueOrThrow({ where: { id: job.id } });
         if (fresh.status !== "RUNNING") continue;
-        await this.failAttempt(tx, job.id, organizationId, fresh.inputSummary as JobInput, fresh.attempt, "TIMEOUT", true, true);
+        await this.failAttempt(
+          tx,
+          job.id,
+          organizationId,
+          fresh.inputSummary as JobInput,
+          fresh.attempt,
+          "TIMEOUT",
+          true,
+          true,
+        );
       }
       return stuck.length;
     });

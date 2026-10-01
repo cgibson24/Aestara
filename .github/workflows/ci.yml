@@ -170,10 +170,15 @@ jobs:
         run: pnpm --filter @aestara/database bench:rls | tee -a "$GITHUB_STEP_SUMMARY"
 
   api:
-    name: API · tests on PostgreSQL 18 (auth, tenancy, cross-tenant, patients) · admin portal e2e
+    name: API · tests on PostgreSQL 18 and moto (auth, tenancy, cross-tenant, patients, photography) · admin portal e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     services:
+      # The local AWS emulator: S3, SQS and EventBridge (ADR-0023 K2-08).
+      moto:
+        image: motoserver/moto:5.2.3
+        ports:
+          - 4566:5000
       postgres:
         image: postgres:18
         env:
@@ -189,6 +194,7 @@ jobs:
           --health-retries 20
     env:
       TEST_ADMIN_DATABASE_URL: postgresql://verify:verify@localhost:5432/aestara_verify
+      TEST_AWS_ENDPOINT_URL: http://localhost:4566
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -196,6 +202,14 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+
+      - name: Wait for the AWS emulator
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:4566/moto-api/ > /dev/null && exit 0
+            sleep 1
+          done
+          echo "moto did not start"; exit 1
 
       - name: Enable pnpm (corepack, version from package.json)
         run: corepack enable
@@ -207,8 +221,9 @@ jobs:
         env:
           COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
 
-      # The api runs as login users of aestara_app and aestara_platform, never a
-      # superuser; the suite proves the generated cross-tenant and permission tests.
+      # The api runs as login users of aestara_app and aestara_platform (the worker
+      # as one of aestara_worker), never a superuser; the suite proves the generated
+      # cross-tenant and permission tests and the photo flow on the emulator.
       - name: API tests against real PostgreSQL (ADR-0021)
         run: pnpm turbo run test --filter=@aestara/api
 

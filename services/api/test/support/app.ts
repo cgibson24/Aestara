@@ -8,10 +8,10 @@ import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from "fas
 import pg from "pg";
 import { inject } from "vitest";
 import { createApp } from "../../src/app.ts";
-import { type Config, loadConfig, loadWorkerConfig } from "../../src/config.ts";
-import { createWorker, type Worker } from "../../src/worker/module.ts";
-import { EmailService } from "../../src/email/email.ts";
 import { awsEnv, type LocalAwsResources, provisionLocalAws } from "../../src/aws/local-resources.ts";
+import { type Config, loadConfig, loadWorkerConfig } from "../../src/config.ts";
+import { EmailService } from "../../src/email/email.ts";
+import { createWorker, type Worker } from "../../src/worker/module.ts";
 import { LOGINS } from "./global-setup.ts";
 
 export const ADMIN_ORIGIN = "https://admin.aestara.test";
@@ -19,8 +19,6 @@ export const ADMIN_ORIGIN = "https://admin.aestara.test";
 export function databaseAvailable(): boolean {
   return Boolean(process.env.TEST_ADMIN_DATABASE_URL);
 }
-
-
 
 export interface TestApi {
   readonly app: NestFastifyApplication;

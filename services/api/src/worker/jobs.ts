@@ -70,7 +70,13 @@ export class ScheduledJobs {
       const archived = await this.archivedIds(day);
       const missing = [...relayed].filter((id) => !archived.has(id)).length;
       const unknown = [...archived].filter((id) => !relayed.has(id)).length;
-      report.push({ day, relayed: relayed.size, archived: archived.size, missingFromArchive: missing, unknownInArchive: unknown });
+      report.push({
+        day,
+        relayed: relayed.size,
+        archived: archived.size,
+        missingFromArchive: missing,
+        unknownInArchive: unknown,
+      });
       if (missing > 0 || unknown > 0)
         this.logger.error(
           { event: "audit_worm_divergence", day, missingFromArchive: missing, unknownInArchive: unknown },
@@ -92,7 +98,9 @@ export class ScheduledJobs {
         }),
       );
       for (const object of page.Contents ?? []) {
-        const out = await this.aws.s3.send(new GetObjectCommand({ Bucket: this.config.AUDIT_ARCHIVE_BUCKET, Key: object.Key }));
+        const out = await this.aws.s3.send(
+          new GetObjectCommand({ Bucket: this.config.AUDIT_ARCHIVE_BUCKET, Key: object.Key }),
+        );
         for (const line of (await out.Body?.transformToString())?.split("\n") ?? [])
           if (line.trim() !== "") ids.add(String((JSON.parse(line) as { id: unknown }).id));
       }

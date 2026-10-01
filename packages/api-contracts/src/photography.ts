@@ -51,12 +51,10 @@ export const PhotoSource = z.enum(PhotoSourceValues).meta({ id: "PhotoSource" })
 export const PhotoStatus = z.enum(PhotoStatusValues).meta({ id: "PhotoStatus" });
 export const DerivativeKind = z.enum(DerivativeKindValues).meta({ id: "DerivativeKind" });
 export const MalwareScanStatus = z.enum(MalwareScanStatusValues).meta({ id: "MalwareScanStatus" });
-export const MediaPermissionCategory = z
-  .enum(MediaPermissionCategoryValues)
-  .meta({
-    id: "MediaPermissionCategory",
-    description: "Independent categories [B §7.1]; none implies another.",
-  });
+export const MediaPermissionCategory = z.enum(MediaPermissionCategoryValues).meta({
+  id: "MediaPermissionCategory",
+  description: "Independent categories [B §7.1]; none implies another.",
+});
 export const PhotoPermissionState = z.enum(PhotoPermissionStateValues).meta({ id: "PhotoPermissionState" });
 export const MediaPermissionScope = z.enum(PermissionScopeValues).meta({ id: "MediaPermissionScope" });
 export const PermissionEvidence = z.enum(PermissionEvidenceValues).meta({ id: "PermissionEvidence" });

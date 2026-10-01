@@ -68,13 +68,9 @@ export const FeatureFlagPut = z
 export const OfflineCachePolicy = z
   .strictObject({
     maxPatients: z.int().min(1).max(100),
-    maxAgeDays: z
-      .int()
-      .min(1)
-      .max(7)
-      .meta({
-        description: "At most 7: offline use ends with the session's absolute lifetime (ADR-0023 K2-17).",
-      }),
+    maxAgeDays: z.int().min(1).max(7).meta({
+      description: "At most 7: offline use ends with the session's absolute lifetime (ADR-0023 K2-17).",
+    }),
   })
   .meta({ id: "OfflineCachePolicy" });
 

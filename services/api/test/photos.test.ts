@@ -5,8 +5,8 @@
 // archive. image-processing is played by the test here (its own pytest suite
 // covers it); every other hop is the real api and worker.
 import { createHash } from "node:crypto";
-import { ReceiveMessageCommand, SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { uuidv7 } from "@aestara/database";
+import { ReceiveMessageCommand, SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AwsClients } from "../src/aws/clients.ts";
 import type { ImageJobMessage } from "../src/worker/derivatives.ts";
@@ -33,7 +33,13 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
   let frontDesk: StaffMember;
   let faceProtocol: string;
 
-  const call = (who: StaffMember, method: string, url: string, payload?: unknown, headers: Record<string, string> = {}) =>
+  const call = (
+    who: StaffMember,
+    method: string,
+    url: string,
+    payload?: unknown,
+    headers: Record<string, string> = {},
+  ) =>
     api.request({
       method: method as "GET",
       url: `/api/v1${url}`,
@@ -51,14 +57,25 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
     await worker.consumer("worker-events").pollOnce(1);
     const sqs = worker.context.get(AwsClients).sqs;
     const out = await sqs.send(
-      new ReceiveMessageCommand({ QueueUrl: api.aws.queues.imageJobs, MaxNumberOfMessages: 10, WaitTimeSeconds: 1 }),
+      new ReceiveMessageCommand({
+        QueueUrl: api.aws.queues.imageJobs,
+        MaxNumberOfMessages: 10,
+        WaitTimeSeconds: 1,
+      }),
     );
     return (out.Messages ?? []).map((m) => JSON.parse(m.Body ?? "{}") as ImageJobMessage);
   }
 
   /** Plays image-processing: writes outputs through the presigned PUTs and reports them. */
-  async function process(job: ImageJobMessage, options: { fail?: { errorCode: string; retryable: boolean } } = {}) {
-    const sqs = new SQSClient({ endpoint: api.aws.endpoint, region: "us-east-1", credentials: { accessKeyId: "l", secretAccessKey: "l" } });
+  async function process(
+    job: ImageJobMessage,
+    options: { fail?: { errorCode: string; retryable: boolean } } = {},
+  ) {
+    const sqs = new SQSClient({
+      endpoint: api.aws.endpoint,
+      region: "us-east-1",
+      credentials: { accessKeyId: "l", secretAccessKey: "l" },
+    });
     const source = await fetch(job.source.url);
     expect(source.status).toBe(200);
     expect(sha256(Buffer.from(await source.arrayBuffer()))).toBe(job.source.sha256);
@@ -68,7 +85,13 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
         const bytes = jpeg(`${o.kind}-${job.attempt}`);
         const put = await fetch(o.url, { method: "PUT", headers: o.headers, body: bytes });
         expect(put.status, await put.text()).toBe(200);
-        outputs.push({ kind: o.kind, sha256: sha256(bytes), byteSize: bytes.length, widthPx: o.maxEdgePx, heightPx: 300 });
+        outputs.push({
+          kind: o.kind,
+          sha256: sha256(bytes),
+          byteSize: bytes.length,
+          widthPx: o.maxEdgePx,
+          heightPx: 300,
+        });
       }
     await sqs.send(
       new SendMessageCommand({
@@ -120,7 +143,13 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
     const { photoId, upload: signed } = intent.json().data;
     const put = await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes });
     expect(put.status).toBe(200);
-    const complete = await call(who, "POST", `/patients/${patient}/photos/${photoId}/complete-upload`, undefined, idem());
+    const complete = await call(
+      who,
+      "POST",
+      `/patients/${patient}/photos/${photoId}/complete-upload`,
+      undefined,
+      idem(),
+    );
     return { photoId: photoId as string, intent, complete };
   }
 
@@ -150,9 +179,17 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
       const res = await call(photographer, "GET", "/photography-protocols?status=ACTIVE");
       const byName = new Map(res.json().data.map((p: { name: string }) => [p.name, p]));
       const keys = (name: string) =>
-        (byName.get(name) as { views: { viewKey: string; isRequired: boolean }[] }).views.map((v) => v.viewKey);
+        (byName.get(name) as { views: { viewKey: string; isRequired: boolean }[] }).views.map(
+          (v) => v.viewKey,
+        );
       expect(keys("Face")).toEqual(["FRONT", "LEFT_45", "RIGHT_45", "LEFT_PROFILE", "RIGHT_PROFILE"]);
-      expect(keys("Breast")).toEqual(["FRONT", "LEFT_OBLIQUE", "RIGHT_OBLIQUE", "LEFT_LATERAL", "RIGHT_LATERAL"]);
+      expect(keys("Breast")).toEqual([
+        "FRONT",
+        "LEFT_OBLIQUE",
+        "RIGHT_OBLIQUE",
+        "LEFT_LATERAL",
+        "RIGHT_LATERAL",
+      ]);
       expect(keys("Abdomen/body contour")).toEqual([
         "FRONT",
         "LEFT_45",
@@ -161,7 +198,11 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
         "RIGHT_PROFILE",
         "BACK",
       ]);
-      for (const p of byName.values() as Iterable<{ standard: boolean; practiceId?: string; views: { isRequired: boolean; poseTarget: unknown }[] }>) {
+      for (const p of byName.values() as Iterable<{
+        standard: boolean;
+        practiceId?: string;
+        views: { isRequired: boolean; poseTarget: unknown }[];
+      }>) {
         expect(p.standard).toBe(true);
         expect(p.practiceId).toBeUndefined();
         expect(p.views.every((v) => v.isRequired && v.poseTarget !== undefined)).toBe(true);
@@ -171,11 +212,17 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
     it("are seeded for every new organization by the platform bootstrap", async () => {
       const operator = await fx.platformOperator();
       const slug = `seeded-${uuidv7().slice(-8)}`;
-      const res = await call(operator, "POST", "/organizations", {
-        name: "Seeded Org",
-        slug,
-        firstAdmin: { email: `first-${slug}@example.test`, displayName: "First" },
-      }, idem());
+      const res = await call(
+        operator,
+        "POST",
+        "/organizations",
+        {
+          name: "Seeded Org",
+          slug,
+          firstAdmin: { email: `first-${slug}@example.test`, displayName: "First" },
+        },
+        idem(),
+      );
       expect(res.statusCode, res.body).toBe(201);
       const { rows } = await api.db.query(
         `SELECT count(DISTINCT p.id)::int AS protocols, count(v.id)::int AS views FROM "PhotographyProtocol" p
@@ -188,28 +235,55 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
   });
 
   describe("protocol lifecycle (K2-10)", () => {
-    const draft = { name: "Neck series", bodyRegion: "OTHER", views: [{ viewKey: "FRONT", name: "Front", isRequired: true }] };
+    const draft = {
+      name: "Neck series",
+      bodyRegion: "OTHER",
+      views: [{ viewKey: "FRONT", name: "Front", isRequired: true }],
+    };
 
     it("edits a draft, activates it, then refuses edits; a successor retires its predecessor", async () => {
       const created = await call(admin, "POST", "/photography-protocols", draft);
       expect(created.statusCode, created.body).toBe(201);
       expect(created.json().data).toMatchObject({ status: "DRAFT", standard: false, version: 1 });
       const id = created.json().data.id;
-      const edited = await call(admin, "PATCH", `/photography-protocols/${id}`, {
-        views: [
-          { viewKey: "FRONT", name: "Front", isRequired: true },
-          { viewKey: "LEFT_PROFILE", name: "Left profile", isRequired: false, captureInstructions: "Turn left." },
-        ],
-      }, { "if-match": '"v1"' });
+      const edited = await call(
+        admin,
+        "PATCH",
+        `/photography-protocols/${id}`,
+        {
+          views: [
+            { viewKey: "FRONT", name: "Front", isRequired: true },
+            {
+              viewKey: "LEFT_PROFILE",
+              name: "Left profile",
+              isRequired: false,
+              captureInstructions: "Turn left.",
+            },
+          ],
+        },
+        { "if-match": '"v1"' },
+      );
       expect(edited.statusCode, edited.body).toBe(200);
       expect(edited.json().data.views.map((v: { sortOrder: number }) => v.sortOrder)).toEqual([1, 2]);
-      const active = await call(admin, "POST", `/photography-protocols/${id}/activate`, undefined, { "if-match": '"v2"' });
+      const active = await call(admin, "POST", `/photography-protocols/${id}/activate`, undefined, {
+        "if-match": '"v2"',
+      });
       expect(active.json().data.status).toBe("ACTIVE");
-      const frozen = await call(admin, "PATCH", `/photography-protocols/${id}`, { name: "Renamed" }, { "if-match": '"v3"' });
+      const frozen = await call(
+        admin,
+        "PATCH",
+        `/photography-protocols/${id}`,
+        { name: "Renamed" },
+        { "if-match": '"v3"' },
+      );
       expect(frozen.statusCode).toBe(409);
       expect(frozen.json().error.code).toBe("INVALID_STATE_TRANSITION");
 
-      const successor = await call(admin, "POST", "/photography-protocols", { ...draft, name: "Neck series v2", supersedesId: id });
+      const successor = await call(admin, "POST", "/photography-protocols", {
+        ...draft,
+        name: "Neck series v2",
+        supersedesId: id,
+      });
       expect(successor.statusCode).toBe(201);
       const second = await call(admin, "POST", "/photography-protocols", { ...draft, supersedesId: id });
       expect(second.statusCode).toBe(409);
@@ -227,16 +301,27 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
     it("discards a draft by retiring it, and never starts a session under a non-active protocol", async () => {
       const created = await call(admin, "POST", "/photography-protocols", draft);
       const id = created.json().data.id;
-      const session = await call(photographer, "POST", `/patients/${patient}/photo-sessions`, { protocolId: id }, idem());
+      const session = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photo-sessions`,
+        { protocolId: id },
+        idem(),
+      );
       expect(session.statusCode).toBe(400);
-      const retired = await call(admin, "POST", `/photography-protocols/${id}/retire`, undefined, { "if-match": '"v1"' });
+      const retired = await call(admin, "POST", `/photography-protocols/${id}/retire`, undefined, {
+        "if-match": '"v1"',
+      });
       expect(retired.json().data.status).toBe("RETIRED");
     });
 
     it("limits a practice administrator to its own practice's protocols", async () => {
       const practiceAdmin = await fx.staff(org, "PRACTICE_ADMIN", { practiceId: practice });
       expect((await call(practiceAdmin, "POST", "/photography-protocols", draft)).statusCode).toBe(403);
-      const own = await call(practiceAdmin, "POST", "/photography-protocols", { ...draft, practiceId: practice });
+      const own = await call(practiceAdmin, "POST", "/photography-protocols", {
+        ...draft,
+        practiceId: practice,
+      });
       expect(own.statusCode, own.body).toBe(201);
       expect(own.json().data.practiceId).toBe(practice);
     });
@@ -250,11 +335,17 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
       for (const view of views) {
         const { photoId, complete } = await upload(photographer, sessionId, view, jpeg(`original-${view}`));
         expect(complete.statusCode, complete.body).toBe(200);
-        expect(complete.json().data).toMatchObject({ status: "QUARANTINED", scanStatus: "PENDING", viewKey: view });
+        expect(complete.json().data).toMatchObject({
+          status: "QUARANTINED",
+          scanStatus: "PENDING",
+          viewKey: view,
+        });
         photos.push(photoId);
       }
       // Nothing is served while the scan runs.
-      const early = await call(photographer, "POST", `/patients/${patient}/photos/${photos[0]}/access-urls`, { variant: "THUMBNAIL" });
+      const early = await call(photographer, "POST", `/patients/${patient}/photos/${photos[0]}/access-urls`, {
+        variant: "THUMBNAIL",
+      });
       expect(early.statusCode).toBe(409);
 
       const jobs = await settle();
@@ -274,14 +365,23 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
 
       const session = await call(photographer, "GET", `/patients/${patient}/photo-sessions/${sessionId}`);
       expect(session.json().data.missingRequiredViews).toEqual([]);
-      const done = await call(photographer, "POST", `/patients/${patient}/photo-sessions/${sessionId}/complete`, {});
+      const done = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photo-sessions/${sessionId}/complete`,
+        {},
+      );
       expect(done.json().data.status).toBe("COMPLETED");
 
-      const url = await call(photographer, "POST", `/patients/${patient}/photos/${photos[0]}/access-urls`, { variant: "DISPLAY_PREVIEW" });
+      const url = await call(photographer, "POST", `/patients/${patient}/photos/${photos[0]}/access-urls`, {
+        variant: "DISPLAY_PREVIEW",
+      });
       expect(url.statusCode, url.body).toBe(201);
       const preview = await fetch(url.json().data.url);
       expect(preview.status).toBe(200);
-      expect(Buffer.from(await preview.arrayBuffer()).subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+      expect(Buffer.from(await preview.arrayBuffer()).subarray(0, 3)).toEqual(
+        Buffer.from([0xff, 0xd8, 0xff]),
+      );
       expect(new Date(url.json().data.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(120_000);
 
       const batch = await call(photographer, "POST", `/patients/${patient}/photos/access-urls`, {
@@ -314,22 +414,38 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
 
     it("refuses to complete a session with required views missing unless acknowledged (K2-13)", async () => {
       const sessionId = await startSession(photographer);
-      const missing = await call(photographer, "POST", `/patients/${patient}/photo-sessions/${sessionId}/complete`, {});
+      const missing = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photo-sessions/${sessionId}/complete`,
+        {},
+      );
       expect(missing.statusCode).toBe(422);
       expect(missing.json().error.code).toBe("REQUIRED_VIEWS_MISSING");
       expect(missing.json().error.details.viewKeys).toHaveLength(5);
-      const acknowledged = await call(photographer, "POST", `/patients/${patient}/photo-sessions/${sessionId}/complete`, {
-        acknowledgeMissingRequiredViews: true,
-      });
+      const acknowledged = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photo-sessions/${sessionId}/complete`,
+        {
+          acknowledgeMissingRequiredViews: true,
+        },
+      );
       expect(acknowledged.json().data.status).toBe("COMPLETED");
-      const late = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, {
-        photoSessionId: sessionId,
-        viewKey: "FRONT",
-        contentType: "image/jpeg",
-        byteSize: 10,
-        sha256: "c".repeat(64),
-        capturedAt: new Date().toISOString(),
-      }, idem());
+      const late = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/uploads`,
+        {
+          photoSessionId: sessionId,
+          viewKey: "FRONT",
+          contentType: "image/jpeg",
+          byteSize: 10,
+          sha256: "c".repeat(64),
+          capturedAt: new Date().toISOString(),
+        },
+        idem(),
+      );
       expect(late.statusCode).toBe(409);
     });
   });
@@ -342,25 +458,44 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
 
     it("rejects a checksum or size mismatch, a missing upload and a mislabelled file", async () => {
       const bytes = jpeg("tampered");
-      const wrongSum = await upload(photographer, sessionId, "FRONT", bytes, { sha256: sha256(jpeg("other")) });
+      const wrongSum = await upload(photographer, sessionId, "FRONT", bytes, {
+        sha256: sha256(jpeg("other")),
+      });
       expect(wrongSum.complete.statusCode).toBe(422);
-      expect(wrongSum.complete.json().error).toMatchObject({ code: "UPLOAD_VERIFICATION_FAILED", details: { reason: "CHECKSUM_MISMATCH" } });
+      expect(wrongSum.complete.json().error).toMatchObject({
+        code: "UPLOAD_VERIFICATION_FAILED",
+        details: { reason: "CHECKSUM_MISMATCH" },
+      });
       const wrongSize = await upload(photographer, sessionId, "FRONT", bytes, { byteSize: bytes.length + 1 });
       expect(wrongSize.complete.json().error.details.reason).toBe("SIZE_MISMATCH");
       const mislabelled = await upload(photographer, sessionId, "FRONT", png());
       expect(mislabelled.complete.statusCode).toBe(415);
       // The photo stays invisible: nothing unverified is ever listed or served.
-      expect((await call(photographer, "GET", `/patients/${patient}/photos/${mislabelled.photoId}`)).statusCode).toBe(404);
+      expect(
+        (await call(photographer, "GET", `/patients/${patient}/photos/${mislabelled.photoId}`)).statusCode,
+      ).toBe(404);
 
-      const intent = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, {
-        photoSessionId: sessionId,
-        viewKey: "FRONT",
-        contentType: "image/jpeg",
-        byteSize: 10,
-        sha256: "d".repeat(64),
-        capturedAt: new Date().toISOString(),
-      }, idem());
-      const none = await call(photographer, "POST", `/patients/${patient}/photos/${intent.json().data.photoId}/complete-upload`, undefined, idem());
+      const intent = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/uploads`,
+        {
+          photoSessionId: sessionId,
+          viewKey: "FRONT",
+          contentType: "image/jpeg",
+          byteSize: 10,
+          sha256: "d".repeat(64),
+          capturedAt: new Date().toISOString(),
+        },
+        idem(),
+      );
+      const none = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/${intent.json().data.photoId}/complete-upload`,
+        undefined,
+        idem(),
+      );
       expect(none.json().error.details.reason).toBe("NOT_UPLOADED");
     });
 
@@ -372,26 +507,54 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
         sha256: "e".repeat(64),
         capturedAt: new Date().toISOString(),
       };
-      expect((await call(photographer, "POST", `/patients/${patient}/photos/uploads`, { ...base, contentType: "image/heic" }, idem())).statusCode).toBe(400);
       expect(
-        (await call(photographer, "POST", `/patients/${patient}/photos/uploads`, { ...base, contentType: "image/jpeg", byteSize: 51 * 1024 * 1024 }, idem())).statusCode,
+        (
+          await call(
+            photographer,
+            "POST",
+            `/patients/${patient}/photos/uploads`,
+            { ...base, contentType: "image/heic" },
+            idem(),
+          )
+        ).statusCode,
+      ).toBe(400);
+      expect(
+        (
+          await call(
+            photographer,
+            "POST",
+            `/patients/${patient}/photos/uploads`,
+            { ...base, contentType: "image/jpeg", byteSize: 51 * 1024 * 1024 },
+            idem(),
+          )
+        ).statusCode,
       ).toBe(400);
     });
 
     it("never overwrites an uploaded original (If-None-Match)", async () => {
       const bytes = jpeg("write-once");
-      const intent = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, {
-        photoSessionId: sessionId,
-        viewKey: "LEFT_45",
-        contentType: "image/jpeg",
-        byteSize: bytes.length,
-        sha256: sha256(bytes),
-        capturedAt: new Date().toISOString(),
-      }, idem());
+      const intent = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/uploads`,
+        {
+          photoSessionId: sessionId,
+          viewKey: "LEFT_45",
+          contentType: "image/jpeg",
+          byteSize: bytes.length,
+          sha256: sha256(bytes),
+          capturedAt: new Date().toISOString(),
+        },
+        idem(),
+      );
       const signed = intent.json().data.upload;
       expect(signed.headers["If-None-Match"]).toBe("*");
-      expect((await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes })).status).toBe(200);
-      expect((await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes })).status).toBe(412);
+      expect((await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes })).status).toBe(
+        200,
+      );
+      expect((await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes })).status).toBe(
+        412,
+      );
     });
 
     it("replays an intent with a fresh URL, replays completion, and refuses a reused client ID", async () => {
@@ -407,21 +570,49 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
         sha256: sha256(bytes),
         capturedAt: new Date().toISOString(),
       };
-      const first = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, body, { "idempotency-key": key });
+      const first = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, body, {
+        "idempotency-key": key,
+      });
       expect(first.json().data.photoId).toBe(id);
-      const again = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, body, { "idempotency-key": key });
+      const again = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, body, {
+        "idempotency-key": key,
+      });
       expect(again.statusCode).toBe(201);
       expect(again.json().data.upload.url).toBeDefined();
       const reused = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, body, idem());
       expect(reused.statusCode).toBe(409);
-      await fetch(again.json().data.upload.url, { method: "PUT", headers: again.json().data.upload.headers, body: bytes });
+      await fetch(again.json().data.upload.url, {
+        method: "PUT",
+        headers: again.json().data.upload.headers,
+        body: bytes,
+      });
       const completeKey = crypto.randomUUID();
-      const done = await call(photographer, "POST", `/patients/${patient}/photos/${id}/complete-upload`, undefined, { "idempotency-key": completeKey });
-      const replay = await call(photographer, "POST", `/patients/${patient}/photos/${id}/complete-upload`, undefined, { "idempotency-key": completeKey });
+      const done = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/${id}/complete-upload`,
+        undefined,
+        { "idempotency-key": completeKey },
+      );
+      const replay = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/${id}/complete-upload`,
+        undefined,
+        { "idempotency-key": completeKey },
+      );
       expect(replay.json().data.id).toBe(done.json().data.id);
-      const afterDone = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, body, { "idempotency-key": key });
+      const afterDone = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, body, {
+        "idempotency-key": key,
+      });
       expect(afterDone.json().data.upload).toBeUndefined();
-      const twice = await call(photographer, "POST", `/patients/${patient}/photos/${id}/complete-upload`, undefined, idem());
+      const twice = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/${id}/complete-upload`,
+        undefined,
+        idem(),
+      );
       expect(twice.statusCode).toBe(409);
     });
   });
@@ -430,35 +621,75 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
     it("rejects an infected upload, never serves it, and audits PHOTO_REJECTED", async () => {
       for (const job of await settle()) await process(job);
       const sessionId = await startSession(photographer);
-      const { photoId } = await upload(photographer, sessionId, "FRONT", Buffer.concat([jpeg("x"), Buffer.from(EICAR)]));
+      const { photoId } = await upload(
+        photographer,
+        sessionId,
+        "FRONT",
+        Buffer.concat([jpeg("x"), Buffer.from(EICAR)]),
+      );
       expect(await settle()).toHaveLength(0);
       const photo = await call(photographer, "GET", `/patients/${patient}/photos/${photoId}`);
-      expect(photo.json().data).toMatchObject({ status: "REJECTED", scanStatus: "INFECTED", rejectionReason: "MALWARE_DETECTED", derivatives: [] });
-      expect((await call(surgeon, "POST", `/patients/${patient}/photos/${photoId}/access-urls`, { variant: "ORIGINAL" })).statusCode).toBe(409);
-      const listed = await call(photographer, "GET", `/patients/${patient}/photos?photoSessionId=${sessionId}`);
+      expect(photo.json().data).toMatchObject({
+        status: "REJECTED",
+        scanStatus: "INFECTED",
+        rejectionReason: "MALWARE_DETECTED",
+        derivatives: [],
+      });
+      expect(
+        (
+          await call(surgeon, "POST", `/patients/${patient}/photos/${photoId}/access-urls`, {
+            variant: "ORIGINAL",
+          })
+        ).statusCode,
+      ).toBe(409);
+      const listed = await call(
+        photographer,
+        "GET",
+        `/patients/${patient}/photos?photoSessionId=${sessionId}`,
+      );
       expect(listed.json().data).toHaveLength(0);
-      const audit = await api.db.query(`SELECT "actorType", outcome, metadata FROM "AuditEvent" WHERE action = 'PHOTO_REJECTED' AND "resourceId" = $1`, [photoId]);
-      expect(audit.rows).toEqual([{ actorType: "SYSTEM", outcome: "FAILURE", metadata: { reason: "MALWARE_DETECTED" } }]);
-      const object = await api.db.query(`SELECT s.status FROM "StorageObject" s JOIN "PatientPhoto" p ON p."originalObjectId" = s.id WHERE p.id = $1`, [photoId]);
+      const audit = await api.db.query(
+        `SELECT "actorType", outcome, metadata FROM "AuditEvent" WHERE action = 'PHOTO_REJECTED' AND "resourceId" = $1`,
+        [photoId],
+      );
+      expect(audit.rows).toEqual([
+        { actorType: "SYSTEM", outcome: "FAILURE", metadata: { reason: "MALWARE_DETECTED" } },
+      ]);
+      const object = await api.db.query(
+        `SELECT s.status FROM "StorageObject" s JOIN "PatientPhoto" p ON p."originalObjectId" = s.id WHERE p.id = $1`,
+        [photoId],
+      );
       expect(object.rows[0].status).toBe("REJECTED");
     });
 
     it("accepts at completion when the scan finished first", async () => {
       const sessionId = await startSession(photographer);
       const bytes = jpeg("scanned-first");
-      const intent = await call(photographer, "POST", `/patients/${patient}/photos/uploads`, {
-        photoSessionId: sessionId,
-        viewKey: "FRONT",
-        contentType: "image/jpeg",
-        byteSize: bytes.length,
-        sha256: sha256(bytes),
-        capturedAt: new Date().toISOString(),
-      }, idem());
+      const intent = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/uploads`,
+        {
+          photoSessionId: sessionId,
+          viewKey: "FRONT",
+          contentType: "image/jpeg",
+          byteSize: bytes.length,
+          sha256: sha256(bytes),
+          capturedAt: new Date().toISOString(),
+        },
+        idem(),
+      );
       const { photoId, upload: signed } = intent.json().data;
       await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes });
       await worker.consumer("scan-requests").pollOnce(1);
       await worker.consumer("scan-results").pollOnce(1);
-      const done = await call(photographer, "POST", `/patients/${patient}/photos/${photoId}/complete-upload`, undefined, idem());
+      const done = await call(
+        photographer,
+        "POST",
+        `/patients/${patient}/photos/${photoId}/complete-upload`,
+        undefined,
+        idem(),
+      );
       expect(done.json().data).toMatchObject({ status: "ACCEPTED", scanStatus: "CLEAN" });
       const jobs = await settle();
       expect(jobs.map((j) => j.outputs.length)).toEqual([2]);
@@ -480,13 +711,18 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
       );
       expect(queued.rows).toEqual([{ status: "QUEUED", later: true }]);
       for (let attempt = 2; attempt <= 4; attempt++) {
-        await api.db.query(`UPDATE "OutboxEvent" SET "availableAt" = now() WHERE "publishedAt" IS NULL AND "eventType" = 'image.derivative.requested'`);
+        await api.db.query(
+          `UPDATE "OutboxEvent" SET "availableAt" = now() WHERE "publishedAt" IS NULL AND "eventType" = 'image.derivative.requested'`,
+        );
         [job] = await settle();
         expect(job?.attempt).toBe(attempt);
         await process(job as ImageJobMessage, { fail: { errorCode: "STORAGE_TIMEOUT", retryable: true } });
       }
       const photo = await call(photographer, "GET", `/patients/${patient}/photos/${photoId}`);
-      expect(photo.json().data.derivatives.map((d: { status: string }) => d.status)).toEqual(["FAILED", "FAILED"]);
+      expect(photo.json().data.derivatives.map((d: { status: string }) => d.status)).toEqual([
+        "FAILED",
+        "FAILED",
+      ]);
       expect(photo.json().data.status).toBe("ACCEPTED");
     });
 
@@ -496,7 +732,9 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
       const [job] = await settle();
       await process(job as ImageJobMessage, { fail: { errorCode: "DECODE_FAILED", retryable: false } });
       await process(job as ImageJobMessage);
-      const rows = await api.db.query(`SELECT status, "errorCode" FROM "AIJob" WHERE "idempotencyKey" = $1`, [`derivatives:${photoId}`]);
+      const rows = await api.db.query(`SELECT status, "errorCode" FROM "AIJob" WHERE "idempotencyKey" = $1`, [
+        `derivatives:${photoId}`,
+      ]);
       expect(rows.rows).toEqual([{ status: "FAILED", errorCode: "DECODE_FAILED" }]);
     });
 
@@ -504,10 +742,15 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
       const sessionId = await startSession(photographer);
       const { photoId } = await upload(photographer, sessionId, "FRONT", jpeg("lost"));
       await settle();
-      await api.db.query(`UPDATE "AIJob" SET "startedAt" = now() - interval '20 minutes' WHERE "idempotencyKey" = $1`, [`derivatives:${photoId}`]);
+      await api.db.query(
+        `UPDATE "AIJob" SET "startedAt" = now() - interval '20 minutes' WHERE "idempotencyKey" = $1`,
+        [`derivatives:${photoId}`],
+      );
       const { ScheduledJobs } = await import("../src/worker/jobs.ts");
       expect(await worker.context.get(ScheduledJobs).sweepDerivatives()).toBeGreaterThanOrEqual(1);
-      const rows = await api.db.query(`SELECT status, "errorCode" FROM "AIJob" WHERE "idempotencyKey" = $1`, [`derivatives:${photoId}`]);
+      const rows = await api.db.query(`SELECT status, "errorCode" FROM "AIJob" WHERE "idempotencyKey" = $1`, [
+        `derivatives:${photoId}`,
+      ]);
       expect(rows.rows).toEqual([{ status: "QUEUED", errorCode: "TIMEOUT" }]);
     });
   });
@@ -521,9 +764,13 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
     });
 
     it("serves ORIGINAL only with photo.export, and audits it", async () => {
-      const denied = await call(photographer, "POST", `/patients/${patient}/photos/${photoId}/access-urls`, { variant: "ORIGINAL" });
+      const denied = await call(photographer, "POST", `/patients/${patient}/photos/${photoId}/access-urls`, {
+        variant: "ORIGINAL",
+      });
       expect(denied.statusCode).toBe(403);
-      const ok = await call(surgeon, "POST", `/patients/${patient}/photos/${photoId}/access-urls`, { variant: "ORIGINAL" });
+      const ok = await call(surgeon, "POST", `/patients/${patient}/photos/${photoId}/access-urls`, {
+        variant: "ORIGINAL",
+      });
       expect(ok.statusCode).toBe(201);
       const got = await fetch(ok.json().data.url);
       expect(got.headers.get("cache-control")).toBe("private, no-store");
@@ -538,7 +785,9 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
     it("replaces tags as a set, normalised", async () => {
       const res = await call(photographer, "PUT", `/patients/${patient}/photos/${photoId}/tags`, undefined);
       expect(res.statusCode).toBe(400);
-      const tagged = await call(surgeon, "PUT", `/patients/${patient}/photos/${photoId}/tags`, { tags: ["Baseline", "baseline", "Left side"] });
+      const tagged = await call(surgeon, "PUT", `/patients/${patient}/photos/${photoId}/tags`, {
+        tags: ["Baseline", "baseline", "Left side"],
+      });
       expect(tagged.json().data.tags).toEqual(["baseline", "left side"]);
       const cleared = await call(surgeon, "PUT", `/patients/${patient}/photos/${photoId}/tags`, { tags: [] });
       expect(cleared.json().data.tags).toEqual([]);
@@ -551,9 +800,20 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
       expect(listed.json().data.map((p: { id: string }) => p.id)).not.toContain(photoId);
       const all = await call(photographer, "GET", `/patients/${patient}/photos?includeArchived=true`);
       expect(all.json().data.map((p: { id: string }) => p.id)).toContain(photoId);
-      expect((await call(photographer, "POST", `/patients/${patient}/photos/${photoId}/access-urls`, { variant: "THUMBNAIL" })).statusCode).toBe(201);
-      expect((await call(photographer, "POST", `/patients/${patient}/photos/${photoId}/archive`)).statusCode).toBe(409);
-      const audit = await api.db.query(`SELECT count(*)::int AS n FROM "AuditEvent" WHERE action = 'PHOTO_ARCHIVED' AND "resourceId" = $1`, [photoId]);
+      expect(
+        (
+          await call(photographer, "POST", `/patients/${patient}/photos/${photoId}/access-urls`, {
+            variant: "THUMBNAIL",
+          })
+        ).statusCode,
+      ).toBe(201);
+      expect(
+        (await call(photographer, "POST", `/patients/${patient}/photos/${photoId}/archive`)).statusCode,
+      ).toBe(409);
+      const audit = await api.db.query(
+        `SELECT count(*)::int AS n FROM "AuditEvent" WHERE action = 'PHOTO_ARCHIVED' AND "resourceId" = $1`,
+        [photoId],
+      );
       expect(audit.rows[0].n).toBe(1);
     });
 

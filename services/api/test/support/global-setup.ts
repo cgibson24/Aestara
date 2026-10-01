@@ -11,7 +11,6 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import type { TestProject } from "vitest/node";
 
-
 const databasePackage = join(dirname(fileURLToPath(import.meta.url)), "../../../../packages/database");
 
 export const LOGINS = {
@@ -26,7 +25,9 @@ export default async function setup(project: TestProject): Promise<(() => Promis
   if (!adminUrl) return undefined;
   const awsEndpoint = process.env.TEST_AWS_ENDPOINT_URL;
   if (!awsEndpoint)
-    throw new Error("Set TEST_AWS_ENDPOINT_URL to the local AWS emulator (moto) as well as TEST_ADMIN_DATABASE_URL");
+    throw new Error(
+      "Set TEST_AWS_ENDPOINT_URL to the local AWS emulator (moto) as well as TEST_ADMIN_DATABASE_URL",
+    );
   const suffix = `${Date.now()}_${process.pid}`;
   const template = `aestara_api_template_${suffix}`;
   const password = randomBytes(12).toString("hex");

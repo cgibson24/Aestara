@@ -8,8 +8,8 @@
 import { SendMessageCommand } from "@aws-sdk/client-sqs";
 import { Inject, Injectable } from "@nestjs/common";
 import type { Logger } from "pino";
-import { lockRow } from "../common/concurrency.ts";
 import { AwsClients } from "../aws/clients.ts";
+import { lockRow } from "../common/concurrency.ts";
 import { CONFIG, type WorkerConfig } from "../config.ts";
 import { Database } from "../db/database.ts";
 import { ObjectStore } from "../media/object-store.ts";
@@ -25,7 +25,8 @@ export function outcomeOf(detail: {
   scanStatus?: string;
   scanResultDetails?: { scanResultStatus?: string };
 }): ScanOutcome {
-  if (detail.scanStatus === "COMPLETED" && detail.scanResultDetails?.scanResultStatus === "NO_THREATS_FOUND") return "CLEAN";
+  if (detail.scanStatus === "COMPLETED" && detail.scanResultDetails?.scanResultStatus === "NO_THREATS_FOUND")
+    return "CLEAN";
   if (detail.scanResultDetails?.scanResultStatus === "THREATS_FOUND") return "INFECTED";
   // UNSUPPORTED, ACCESS_DENIED, FAILED or a skipped scan: never served (K2-04).
   return "ERROR";
@@ -91,13 +92,16 @@ export class LocalScanner {
   constructor(
     private readonly aws: AwsClients,
     private readonly store: ObjectStore,
-    @Inject(CONFIG) private readonly config: Pick<WorkerConfig, "SCAN_RESULTS_QUEUE_URL" | "MALWARE_SCANNER" | "NODE_ENV">,
+    @Inject(CONFIG)
+    private readonly config: Pick<WorkerConfig, "SCAN_RESULTS_QUEUE_URL" | "MALWARE_SCANNER" | "NODE_ENV">,
   ) {
     if (config.NODE_ENV === "production") throw new Error("The local scanner never runs in production");
   }
 
   async handle(raw: unknown): Promise<void> {
-    const records = (raw as { Records?: { s3?: { bucket?: { name?: string }; object?: { key?: string } } }[] })?.Records;
+    const records = (
+      raw as { Records?: { s3?: { bucket?: { name?: string }; object?: { key?: string } } }[] }
+    )?.Records;
     for (const record of records ?? []) {
       const bucket = record.s3?.bucket?.name;
       const encoded = record.s3?.object?.key;
@@ -122,7 +126,10 @@ export class LocalScanner {
         },
       };
       await this.aws.sqs.send(
-        new SendMessageCommand({ QueueUrl: this.config.SCAN_RESULTS_QUEUE_URL, MessageBody: JSON.stringify(event) }),
+        new SendMessageCommand({
+          QueueUrl: this.config.SCAN_RESULTS_QUEUE_URL,
+          MessageBody: JSON.stringify(event),
+        }),
       );
     }
   }
