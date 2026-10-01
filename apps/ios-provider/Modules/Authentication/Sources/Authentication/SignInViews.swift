@@ -98,7 +98,7 @@ public struct SecondFactorView: View {
                 Text("Open your authenticator app and enter the 6-digit code for Aestara.")
                     .font(DSFont.body).foregroundStyle(DSColor.textSecondary)
                 codeField
-                Button("Verify") { Task { await run { try await store.verify(code: code) } } }
+                Button("Verify") { Task { await run { () async throws(APIError) in try await store.verify(code: code) } } }
                     .buttonStyle(DSButtonStyle())
                     .disabled(busy || code.count != 6)
                     .accessibilityIdentifier("mfa.verify")
@@ -125,7 +125,7 @@ public struct SecondFactorView: View {
             codeField
             Button("Confirm authenticator") {
                 Task {
-                    await run {
+                    await run { () async throws(APIError) in
                         try await store.confirmEnrollment(id: enrollment.id, code: code)
                         code = ""
                     }
@@ -135,7 +135,7 @@ public struct SecondFactorView: View {
             .disabled(busy || code.count != 6)
         } else {
             Button("Show my setup key") {
-                Task { await run { enrollment = try await store.startEnrollment() } }
+                Task { await run { () async throws(APIError) in enrollment = try await store.startEnrollment() } }
             }
             .buttonStyle(DSButtonStyle())
             .disabled(busy)
