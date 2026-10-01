@@ -446,6 +446,8 @@ jobs:
       - name: Provider UI tests against the real api (iPhone and iPad)
         env:
           TEST_ADMIN_DATABASE_URL: postgresql://verify@localhost:5432/postgres
+          # Every request in the job log (route template, status, duration), to diagnose a failure.
+          STACK_LOG_LEVEL: info
         run: |
           users="$RUNNER_TEMP/ios-users.json"
           node services/api/scripts/local-stack.ts --ios "$users" iphone ipad &

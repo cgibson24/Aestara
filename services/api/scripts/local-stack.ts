@@ -133,7 +133,8 @@ export async function startStack(options: {
       ADMIN_WEB_ORIGINS: options.origins.join(","),
       ADMIN_WEB_URL: options.origins[0] ?? "http://localhost:5174",
       WEBAUTHN_ORIGINS: options.origins.join(","),
-      LOG_LEVEL: "warn",
+      // Request lines carry the route template, status and duration only (spec §7.2).
+      LOG_LEVEL: process.env.STACK_LOG_LEVEL ?? "warn",
       ...options.env,
     },
     stdio: ["ignore", "inherit", "inherit"],

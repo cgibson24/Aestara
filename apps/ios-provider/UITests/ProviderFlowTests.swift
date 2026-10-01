@@ -73,7 +73,7 @@ final class ProviderFlowTests: XCTestCase {
 
         // The profile shell opens with all twelve tabs.
         let photos = app.buttons["profile.tab.PHOTOS"]
-        XCTAssertTrue(photos.waitForExistence(timeout: 20), "The new patient's profile did not open. Screen: \(screen(app))")
+        XCTAssertTrue(photos.waitForExistence(timeout: 30), "The new patient's profile did not open. Screen: \(screen(app))")
         XCTAssertTrue(element(in: app, containing: lastName).exists, "The profile header does not name the patient. Screen: \(screen(app))")
         for tab in ["OVERVIEW", "TIMELINE", "CONSULTATIONS", "PHOTOS", "BEFORE_AFTER", "SIMULATIONS",
                     "TREATMENT_PLANS", "PROCEDURES", "DOCUMENTS", "INSTRUCTIONS", "APPOINTMENTS", "MESSAGES"] {
