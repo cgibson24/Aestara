@@ -19,7 +19,7 @@
 | 2 | Design prototype | Owner request (ADR-0009) | Static, clickable front-end shell with hard-coded data for the core scenes on iPad, iPhone, patient app and admin web | ✅ Built; awaiting your review |
 | 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | ✅ Accepted 2026-09-28 |
 | 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell; admin web shell | ✅ Accepted 2026-10-01 (`ACCEPTANCE_CRITERIA.md` §6) |
-| 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | Kickoff confirmed 2026-10-01 (ADR-0023); in progress |
+| 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | Built; acceptance review 2026-10-02 (`ACCEPTANCE_CRITERIA.md` §7), awaiting the owner's sign-off |
 | 6 | Layer 3: Consultations & before/after | Layer 3 | Consultation lifecycle, annotations, comparison viewer, timeline | — |
 | 7 | Layer 4: Documents, consent, education, plans | Layer 4 | Plans A/B/C + estimates, consent builder + signing, education, instructions | — |
 | 8 | Layer 5: Patient app & messaging | Layer 5 | Patient iOS app, released content, secure messaging, notifications | — |
@@ -136,7 +136,7 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 | M2.8 | Media permissions (versioned, per category) + media releases with permission pins |
 | M2.9 | Offline capture queue, encrypted local store, offline audit replay |
 | M2.10 | Feature flags, practice settings, retention policies |
-| M2.11 | **Layer 2 acceptance:** standard photo session works end to end, then STOP |
+| M2.11 | **Layer 2 acceptance:** standard photo session works end to end, then STOP. Review: `ACCEPTANCE_CRITERIA.md` §7, awaiting the owner's sign-off |
 
 ### Step 6: Layer 3, Consultations & Before/After
 

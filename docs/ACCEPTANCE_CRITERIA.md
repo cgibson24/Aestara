@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 acceptance review, 2026-09-28: **accepted by the owner on 2026-09-28** (Bible Appendix B #37). Layer 1 acceptance review, 2026-10-01 (§6): **awaiting the owner's sign-off**. |
+| Status | Layer 0 acceptance review, 2026-09-28: **accepted by the owner on 2026-09-28** (Bible Appendix B #37). Layer 1 acceptance review, 2026-10-01 (§6): **accepted by the owner on 2026-10-01**. Layer 2 acceptance review, 2026-10-02 (§7): **awaiting the owner's sign-off**. |
 | Authority | Bible §27.2 (definition of done), §29 (layer exit conditions), §30 (acceptance review and stop), §31 (Layer 0 kickoff and review), §32 (Layer 1 acceptance), §34 (representative criteria), §36 (production readiness), Appendix B |
 | Normative sources | [TESTING_STRATEGY.md](TESTING_STRATEGY.md) §17–18 (review format and traceability to tests), spec §9.1 (what each layer must pass), [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) |
 
-This document says what "done" means for each layer, records the Layer 0 kickoff report and the Layer 0 and Layer 1 acceptance reviews, and keeps the register of findings a later layer must resolve.
+This document says what "done" means for each layer, records the Layer 0 kickoff report and the Layer 0, Layer 1 and Layer 2 acceptance reviews, and keeps the register of findings a later layer must resolve.
 
 ## 1. How acceptance works
 
@@ -356,10 +356,99 @@ pnpm dev:admin                                               # admin portal on h
 cd apps/ios-provider && tuist generate                       # Xcode workspace (macOS)
 ```
 
-## 7. Sign-off
+## 7. Layer 2 acceptance review [B §29; spec §9.1 row 2]
+
+Layer 2 (photography core) was built in micro-prompts M2.1 to M2.10 on the branch `claude/jolly-keller-qmwt2o` (ADR-0023 to ADR-0025); this review is M2.11. The exit condition is the Bible §29 one, "standard photo session works end to end", and the must-pass tests are those of spec §9.1 row 2. Evidence is the test named and the CI job that runs it on every push; the final run is [CI run 73](https://github.com/cgibson24/Aestara/actions/runs/37035533747) on commit `c6665c1`, green in all nine jobs. Format: [TESTING_STRATEGY.md](TESTING_STRATEGY.md#17-acceptance-review-format).
+
+### 7.1 Criteria
+
+| # | Criterion (source) | Evidence | Result | Notes |
+|---|---|---|---|---|
+| 1 | A standard photo session works end to end [B §29] | `ProviderFlowTests` on iPhone and iPad against the real api, worker, image-processing and AWS emulator: a new patient, the Face protocol, all five views captured with live guidance and reviewed, uploaded write-once, the session completed, the thumbnails rendered by image-processing shown in the gallery, a tag, and a media permission requested and then granted. `photos.test.ts` "captures, verifies, scans, derives and serves every required view" covers the same flow through the api | PASS | The simulator has no camera, so the Debug-only synthetic frame source stands in (K2-12) |
+| 2 | Original immutability [spec §9.1] | Database checks C1, C3, C4 and C9 (an original is never re-pointed, its checksum and key never change, derivatives are immutable) and C11 (the photo machine); `photos.test.ts` "never overwrites an uploaded original (If-None-Match)"; `derivatives-e2e.test.ts` reads the original back unchanged after rendering; the clinical-media bucket policy refuses a `PUT` without `If-None-Match: *` (K2-09) | PASS | Originals are never edited; derivatives are new objects |
+| 3 | Checksum verification [spec §9.1] | `photos.test.ts` "rejects a checksum or size mismatch, a missing upload and a mislabelled file"; the worker checks each derivative's size, SHA-256 and JPEG signature before recording it; the app sends the SHA-256 with the upload intent | PASS | The emulator does not verify S3 checksums, so the api reads the object to check (K2-03) |
+| 4 | Permission independence [spec §9.1; B §7.2] | `media-permissions.test.ts` "starts every category at NOT_REQUESTED and keeps categories independent"; database checks D1 to D9 (append-only versions, one current row, no category implies another, a photo exception names a photo of the same patient) | PASS | `CLINICAL_USE` gates no staff capture or viewing (K2-16) |
+| 5 | Release pinning [spec §9.1; B §7.3] | `media-permissions.test.ts` "pins the permission version a release relied on", "revokes the releases a revocation leaves without a grant, and a re-grant never revives them" and "expires a grant at expiresAt"; database checks R15 to R17 | PASS | F-36 resolved |
+| 6 | The standard protocols equal Bible §6.2 | `photos.test.ts` "are the Bible's three, ACTIVE, organization-wide, every view required, in Bible order" and "are seeded for every new organization" | PASS | K2-11 |
+| 7 | Every upload is scanned; a rejected photo is never served | `photos.test.ts` "rejects an infected upload, never serves it, and audits PHOTO_REJECTED" and "accepts at completion when the scan finished first"; `UploadQueueTests` keeps a rejected photo's original so it can go again as a new photo | PASS | GuardDuty Malware Protection in AWS, an EICAR-only scanner locally (K2-04) |
+| 8 | Derivatives are upright, sRGB and free of metadata | `derivatives-e2e.test.ts` through the real service; 47 image-processing tests (pytest); the locked-down container test; Trivy on the image | PASS | K2-06 |
+| 9 | Guided capture: only the 13 Bible codes, one at a time, never blocking; a photographic, labelled position match [B §6.3–6.5] | `GuidanceTests` (the codes, their priority order, live checks, quality chips, the position match and its label, sharpness); the UI test waits for "Hold still" on every view, checks the review's checks and the "No reference photo available" state | PASS | The yaw sign of the device camera is confirmed on hardware before first clinical use (F-69) |
+| 10 | Viewing is audited; archived photos stay out of the way [B §4.3, §22.1] | The batch access-URL endpoint writes one `PHOTO_VIEWED` per photo; `ORIGINAL` needs `photo.export` ("serves ORIGINAL only with photo.export, and audits it"); "archives: hidden by default, listed on request, still viewable, never archived twice"; the UI test shows the thumbnails | PASS | K2-14 |
+| 11 | Offline capture, the encrypted store and audit replay [B §23; spec §8] | `UploadQueueTests` (write-once upload, offline stop and replay with the same keys, an expired URL, a refused intent, a rejected photo uploaded again, re-validation before replay), `EncryptedStoreTests`, `OfflineAuditQueueTests`, `MediaCacheTests`, `PatientCacheTests`; `configuration-and-worker.test.ts` "records each offline view once, at its original time, marked offline" | PASS | [TESTING_STRATEGY.md](TESTING_STRATEGY.md) §11 maps each spec §8 rule to its test |
+| 12 | Feature flags, practice settings and retention policies | `configuration-and-worker.test.ts` (resolution order, practice scope, the cache policy, retention without deletion); `portal.spec.ts` changes a flag and a practice's offline policy and records a retention policy | PASS | K2-17 to K2-19 |
+| 13 | Outbox and the WORM audit copy | `configuration-and-worker.test.ts` "archives every committed audit row, publishes events to the bus, and reconciles" and "publishes domain events to the bus without PHI"; database check G5 | PASS | K2-07 |
+| 14 | Cross-tenant access is still rejected server-side | `authorization.test.ts`, generated from the registry for all 95 operations; the RLS suite; the RLS gate | PASS | |
+| 15 | Accessibility audits on the capture, gallery and permission screens (K2-21) | `performAccessibilityAudit()` in `ProviderFlowTests` on iPhone and iPad: every finding fails the test with its screen and element, except the exclusions ADR-0025 lists (elements partly scrolled out of view or under the tab bar, the system bars' titles and buttons, the system search field, the screen dimmed behind a sheet); contrast findings are confirmed on the element's pixels against WCAG AA | PASS | The snapshot half of K2-21 is open (F-68) |
+| 16 | Required tests pass | CI green on the final commit: lint, typecheck, unit and HTTP tests (api 351 against PostgreSQL 18 and moto, database 60 plus 125 database checks and the seed check, contracts 45, admin web 11, tokens 63, prototype 173, shared types 2), the end-to-end RLS gate, Playwright (9), image-processing (47 pytest tests and the container test), the iOS module tests (62 across seven modules), the hosted Keychain tests (2) and the UI test on iPhone and iPad, Terraform checks, OSV-Scanner, gitleaks, Trivy and CodeQL ([run 50](https://github.com/cgibson24/Aestara/actions/runs/37035533826)) | PASS | No test is skipped to get green; the RLS gate runs as its own CI step |
+
+### 7.2 What Layer 2 delivers
+
+**Features.**
+- Storage ledger and media: upload intents with presigned write-once `PUT`s, verification of size, checksum and first bytes, malware scanning of every upload, signed viewing URLs (single and batch), the original only with `photo.export` (ADR-0023 K2-02 to K2-05, K2-09, K2-14; ADR-0024).
+- Photography protocols: the Bible's three standard protocols seeded per organization, the draft, activate and retire lifecycle with database-enforced freezing, and the admin editor (K2-10, K2-11).
+- Photo sessions and photos: sessions under active protocols, uploads, required views stated in words, completion with an acknowledgement when required views are missing, tags, archiving (K2-13, K2-14).
+- Derivatives: the worker's jobs and the image-processing service (thumbnail and display preview, upright, sRGB, metadata removed), with retries, a sweep and output verification (K2-06; ADR-0024).
+- Media permissions and releases: nine independent categories, append-only versions, patient-wide and per-photo, expiry, releases that pin their permission versions and end with the grant (K2-15, K2-16).
+- Outbox and events: the relay to EventBridge, SQS queues with dead-letter queues, and the WORM audit copy with a daily reconciliation (K2-07).
+- Configuration: feature flags, practice settings including the offline cache policy, retention policies, and the admin configuration page (K2-17 to K2-19).
+- Provider iOS app: guided capture with live guidance, ghost overlay and position match; sessions; the gallery and photo detail; media permissions and releases; the encrypted offline store, upload queue, derivative and patient-summary caches, and offline view replay (ADR-0025).
+
+**Files.** 191 files changed between the Layer 1 acceptance commit `a2dffbe` and `c6665c1`: 89 added, 99 modified, 3 removed (the Layer 0 placeholders of three iOS modules). By area: `services/api` (29 new, including the worker), `apps/ios-provider` (26), `services/image-processing` (22, a new service), `packages/database` (4 migrations), `infrastructure/terraform` (the messaging module), `packages/api-contracts`, `apps/admin-web`, `docs` and `.github`. `git diff --stat a2dffbe` lists them.
+
+**Migrations** (`packages/database/prisma/migrations`): `20261001100000_layer2_tables`, `20261001100100_layer2_constraints`, `20261001100200_layer2_security`, `20261001100300_layer2_protocols`. 36 tables in all.
+
+**APIs.** 95 operations under `/api/v1`, 33 of them new: photography 24 (protocols, sessions, uploads, photos, viewing, tags, archive, permissions, releases), settings 8 (feature flags, practice settings, the offline cache policy, retention policies) and the offline view replay. Both clients are generated from `openapi.json`.
+
+**Permissions.** No new permissions: Layer 2 uses the catalog's `photo.capture`, `photo.view`, `photo.annotate`, `photo.export`, `photo.permission.read`, `photo.permission.manage`, `practice.manage`, `configuration.manage` and, for patient-app releases, `consultation.complete`. Two database roles join: `aestara_worker` and `aestara_protocol_seed` (ADR-0024).
+
+**Audit events.** The spec's Layer 2 events `PHOTO_CAPTURED`, `PHOTO_VIEWED` (including `ORIGINAL` and replayed offline views), `PHOTO_PERMISSION_CHANGED`, `MEDIA_RELEASED`, `MEDIA_RELEASE_REVOKED`, `CONFIGURATION_CHANGED` and `ACCESS_DENIED` on photo routes, plus `PHOTO_REJECTED` and `PHOTO_ARCHIVED` (K2-20).
+
+**Tests.** As in row 16. The api and worker tests run as the runtime database roles against PostgreSQL 18 and moto; the derivative test runs the real image-processing service; the UI test runs the whole stack.
+
+**Fixed during the review.** The UI tests on iPhone and iPad found:
+- The relay's transaction waited at most 2 seconds for one of the worker's four connections and failed (`P2028`) on a loaded runner; it now waits up to 10 seconds.
+- image-processing crashed every render on macOS, where the 3 GiB data limit is smaller than the allocator's start-up reservation; the limit now applies on Linux, where the service runs (ADR-0024).
+- On iPhone, a newly created patient could stay on "Opening patient": the profile screen can be pushed twice, and a pushed copy keeps the values it was pushed with. Each patient now has one profile model, shared by every copy of the screen and never replaced; each selection loads it again, so every opening is still loaded, and audited, by the server.
+- The admin portal's "Saved." notice disappeared in the reload that a save causes; it now sits above the per-version form.
+- The accessibility audit found: profile tabs whose tap area was only their label; capture guidance that large text would cut off; gallery actions whose labels wrapped in half-width buttons; and a search prompt too long for its field. Each is fixed.
+- A completed session's Complete button could be pressed again while its screen closed, and a reviewed photo's Accept while the photo was being saved; both now wait.
+- CI: the UI tests run in their own job, beside the module tests, once both simulators have finished their first boot (data migration included), and with one simulator running at a time: two beside the whole stack slowed the iPhone's run threefold, which dropped taps and timed out audits.
+
+**Security considerations.**
+- Originals: write-once at the bucket and in the database, never edited, scanned before use, never served while quarantined or rejected (SR-MED; T4.x).
+- Tenancy: every new table under forced RLS and the explicit tenant filter; the worker's cross-tenant reach limited to its duties; generated cross-tenant tests for every new operation (SR-TEN).
+- Permissions: nine independent categories, no category implied by another, clinical consent never implies marketing, research or AI-training permission; releases pin and end with their grants (Bible §7; Bible §30).
+- PHI: no PHI in URLs, logs or events; image-processing logs no URLs; derivatives carry no metadata (SR-PHI).
+- Devices: the offline store sealed per user and organization with AES-GCM and a Keychain key; caches limited by the practice policy and purged on sign-out and at the end of the session; offline views audited and replayed first (K2-17).
+- Supply chain: the image-processing container is pinned by digest, runs as a non-root user with a read-only root filesystem, and is scanned by Trivy; OSV-Scanner covers `uv.lock`.
+
+**Known limitations.**
+- Nothing is deployed: Terraform is checked, not applied (ADR-0014). GuardDuty Malware Protection must be confirmed within the BAA before the first deployment, or K2-04 uses ClamAV.
+- The camera path (AVFoundation, Vision, Core Motion) runs only on a device; CI exercises capture through the synthetic frame source. The device check is F-69.
+- The snapshot tests of K2-21 are not in place (F-68).
+- Patient-app visibility of released photos arrives in Layer 5; patient photo requests arrive in Layer 5; before/after and registration arrive in Layer 3.
+- Retention policies are recorded, not enforced; deletion waits for legal holds (K2-19).
+- Open owner items: F-33 (success metrics), F-56 (repository visibility), F-59 (CloudTrail account), F-68, F-69.
+
+**Commands.**
+
+```bash
+pnpm install && pnpm check                                   # lint, typecheck, tests, build
+pnpm services:up                                             # PostgreSQL 18, Mailpit and moto
+ADMIN_DATABASE_URL=… pnpm --filter @aestara/database db:test # migrations as a non-superuser, RLS, 125 checks, seed
+TEST_ADMIN_DATABASE_URL=… TEST_AWS_ENDPOINT_URL=http://localhost:4566 TEST_IMAGE_PROCESSING=1 pnpm --filter @aestara/api test
+cd services/image-processing && uv sync && uv run pytest     # image-processing
+TEST_ADMIN_DATABASE_URL=… pnpm --filter @aestara/admin-web e2e   # Playwright (after pnpm build)
+ADMIN_DATABASE_URL=… pnpm dev:stack                          # api, worker and image-processing on a fresh database
+cd apps/ios-provider && tuist generate                       # Xcode workspace (macOS)
+```
+
+## 8. Sign-off
 
 **Layer 0: accepted by the owner on 2026-09-28.**
 
 The owner authorized Layer 1 (Bible Appendix B #38). Its kickoff, confirmed on 2026-09-29 (ADR-0018), resolved or scheduled the Layer 1 findings in §5.2 (F-13 to F-33, F-59) together with the decisions the roadmap lists for Layer 1.
 
 **Layer 1: accepted by the owner on 2026-10-01**, with the go-ahead for Layer 2. The owner confirmed the Layer 2 kickoff the same day ([LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md), ADR-0023), resolving the Layer 2 findings in §5.3.
+
+**Layer 2: awaiting the owner's sign-off.** The review is §7. Two owner items stay open: F-68 (how the snapshot references are recorded) and F-69 (the device camera check before first clinical use).

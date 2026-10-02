@@ -2,6 +2,10 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-02: Layer 2 acceptance review (M2.11)
+
+- **Review:** [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §7, on CI run 73 (`c6665c1`), green in all nine jobs. The standard photo session works end to end on iPhone and iPad against the real api, worker, image-processing and AWS emulator. Sign-off moves to §8. Awaiting the owner's sign-off; F-68 and F-69 stay open for the owner.
+
 ## 2026-10-01: Layer 2 provider app: capture, gallery, permissions, offline (ADR-0025)
 
 - **ADR-0025** records the implementation decisions of the provider app's Layer 2 work. Like ADR-0024, it was written while the work was in progress, not ahead of it.
