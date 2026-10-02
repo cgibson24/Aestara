@@ -415,6 +415,7 @@ Layer 2 (photography core) was built in micro-prompts M2.1 to M2.10 on the branc
 - The api's end-to-end photo test checked a job message for patient data with a pattern that also matched digits in random identifiers; it now looks for the fixture patient's exact values.
 - The encrypted store made its key on first use without a lock, so two first uses at once could make two keys and leave records sealed with the first unreadable; and every read and write asked the Keychain for the key, which stalled the app for minutes on a loaded simulator. The key is now made once under a lock and kept in memory until the store is destroyed (ADR-0025), with a hosted test of concurrent first use.
 - The capture screen redrew for every camera frame, changed or not, and the synthetic camera repeated its settled frame three times a second; on iPad the audit then misjudged every text on that screen in one run of four. An unchanged frame no longer redraws the screen, and the synthetic camera rests once its subject has settled.
+- CI: the iPad UI test runs on the iPad mini in landscape. On the 13-inch iPad, with nearly twice the iPhone's pixels, its audits ran out of time or reported every text on a screen as unsized in five runs of fourteen.
 - CI: the UI tests run in their own job, beside the module tests, once both simulators have finished their first boot (data migration included), and with one simulator running at a time: two beside the whole stack slowed the iPhone's run threefold, which dropped taps and timed out audits.
 
 **Security considerations.**

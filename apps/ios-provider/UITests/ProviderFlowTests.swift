@@ -21,6 +21,11 @@ final class ProviderFlowTests: XCTestCase {
         let password = try XCTUnwrap(env["UITEST_PASSWORD"], "UITEST_PASSWORD is not set")
         let secret = try XCTUnwrap(env["UITEST_TOTP_SECRET"], "UITEST_TOTP_SECRET is not set")
         let lastStep = try XCTUnwrap(Int(env["UITEST_TOTP_LAST_STEP"] ?? ""), "UITEST_TOTP_LAST_STEP is not set")
+        // iPad in landscape, iPhone in portrait: the orientations every screen is designed for
+        // (DESIGN_SYSTEM.md §11), and on iPad the one that keeps the patient list beside the profile.
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            XCUIDevice.shared.orientation = .landscapeLeft
+        }
         app.launch()
 
         // Login UI: a wrong password shows the server's message.

@@ -528,8 +528,10 @@ jobs:
           import json, sys
           devices = json.load(sys.stdin)["devices"]
           runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
-          for prefix in ("iPhone", "iPad"):
-              print(next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith(prefix)))' |
+          names = [d for r in runtimes for d in devices[r]]
+          pick = lambda *prefixes: next(d["udid"] for p in prefixes for d in names if d["name"].startswith(p))
+          print(pick("iPhone"))
+          print(pick("iPad mini", "iPad (A16)", "iPad Air 11", "iPad"))' |
           while read -r udid; do
             echo "Booting $udid"
             # Followed from the start, through the first boot's data migration, which a
@@ -598,8 +600,10 @@ jobs:
           import json, sys
           devices = json.load(sys.stdin)["devices"]
           runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
-          for prefix in ("iPhone", "iPad"):
-              print(next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith(prefix)))' |
+          names = [d for r in runtimes for d in devices[r]]
+          pick = lambda *prefixes: next(d["udid"] for p in prefixes for d in names if d["name"].startswith(p))
+          print(pick("iPhone"))
+          print(pick("iPad mini", "iPad (A16)", "iPad Air 11", "iPad"))' |
           while read -r udid; do
             for _ in $(seq 1 1800); do [ -s "$RUNNER_TEMP/booted-$udid" ] && break; sleep 1; done
             cat "$RUNNER_TEMP/boot-$udid.log"
@@ -625,8 +629,11 @@ jobs:
           import json, sys
           devices = json.load(sys.stdin)["devices"]
           runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
-          pick = lambda prefix: next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith(prefix))
-          print(pick("iPhone"), pick("iPad"))')
+          names = [d for r in runtimes for d in devices[r]]
+          pick = lambda *prefixes: next(d["udid"] for p in prefixes for d in names if d["name"].startswith(p))
+          # The smallest iPad, regular width like every iPad: the 13-inch one has nearly twice
+          # the iPhone's pixels, and its accessibility audits ran out of time or misread text.
+          print(pick("iPhone"), pick("iPad mini", "iPad (A16)", "iPad Air 11", "iPad"))')
           read -r iphone ipad <<< "$devices"
           failed=""
           for entry in "iphone:$iphone" "ipad:$ipad"; do
