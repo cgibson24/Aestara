@@ -88,15 +88,14 @@ public final class SyntheticFrameSource: FrameSource {
         let target = self.target
         let continuation = self.continuation
         task = Task {
-            // Too far first, then settled within every tolerance.
-            var step = 0
-            while !Task.isCancelled {
+            // Too far first, then settled within every tolerance, where it stays still: no
+            // further frames until the next view, so the screen is at rest for the UI tests.
+            for step in 0...3 where !Task.isCancelled {
                 let fill = step < 3 ? max(0.1, target.frameFill - target.frameFillTolerance - 0.1) : target.frameFill
                 let height = CGFloat(fill)
                 let box = CGRect(x: 0.5 - height * 0.35, y: 0.5 - height / 2, width: height * 0.7, height: height)
                 continuation.yield(FrameObservation(subjectBox: box, yawDeg: target.yawDeg, pitchDeg: 0, rollDeg: 0, brightness: 0.6))
-                step += 1
-                try? await Task.sleep(for: .milliseconds(300))
+                if step < 3 { try? await Task.sleep(for: .milliseconds(300)) }
             }
         }
     }

@@ -406,8 +406,11 @@ struct CaptureView: View {
         for await observation in source.observations {
             // The review shows the photo taken; the live frames wait.
             guard review == nil else { continue }
+            // An unchanged frame changes nothing on screen, so the screen is not redrawn for it.
+            guard observation != frame else { continue }
             frame = observation
-            guidance = GuidanceEngine.evaluate(observation, target: target)
+            let next = GuidanceEngine.evaluate(observation, target: target)
+            if next != guidance { guidance = next }
         }
     }
 
