@@ -28,6 +28,8 @@ struct CaptureView: View {
     @State private var guidance: GuidanceState = .searching
     @State private var shooting = false
     @State private var review: CaptureReview?
+    /// The accepted photo is being saved on the device: accepted once, never twice.
+    @State private var saving = false
     @State private var message: String?
 
     @State private var references: [PhotoItem] = []
@@ -57,7 +59,7 @@ struct CaptureView: View {
         VStack(spacing: 0) {
             topBar
             if let review {
-                CaptureReviewView(review: review, viewName: current.name) {
+                CaptureReviewView(review: review, viewName: current.name, saving: saving) {
                     self.review = nil
                 } accept: {
                     Task { await accept(review) }
@@ -435,6 +437,9 @@ struct CaptureView: View {
     // MARK: Accepting
 
     private func accept(_ review: CaptureReview) async {
+        guard !saving else { return }
+        saving = true
+        defer { saving = false }
         let jpeg = review.image.jpeg
         let hash = await Task.detached(priority: .userInitiated) { sha256Hex(jpeg) }.value
         let record = CaptureRecord(
@@ -542,6 +547,8 @@ struct CaptureReview: Equatable {
 struct CaptureReviewView: View {
     let review: CaptureReview
     let viewName: String
+    /// True while the accepted photo is being saved; both choices wait for it.
+    let saving: Bool
     let retake: () -> Void
     let accept: () -> Void
 
@@ -580,6 +587,7 @@ struct CaptureReviewView: View {
                     .buttonStyle(DSButtonStyle(.primary))
                     .accessibilityIdentifier("capture.accept")
             }
+            .disabled(saving)
         }
         .padding(DSSpacing.lg)
     }

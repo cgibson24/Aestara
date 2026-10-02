@@ -146,7 +146,7 @@ final class ProviderFlowTests: XCTestCase {
         var audited = false
         for view in ["FRONT", "LEFT_45", "RIGHT_45", "LEFT_PROFILE", "RIGHT_PROFILE"] {
             let item = app.buttons["capture.view.\(view)"]
-            XCTAssertTrue(waitUntil(timeout: 10) { item.isSelected }, "View \(view) is not current. Screen: \(screen(app))")
+            XCTAssertTrue(waitUntil(timeout: 10) { item.exists && item.isSelected }, "View \(view) is not current. Screen: \(screen(app))")
             XCTAssertTrue(waitUntil(timeout: 20) { guidance.exists && guidance.label.contains("Hold still") },
                           "Guidance never settled for \(view). Screen: \(screen(app))")
             if !audited {
@@ -161,6 +161,8 @@ final class ProviderFlowTests: XCTestCase {
             if view == "FRONT" { snapshot(app, "09 Review") }
             XCTAssertTrue(element(in: app, containing: "Camera level").exists, "The review lists no checks. Screen: \(screen(app))")
             accept.tap()
+            // The photo is saved on the device before the next view opens.
+            XCTAssertTrue(waitUntil(timeout: 30) { !accept.exists }, "The review did not close after Accept. Screen: \(screen(app))")
         }
 
         // Every required view is in; complete once the photos have reached the server.
