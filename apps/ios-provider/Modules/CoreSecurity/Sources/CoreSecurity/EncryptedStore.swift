@@ -45,8 +45,16 @@ public protocol StoreKeyProviding: Sendable {
 }
 
 /// Keys in the Keychain: 256-bit, created on first use, `whenUnlocked`, this device only.
+/// A key is read or made once per process, under one lock, and kept in memory until its
+/// store is destroyed. So two first uses at once cannot make two keys (storing replaces
+/// an item, which left records sealed with the first key unreadable), and a store's
+/// reads and writes do not each wait on the Keychain, which can stall for minutes on a
+/// busy device. While the device is locked the records stay closed: they are written
+/// with Data Protection Complete.
 public struct KeychainStoreKeys: StoreKeyProviding {
     let keychain: Keychain
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cached: [String: SymmetricKey] = [:]
 
     public init(keychain: Keychain = Keychain()) {
         self.keychain = keychain
@@ -54,25 +62,35 @@ public struct KeychainStoreKeys: StoreKeyProviding {
 
     private func account(_ scope: StoreScope) -> String { "store-key.\(scope.directoryName)" }
 
+    private func cacheKey(_ scope: StoreScope) -> String { "\(keychain.service)/\(account(scope))" }
+
     public func key(for scope: StoreScope) throws(EncryptedStoreError) -> SymmetricKey {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        if let key = Self.cached[cacheKey(scope)] { return key }
+        let key: SymmetricKey
         do {
-            let stored = try keychain.get(account: account(scope))
-            return SymmetricKey(data: stored)
+            key = SymmetricKey(data: try keychain.get(account: account(scope)))
         } catch KeychainError.notFound {
-            let key = SymmetricKey(size: .bits256)
-            let data = key.withUnsafeBytes { Data($0) }
+            let made = SymmetricKey(size: .bits256)
+            let data = made.withUnsafeBytes { Data($0) }
             do {
                 try keychain.set(data, account: account(scope), accessibility: .whenUnlocked)
             } catch {
                 throw .keyUnavailable
             }
-            return key
+            key = made
         } catch {
             throw .keyUnavailable
         }
+        Self.cached[cacheKey(scope)] = key
+        return key
     }
 
     public func destroyKey(for scope: StoreScope) {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        Self.cached[cacheKey(scope)] = nil
         try? keychain.delete(account: account(scope))
     }
 }

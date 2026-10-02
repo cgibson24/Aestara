@@ -669,6 +669,7 @@ Status values:
 - **Decision, the encrypted store** (K2-17):
   - One store per user and organization, under Application Support, excluded from backups. Records are sealed with AES-GCM; each record's name is the associated data, so a sealed file cannot be swapped for another. Files use Data Protection *Complete*.
   - One key per user and organization in the Keychain (`WhenUnlockedThisDeviceOnly`). Tests use an in-memory key provider.
+  - A key is read, or made and stored, once per process under one lock, and kept in memory until its store is destroyed. Making it on first use was not atomic: two first uses at once could each make a key, and the second replaced the first in the Keychain, leaving records sealed with the first unreadable. Holding the key also spares every read and write a Keychain call, which on a loaded device can stall the caller for minutes. While the device is locked the records stay closed by Data Protection *Complete*.
 - **Decision, capture** (K2-12):
   - One camera session serves the whole capture screen; moving to the next view changes the target, not the session.
   - The stage keeps the photo's 3:4 frame, so the framing oval and the ghost overlay sit on the subject on every screen. The oval follows the detected face or torso and otherwise shows the view's target.

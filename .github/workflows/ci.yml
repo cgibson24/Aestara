@@ -503,7 +503,7 @@ jobs:
           import json, sys
           s = json.load(open(sys.argv[1]))
           print(f"hosted: result={s['result']} passed={s['passedTests']} failed={s['failedTests']}")
-          assert s["result"] == "Passed" and s["failedTests"] == 0 and s["passedTests"] >= 2, "Hosted tests did not all run and pass"
+          assert s["result"] == "Passed" and s["failedTests"] == 0 and s["passedTests"] >= 3, "Hosted tests did not all run and pass"
           PY
 
   # The UI tests run beside the module tests, on their own runner.
