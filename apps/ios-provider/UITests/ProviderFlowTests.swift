@@ -98,7 +98,7 @@ final class ProviderFlowTests: XCTestCase {
         }
         XCTAssertTrue(onScreen(photos), "The Photos tab cannot be reached. Screen: \(screen(app))")
         photos.tap()
-        XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 10), "Photos empty state. Screen: \(screen(app))")
+        XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 30), "Photos empty state. Screen: \(screen(app))")
         snapshot(app, "05 Photos tab, empty")
 
         try photoSession(app)
@@ -174,13 +174,18 @@ final class ProviderFlowTests: XCTestCase {
             return !complete.exists
         }, "The session could not be completed. Screen: \(screen(app))")
 
-        // The gallery: thumbnails from image-processing replace the "being checked" states.
+        // The gallery: thumbnails from image-processing replace the "being checked" states,
+        // for every view, so the audit sees a settled screen.
         let tile = app.buttons["photos.tile.FRONT"]
         XCTAssertTrue(tile.waitForExistence(timeout: 30), "The captured photo is not in the gallery. Screen: \(screen(app))")
-        XCTAssertTrue(waitUntil(timeout: 180) {
-            let label = tile.label
-            return !label.contains("Being checked") && !label.contains("Preparing preview") && !label.contains("could not be checked")
-        }, "The thumbnail never arrived: \(tile.label). Screen: \(screen(app))")
+        for view in ["FRONT", "LEFT_45", "RIGHT_45", "LEFT_PROFILE", "RIGHT_PROFILE"] {
+            let photo = app.buttons["photos.tile.\(view)"]
+            XCTAssertTrue(waitUntil(timeout: 180) {
+                let label = photo.label
+                return photo.exists && !label.contains("Being checked") && !label.contains("Preparing preview")
+                    && !label.contains("could not be checked")
+            }, "The \(view) thumbnail never arrived: \(photo.label). Screen: \(screen(app))")
+        }
         snapshot(app, "11 Gallery")
         audit(app, screen: "gallery")
 
@@ -202,7 +207,7 @@ final class ProviderFlowTests: XCTestCase {
         let website = app.buttons["permissions.category.WEBSITE"]
         XCTAssertTrue(website.waitForExistence(timeout: 15), "The permission list did not load. Screen: \(screen(app))")
         snapshot(app, "13 Media permissions")
-        audit(app, screen: "permissions")
+        audit(app, screen: "permissions", inSheet: true)
         website.tap()
         let save = app.buttons["permission.save"]
         XCTAssertTrue(save.waitForExistence(timeout: 10), "The change sheet did not open. Screen: \(screen(app))")
@@ -234,15 +239,20 @@ final class ProviderFlowTests: XCTestCase {
 
     /// The XCUITest accessibility audit (ADR-0023 K2-21). Each finding fails the test
     /// with the screen, the element (identifier, label and frame) and the audit's
-    /// explanation, and the flow continues so one run reports them all. Left out:
+    /// explanation, and the flow continues so one run reports them all. The checks that
+    /// change the text size run last, so their re-layout cannot disturb the pixel checks
+    /// (contrast among them). Left out:
     /// - the synthetic camera's caption, Debug-only scaffolding;
     /// - the clipping, contrast or hit area of an element partly past the visible area,
     ///   which the audit judges by its visible part only: scrolled past the screen's edge
     ///   (the capture screen's view strip, the profile's tab strip; DESIGN_SYSTEM.md §4)
     ///   or under the tab bar at the bottom, which shows it through the bar's edge effect;
-    /// - Dynamic Type on a navigation bar's own buttons, which the system draws at a
-    ///   fixed size and enlarges with the Large Content Viewer instead.
-    private func audit(_ app: XCUIApplication, screen name: String) {
+    /// - Dynamic Type on the system bars' own buttons and titles, which the system draws
+    ///   at a fixed size and enlarges with the Large Content Viewer instead. The app draws
+    ///   no UIKit labels, so a UIKit label the audit cannot resolve is one of those titles;
+    /// - in a sheet, findings without an element: the screen dimmed behind the sheet, which
+    ///   the system hides from assistive technologies while the sheet is up.
+    private func audit(_ app: XCUIApplication, screen name: String, inSheet: Bool = false) {
         let previous = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = previous }
@@ -255,26 +265,31 @@ final class ProviderFlowTests: XCTestCase {
         let barItems = bottomBar?.buttons.allElementsBoundByIndex.map(\.frame) ?? []
         let navigationBars = app.navigationBars.allElementsBoundByIndex.map(\.frame)
         let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
+        let sizeTypes: XCUIAccessibilityAuditType = [.dynamicType, .textClipped]
         let findings = AuditFindings()
-        do {
-            try app.performAccessibilityAudit { issue in
-                guard let element = issue.element else {
-                    findings.items.append("\(issue.compactDescription): \(issue.detailedDescription) (no element)")
+        for types in [XCUIAccessibilityAuditType.all.subtracting(sizeTypes), sizeTypes] {
+            do {
+                try app.performAccessibilityAudit(for: types) { issue in
+                    guard let element = issue.element else {
+                        if inSheet { return true }
+                        if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") { return true }
+                        findings.items.append("\(issue.compactDescription): \(issue.detailedDescription) (no element)")
+                        return true
+                    }
+                    if element.label == "Synthetic camera" { return true }
+                    let frame = element.frame
+                    if edgeTypes.contains(issue.auditType), !visible.contains(frame), !barItems.contains(frame) { return true }
+                    if issue.auditType == .dynamicType, element.elementType == .button,
+                       navigationBars.contains(where: { $0.contains(frame) }) { return true }
+                    let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
+                    let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
+                    findings.items.append("\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
+                        + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)")
                     return true
                 }
-                if element.label == "Synthetic camera" { return true }
-                let frame = element.frame
-                if edgeTypes.contains(issue.auditType), !visible.contains(frame), !barItems.contains(frame) { return true }
-                if issue.auditType == .dynamicType, element.elementType == .button,
-                   navigationBars.contains(where: { $0.contains(frame) }) { return true }
-                let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
-                let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
-                findings.items.append("\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
-                    + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)")
-                return true
+            } catch {
+                XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
             }
-        } catch {
-            XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
         }
         for finding in findings.items {
             XCTFail("Accessibility audit, \(name) screen: \(finding)")

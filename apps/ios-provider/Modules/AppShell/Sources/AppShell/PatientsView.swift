@@ -92,7 +92,9 @@ struct PatientListView: View {
 
     var body: some View {
         content
-            .searchable(text: $text, prompt: "Name, date of birth (YYYY-MM-DD), email or phone")
+            // The system's short prompt, which fits at every text size; the formats are
+            // named when nothing matches.
+            .searchable(text: $text)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .task(id: TaskKey(text: text, reload: reload)) { await load() }
@@ -110,7 +112,7 @@ struct PatientListView: View {
             if SearchQuery(text) == nil {
                 DSStateView(.empty(title: "No patients yet", message: "Patients you add appear here."))
             } else {
-                DSStateView(.empty(title: "No matches", message: "Check the spelling, or search by date of birth, email or phone."))
+                DSStateView(.empty(title: "No matches", message: "Search by name, date of birth (YYYY-MM-DD), email or phone. Check the spelling."))
             }
         case let .loaded(patients):
             List(patients, selection: $selection) { patient in
