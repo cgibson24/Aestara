@@ -226,6 +226,9 @@ final class ProviderFlowTests: XCTestCase {
         XCTAssertTrue(granted.waitForExistence(timeout: 5), "Granted is not offered after a request. Screen: \(screen(app))")
         snapshot(app, "14 Record a grant")
         granted.tap()
+        // The menu closes before Save is pressed; a tap while it closes only closes it.
+        XCTAssertTrue(waitUntil(timeout: 10) { !granted.exists && save.isHittable && save.isEnabled },
+                      "The choice menu did not close. Screen: \(screen(app))")
         save.tap()
         XCTAssertTrue(waitUntil(timeout: 15) { website.exists && website.label.contains("Granted") },
                       "The grant was not recorded. Screen: \(screen(app))")
@@ -418,9 +421,11 @@ private final class AuditFindings {
     var unconfirmed: [String] = []
 }
 
-/// WCAG 2 contrast, measured on an element's picture: its most common colour (the
-/// background) against the colour, among those covering at least 1% of it, that
-/// differs most (the text's core, not its anti-aliased edge).
+/// WCAG 2 contrast, measured on an element's picture. The background is the most common
+/// colour (grouped into near shades, so a material's grain counts as one); the text is
+/// the 1% of pixels that differ most from it, the cores of the glyphs rather than their
+/// anti-aliased edges. Text covering less than 1% of the picture measures low, so the
+/// measurement can wrongly fail but never wrongly pass.
 @MainActor
 private enum Contrast {
     /// WCAG 2 AA for body text.
@@ -440,26 +445,37 @@ private enum Contrast {
             return true
         }
         guard drawn else { return nil }
-        var counts: [UInt32: Int] = [:]
+        // Near shades share a group (5 bits a channel); a group's colour is its average.
+        var groups: [UInt32: (count: Int, red: Int, green: Int, blue: Int)] = [:]
+        var colours: [UInt32] = []
+        colours.reserveCapacity(width * height)
         for index in stride(from: 0, to: pixels.count, by: 4) {
-            let rgb = UInt32(pixels[index]) << 16 | UInt32(pixels[index + 1]) << 8 | UInt32(pixels[index + 2])
-            counts[rgb, default: 0] += 1
+            let (red, green, blue) = (pixels[index], pixels[index + 1], pixels[index + 2])
+            let key = UInt32(red >> 3) << 10 | UInt32(green >> 3) << 5 | UInt32(blue >> 3)
+            let group = groups[key] ?? (count: 0, red: 0, green: 0, blue: 0)
+            groups[key] = (count: group.count + 1, red: group.red + Int(red), green: group.green + Int(green),
+                           blue: group.blue + Int(blue))
+            colours.append(UInt32(red) << 16 | UInt32(green) << 8 | UInt32(blue))
         }
-        guard let background = counts.max(by: { $0.value < $1.value })?.key else { return nil }
-        let threshold = max(1, width * height / 100)
-        return counts.filter { $0.key != background && $0.value >= threshold }.map { ratio(background, $0.key) }.max()
+        guard let common = groups.values.max(by: { $0.count < $1.count }) else { return nil }
+        let background = luminance(Double(common.red) / Double(common.count), Double(common.green) / Double(common.count),
+                                   Double(common.blue) / Double(common.count))
+        let ratios = colours.map { rgb in
+            ratio(background, luminance(Double(rgb >> 16 & 0xFF), Double(rgb >> 8 & 0xFF), Double(rgb & 0xFF)))
+        }.sorted(by: >)
+        return ratios[max(0, ratios.count / 100 - 1)]
     }
 
-    static func ratio(_ first: UInt32, _ second: UInt32) -> Double {
-        let (a, b) = (luminance(first), luminance(second))
-        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    static func ratio(_ first: Double, _ second: Double) -> Double {
+        (max(first, second) + 0.05) / (min(first, second) + 0.05)
     }
 
-    static func luminance(_ rgb: UInt32) -> Double {
-        func linear(_ value: UInt32) -> Double {
-            let c = Double(value) / 255
+    /// Relative luminance of an sRGB colour with 0–255 channels.
+    static func luminance(_ red: Double, _ green: Double, _ blue: Double) -> Double {
+        func linear(_ value: Double) -> Double {
+            let c = value / 255
             return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
         }
-        return 0.2126 * linear(rgb >> 16 & 0xFF) + 0.7152 * linear(rgb >> 8 & 0xFF) + 0.0722 * linear(rgb & 0xFF)
+        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
     }
 }
