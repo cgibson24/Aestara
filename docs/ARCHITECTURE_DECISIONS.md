@@ -701,5 +701,6 @@ Status values:
   - The UI test runs a standard Face session end to end on the Debug-only synthetic camera: guidance, capture, review, upload, completion, thumbnails from image-processing, a tag and a permission request and grant. It runs `performAccessibilityAudit()` on the capture, gallery and permission screens and reports every finding.
   - In the UI tests, the emulator is addressed as `localhost`, which the Debug build's App Transport Security exception names, because the presigned URLs carry that host.
 - **Consequences:**
-  - The snapshot tests of K2-21 need reference images recorded on a Mac. They are listed in the Layer 2 acceptance review.
+  - The snapshot tests of K2-21 need reference images recorded on a Mac, or a CI job allowed to record them and commit them to the branch: an owner decision (F-68).
+  - The device camera path is confirmed on an iPhone and an iPad before first clinical use (F-69).
   - Layer 3 annotation of cached photos and Layer 4 consent evidence build on the same store and permission screens.

@@ -253,13 +253,15 @@ F-32 covers these platform prerequisites, each now resolved or scheduled:
 | F-55 | 1, 3, 5 | Patient INACTIVE/DECEASED transitions, the consultation cancellation policy, patient-app offline caching | Decide at the kickoff of each layer |
 | F-56 | Owner | The repository is public, but the Bible is marked "Confidential Product Specification" | The owner decides the repository's visibility |
 | F-60 | 5 | Spec §6.3/§6.5 have no staff endpoint or permission for inviting a patient, though `PatientUserLink.invitedById` implies one | Add the endpoint and permission in Layer 5 |
-| F-61 | 2 | The spec §7.1 VPC-endpoint bucket condition and the spec §7.4 denial of overwriting existing keys are not yet in Terraform | **Scheduled** (ADR-0023 K2-09): built in M2.1 |
+| F-61 | 2 | The spec §7.1 VPC-endpoint bucket condition and the spec §7.4 denial of overwriting existing keys are not yet in Terraform | **Resolved** (ADR-0023 K2-09, ADR-0024): the clinical-media policy refuses a `PUT` without `If-None-Match: *` and object access outside the S3 endpoint, except for the presigning role and GuardDuty |
 | F-62 | 7 | GPU inference needs a subnet tier with no internet egress (spec §2.1); the Layer 0 private subnets route through NAT | Add the tier in Layer 7 (UD-04) |
 | F-63 | 2 | Spec §5.4 has no photography-protocol state machine (the lifecycle is read from `/activate` and `/retire`) | **Resolved** (ADR-0023 K2-10): spec §5.4.10 |
 | F-64 | 3 | Whether consultation transitions other than sign-off and release may be queued offline | Decide in Layer 3 |
 | F-65 | 4 | Whether education and instruction assignments may reference only PUBLISHED content versions | Decide in Layer 4 |
 | F-66 | 2 | How archived photos are shown in lists | **Resolved** (ADR-0023 K2-14) |
 | F-67 | 2 | Who manages platform-wide feature-flag defaults (`configuration.manage` is held by organization and practice admins) | **Resolved** (ADR-0023 K2-18): defaults in code; no platform-wide rows in Layer 2 |
+| F-68 | Owner, 3 | The K2-21 snapshot tests need reference images. This environment cannot record them: they are rendered on a Mac with Xcode, and the first run of each test records its image and fails by design | The owner chooses one: record the references on a Mac and commit them, or allow a CI job to record missing references and commit them to the branch (a workflow with write access to the repository). The snapshot tests then join the `ios` job (ADR-0025) |
+| F-69 | Pre-clinical use | The camera path (AVFoundation capture, Vision face and body detection, Core Motion tilt) runs only on a device; CI exercises capture through the synthetic frame source. The sign of Vision's yaw is flipped to the protocol's convention by reasoning, not by measurement | Before first clinical use, capture each standard view on an iPhone and an iPad and confirm the guidance (in particular PATIENT_TURN_LEFT and RIGHT) and the recorded pose (ADR-0025) |
 
 F-35 covers these photo details:
 - resumable upload and upload-URL renewal
