@@ -702,10 +702,15 @@ jobs:
           raw, out, device = sys.argv[1:4]
           for test in json.load(open(os.path.join(raw, "manifest.json"))):
               for a in test.get("attachments", []):
-                  # Only the images: the bundle also holds hierarchies and debug descriptions.
+                  name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
+                  # The audit's notes (findings the measurement does not confirm), printed.
+                  if name.startswith("Audit ") and a["exportedFileName"].lower().endswith(".txt"):
+                      print(f"{device} - {name}:")
+                      print(open(os.path.join(raw, a["exportedFileName"])).read())
+                      continue
+                  # Otherwise only the images: the bundle also holds hierarchies and debug descriptions.
                   if os.path.splitext(a["exportedFileName"])[1].lower() not in (".png", ".jpg", ".jpeg", ".heic"):
                       continue
-                  name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
                   label = re.sub(r"_\d+_[0-9A-Fa-f-]+(\.\w+)?$", "", os.path.splitext(name)[0])
                   # Attachments can share a name (the audit's element screenshots do): number them.
                   target, n = os.path.join(out, f"{device} - {label}.png"), 1

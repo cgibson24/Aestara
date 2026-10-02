@@ -19,6 +19,8 @@ struct SessionView: View {
     @State private var capturing: ProtocolViewSpec?
     @State private var confirmingMissing = false
     @State private var busy = false
+    /// Set once the server has completed the session: the screen is closing.
+    @State private var closing = false
     @State private var message: String?
     @Environment(\.dismiss) private var dismiss
 
@@ -54,7 +56,7 @@ struct SessionView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Complete") { Task { await complete(acknowledge: false) } }
-                        .disabled(busy)
+                        .disabled(busy || closing)
                         .accessibilityIdentifier("session.complete")
                 }
             }
@@ -229,6 +231,8 @@ struct SessionView: View {
         do throws(APIError) {
             session = try await context.repository.completeSession(patientId: patientId, sessionId: session.id, acknowledgeMissing: acknowledge)
             context.reachedServer()
+            // Not completed twice while the screen closes.
+            closing = true
             dismiss()
         } catch {
             context.note(error)

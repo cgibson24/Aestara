@@ -7,6 +7,7 @@
 // The simulator has no camera: the Debug-only synthetic frame source stands in
 // (ADR-0023 K2-12). All data is synthetic.
 import CryptoKit
+import UIKit
 import XCTest
 
 @MainActor
@@ -256,6 +257,10 @@ final class ProviderFlowTests: XCTestCase {
     ///   text scrolls;
     /// - in a sheet, findings without an element: the screen dimmed behind the sheet, which
     ///   the system hides from assistive technologies while the sheet is up.
+    /// A contrast finding is confirmed on the element's own pixels: it fails when the
+    /// measured WCAG ratio is below AA's 4.5:1. On iPad the audit flags text measured at 7:1
+    /// and more, and different elements on identical screens; those it does not confirm
+    /// are kept with the results, not failed.
     /// `sheet` names the parts of a presented sheet (its bar and its content), whose union
     /// is then the visible area.
     private func audit(_ app: XCUIApplication, screen name: String, sheet: [XCUIElement] = []) {
@@ -296,11 +301,19 @@ final class ProviderFlowTests: XCTestCase {
                     if issue.auditType == .textClipped, element.elementType == .searchField { return true }
                     let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
                     let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
-                    findings.items.append("\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
-                        + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)")
-                    if !frame.isEmpty, window.contains(frame) {
-                        findings.pictures.append(element.screenshot())
+                    var finding = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
+                        + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)"
+                    let picture = !frame.isEmpty && window.contains(frame) ? element.screenshot() : nil
+                    if issue.auditType == .contrast, let picture, let ratio = Contrast.measured(picture.image) {
+                        let measured = "Measured \(ratio.formatted(.number.precision(.fractionLength(1)))):1."
+                        guard ratio < Contrast.minimum else {
+                            findings.unconfirmed.append("\(finding) \(measured)")
+                            return true
+                        }
+                        finding += " \(measured)"
                     }
+                    findings.items.append(finding)
+                    if let picture { findings.pictures.append(picture) }
                     return true
                 }
             } catch {
@@ -312,6 +325,12 @@ final class ProviderFlowTests: XCTestCase {
             attachment.name = "Audit \(name) \(index + 1)"
             attachment.lifetime = .keepAlways
             add(attachment)
+        }
+        if !findings.unconfirmed.isEmpty {
+            let note = XCTAttachment(string: findings.unconfirmed.joined(separator: "\n"))
+            note.name = "Audit \(name): contrast findings the measurement does not confirm"
+            note.lifetime = .keepAlways
+            add(note)
         }
         for finding in findings.items {
             XCTFail("Accessibility audit, \(name) screen: \(finding)")
@@ -393,4 +412,52 @@ private final class AuditFindings {
     var items: [String] = []
     /// A picture of each finding's element, in order.
     var pictures: [XCUIScreenshot] = []
+    /// Contrast findings whose measured ratio meets AA.
+    var unconfirmed: [String] = []
+}
+
+/// WCAG 2 contrast, measured on an element's picture: its most common colour (the
+/// background) against the colour, among those covering at least 1% of it, that
+/// differs most (the text's core, not its anti-aliased edge).
+@MainActor
+private enum Contrast {
+    /// WCAG 2 AA for body text.
+    static let minimum = 4.5
+
+    static func measured(_ image: UIImage) -> Double? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else { return nil }
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return nil }
+        var counts: [UInt32: Int] = [:]
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            let rgb = UInt32(pixels[index]) << 16 | UInt32(pixels[index + 1]) << 8 | UInt32(pixels[index + 2])
+            counts[rgb, default: 0] += 1
+        }
+        guard let background = counts.max(by: { $0.value < $1.value })?.key else { return nil }
+        let threshold = max(1, width * height / 100)
+        return counts.filter { $0.key != background && $0.value >= threshold }.map { ratio(background, $0.key) }.max()
+    }
+
+    static func ratio(_ first: UInt32, _ second: UInt32) -> Double {
+        let (a, b) = (luminance(first), luminance(second))
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+
+    static func luminance(_ rgb: UInt32) -> Double {
+        func linear(_ value: UInt32) -> Double {
+            let c = Double(value) / 255
+            return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(rgb >> 16 & 0xFF) + 0.7152 * linear(rgb >> 8 & 0xFF) + 0.0722 * linear(rgb & 0xFF)
+    }
 }
