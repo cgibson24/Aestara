@@ -64,9 +64,11 @@ struct PatientProfileView: View {
         state = .loading
         do throws(APIError) {
             let profile = try await repository.profile(id: patientId)
-            await photography.patients.save(profile)
             offline = false
             state = .loaded(profile)
+            // The offline copy is written in the background; the screen never waits for it.
+            let cache = photography.patients
+            Task { await cache.save(profile) }
         } catch {
             if error.status == 0, let saved = await photography.patients.profile(id: patientId) {
                 offline = true

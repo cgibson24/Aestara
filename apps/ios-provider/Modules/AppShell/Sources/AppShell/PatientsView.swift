@@ -79,6 +79,8 @@ struct PatientListView: View {
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .task(id: TaskKey(text: text, reload: reload)) { await load() }
+            // Runs after the update that shows the new list has been applied.
+            .onChange(of: state) { applyPendingSelection() }
     }
 
     @ViewBuilder private var content: some View {
@@ -128,9 +130,16 @@ struct PatientListView: View {
                 patients = try await repository.recent()
             }
             if Task.isCancelled { return }
-            if query == nil { await cache.saveRecent(patients) }
             offline = false
+            let unchanged = state == .loaded(patients)
             state = .loaded(patients)
+            // The same list again: no change will apply the selection, so apply it now.
+            if unchanged { applyPendingSelection() }
+            if query == nil {
+                // Saved for offline use in the background; the list never waits for it.
+                let cache = self.cache
+                Task { await cache.saveRecent(patients) }
+            }
         } catch {
             if Task.isCancelled { return }
             if error.status == 0, query == nil, let saved = await cache.recent() {
@@ -140,13 +149,16 @@ struct PatientListView: View {
                 state = .failed(error.viewState)
             }
         }
-        // Select only after the list holds the patient's row. On iPhone the list's
-        // selection drives the pushed profile: selecting first and then adding the
-        // row pushed the profile a second time, and that copy never loaded.
-        if let pending = pendingSelection {
-            pendingSelection = nil
-            selection = pending
-        }
+    }
+
+    /// Selects a newly created patient only once the list on screen holds its row. On
+    /// iPhone the list's selection drives the pushed profile: selecting while the row was
+    /// being added pushed the profile a second time, and that copy never loaded. So the
+    /// selection waits for the update that shows the row, not the one that adds it.
+    private func applyPendingSelection() {
+        guard case .loaded = state, let pending = pendingSelection else { return }
+        pendingSelection = nil
+        selection = pending
     }
 }
 

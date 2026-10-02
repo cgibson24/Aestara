@@ -176,8 +176,11 @@ public final class PhotographyContext {
     private static let photosPrefix = "photos."
     private static let protocolsRecord = "protocols.json"
 
+    /// Offline copies are written off the main thread; no screen waits for them.
     func savePhotos(_ photos: [PhotoItem], patientId: String) {
-        try? store.writeJSON(photos, as: "\(Self.photosPrefix)\(Self.safe(patientId)).json")
+        let store = self.store
+        let name = "\(Self.photosPrefix)\(Self.safe(patientId)).json"
+        Task.detached(priority: .utility) { try? store.writeJSON(photos, as: name) }
     }
 
     func cachedPhotos(patientId: String) -> [PhotoItem] {
@@ -185,7 +188,9 @@ public final class PhotographyContext {
     }
 
     func saveProtocols(_ protocols: [PhotoProtocol]) {
-        try? store.writeJSON(protocols, as: Self.protocolsRecord)
+        let store = self.store
+        let name = Self.protocolsRecord
+        Task.detached(priority: .utility) { try? store.writeJSON(protocols, as: name) }
     }
 
     func cachedProtocols() -> [PhotoProtocol] {
