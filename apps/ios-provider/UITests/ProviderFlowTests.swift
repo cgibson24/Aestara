@@ -207,7 +207,8 @@ final class ProviderFlowTests: XCTestCase {
         let website = app.buttons["permissions.category.WEBSITE"]
         XCTAssertTrue(website.waitForExistence(timeout: 15), "The permission list did not load. Screen: \(screen(app))")
         snapshot(app, "13 Media permissions")
-        audit(app, screen: "permissions", inSheet: true)
+        audit(app, screen: "permissions",
+              sheet: [app.navigationBars["Media permissions"], app.collectionViews["permissions.list"]])
         website.tap()
         let save = app.buttons["permission.save"]
         XCTAssertTrue(save.waitForExistence(timeout: 10), "The change sheet did not open. Screen: \(screen(app))")
@@ -239,29 +240,40 @@ final class ProviderFlowTests: XCTestCase {
 
     /// The XCUITest accessibility audit (ADR-0023 K2-21). Each finding fails the test
     /// with the screen, the element (identifier, label and frame) and the audit's
-    /// explanation, and the flow continues so one run reports them all. The checks that
-    /// change the text size run last, so their re-layout cannot disturb the pixel checks
-    /// (contrast among them). Left out:
+    /// explanation, and keeps a picture of the element; the flow continues so one run
+    /// reports them all. The checks that change the text size run last, so their
+    /// re-layout cannot disturb the pixel checks (contrast among them). Left out:
     /// - the synthetic camera's caption, Debug-only scaffolding;
     /// - the clipping, contrast or hit area of an element partly past the visible area,
-    ///   which the audit judges by its visible part only: scrolled past the screen's edge
-    ///   (the capture screen's view strip, the profile's tab strip; DESIGN_SYSTEM.md §4)
-    ///   or under the tab bar at the bottom, which shows it through the bar's edge effect;
+    ///   which the audit judges by its visible part only: scrolled past the screen's or
+    ///   the sheet's edge (the capture screen's view strip, the profile's tab strip, a
+    ///   sheet's list; DESIGN_SYSTEM.md §4) or under the tab bar at the bottom, which
+    ///   shows it through the bar's edge effect;
     /// - Dynamic Type on the system bars' own buttons and titles, which the system draws
     ///   at a fixed size and enlarges with the Large Content Viewer instead. The app draws
     ///   no UIKit labels, so a UIKit label the audit cannot resolve is one of those titles;
+    /// - clipping in the system search field, a single-line field the system draws, whose
+    ///   text scrolls;
     /// - in a sheet, findings without an element: the screen dimmed behind the sheet, which
     ///   the system hides from assistive technologies while the sheet is up.
-    private func audit(_ app: XCUIApplication, screen name: String, inSheet: Bool = false) {
+    /// `sheet` names the parts of a presented sheet (its bar and its content), whose union
+    /// is then the visible area.
+    private func audit(_ app: XCUIApplication, screen name: String, sheet: [XCUIElement] = []) {
         let previous = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = previous }
         let window = app.windows.firstMatch.frame
         let tabBar = app.tabBars.firstMatch
-        let bottomBar = tabBar.exists && tabBar.isHittable && tabBar.frame.minY > window.midY ? tabBar : nil
-        let visible = bottomBar.map {
-            CGRect(x: window.minX, y: window.minY, width: window.width, height: $0.frame.minY - window.minY)
-        } ?? window
+        let bottomBar = sheet.isEmpty && tabBar.exists && tabBar.isHittable && tabBar.frame.minY > window.midY ? tabBar : nil
+        // Every part of the sheet must be found, or the visible area would be too small.
+        let sheetFound = sheet.allSatisfy(\.exists)
+        XCTAssertTrue(sheetFound, "The \(name) sheet's parts were not all found. Screen: \(screen(app))")
+        let sheetParts = sheetFound ? sheet.map(\.frame) : []
+        let visible = sheetParts.isEmpty
+            ? bottomBar.map {
+                CGRect(x: window.minX, y: window.minY, width: window.width, height: $0.frame.minY - window.minY)
+            } ?? window
+            : sheetParts.dropFirst().reduce(sheetParts[0]) { $0.union($1) }
         let barItems = bottomBar?.buttons.allElementsBoundByIndex.map(\.frame) ?? []
         let navigationBars = app.navigationBars.allElementsBoundByIndex.map(\.frame)
         let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
@@ -271,7 +283,7 @@ final class ProviderFlowTests: XCTestCase {
             do {
                 try app.performAccessibilityAudit(for: types) { issue in
                     guard let element = issue.element else {
-                        if inSheet { return true }
+                        if !sheet.isEmpty { return true }
                         if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") { return true }
                         findings.items.append("\(issue.compactDescription): \(issue.detailedDescription) (no element)")
                         return true
@@ -281,15 +293,25 @@ final class ProviderFlowTests: XCTestCase {
                     if edgeTypes.contains(issue.auditType), !visible.contains(frame), !barItems.contains(frame) { return true }
                     if issue.auditType == .dynamicType, element.elementType == .button,
                        navigationBars.contains(where: { $0.contains(frame) }) { return true }
+                    if issue.auditType == .textClipped, element.elementType == .searchField { return true }
                     let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
                     let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
                     findings.items.append("\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
                         + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)")
+                    if !frame.isEmpty, window.contains(frame) {
+                        findings.pictures.append(element.screenshot())
+                    }
                     return true
                 }
             } catch {
                 XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
             }
+        }
+        for (index, picture) in findings.pictures.enumerated() {
+            let attachment = XCTAttachment(screenshot: picture)
+            attachment.name = "Audit \(name) \(index + 1)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
         }
         for finding in findings.items {
             XCTFail("Accessibility audit, \(name) screen: \(finding)")
@@ -369,4 +391,6 @@ enum TOTP {
 @MainActor
 private final class AuditFindings {
     var items: [String] = []
+    /// A picture of each finding's element, in order.
+    var pictures: [XCUIScreenshot] = []
 }

@@ -38,6 +38,7 @@ struct MediaPermissionsView: View {
                         .accessibilityIdentifier("permissions.history")
                     }
                 }
+                .accessibilityIdentifier("permissions.list")
             }
         }
         .navigationTitle("Media permissions")

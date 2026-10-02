@@ -719,9 +719,13 @@ jobs:
           ls "$out"
           for f in "$out"/*.png; do
             [ -e "$f" ] || continue
-            sips -Z 720 -s format jpeg -s formatOptions 45 "$f" --out "$RUNNER_TEMP/small.jpg" > /dev/null
+            case "$(basename "$f")" in
+              # An audit finding's element, small already: kept at full resolution.
+              *" - Audit "*) cp "$f" "$RUNNER_TEMP/small.img" ;;
+              *) sips -Z 720 -s format jpeg -s formatOptions 45 "$f" --out "$RUNNER_TEMP/small.img" > /dev/null ;;
+            esac
             echo "BEGIN-SCREENSHOT $(basename "$f" .png)"
-            base64 -i "$RUNNER_TEMP/small.jpg" | fold -w 4000
+            base64 -i "$RUNNER_TEMP/small.img" | fold -w 4000
             echo "END-SCREENSHOT"
           done
 
