@@ -411,7 +411,9 @@ jobs:
   ios:
     name: iOS · Tuist generate · build · test · UI tests
     runs-on: macos-26
-    timeout-minutes: 75
+    # Seven module test runs (each builds its own dependencies), then a full photo
+    # session on two devices.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -455,8 +457,6 @@ jobs:
           -skipPackagePluginValidation -skipMacroValidation
           CODE_SIGNING_ALLOWED=NO -quiet
 
-      # Each module's tests on an iPhone simulator, with a minimum count per
-      # module: a green step alone does not show the tests executed.
       # A simulator's first boot migrates data for minutes. The UI tests' iPad boots now,
       # while the module tests run on an iPhone, instead of beside the whole test stack.
       - name: Boot the iPad simulator for the UI tests
@@ -469,6 +469,8 @@ jobs:
           echo "iPad: $ipad"
           xcrun simctl boot "$ipad"
 
+      # Each module's tests on an iPhone simulator, with a minimum count per
+      # module: a green step alone does not show the tests executed.
       - name: Test the Layer 0–2 modules on an iPhone simulator
         working-directory: apps/ios-provider/Modules
         run: |
