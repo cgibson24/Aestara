@@ -7,7 +7,6 @@
 import Authentication
 import CoreNetworking
 import DesignSystem
-import Observation
 import PatientDomain
 import Photography
 import SwiftUI
@@ -22,7 +21,14 @@ struct PatientsSplitView: View {
     @State private var creating = false
     @State private var reload = 0
     /// The selected patient's profile, shared by every copy of its screen.
-    @State private var selected = SelectedProfile()
+    @State private var profiles: ProfileModels
+
+    init(repository: PatientRepository, session: SessionSummary?, photography: PhotographyContext) {
+        self.repository = repository
+        self.session = session
+        self.photography = photography
+        _profiles = State(initialValue: ProfileModels(repository: repository, photography: photography))
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -39,21 +45,19 @@ struct PatientsSplitView: View {
                 }
         } detail: {
             if let selection {
-                ProfileDetail(selected: selected, patientId: selection, photography: photography)
+                PatientProfileView(model: profiles.model(for: selection), photography: photography)
+                    .id(selection)
             } else {
                 DSStateView(.empty(title: "No patient selected", message: "Search for a patient or choose one from the list."))
             }
         }
-        // One load per selected patient, started as soon as it is selected.
+        // One load per selection, started as soon as the patient is selected.
         .onChange(of: selection, initial: true) { _, id in
-            guard let id else {
-                selected.model = nil
-                return
+            if let id {
+                profiles.select(id)
+            } else {
+                profiles.clear()
             }
-            guard selected.model?.patientId != id else { return }
-            let model = PatientProfileModel(patientId: id, repository: repository, photography: photography)
-            selected.model = model
-            Task { await model.load() }
         }
         .sheet(isPresented: $creating) {
             CreatePatientView(repository: repository) { patientId in
@@ -69,29 +73,41 @@ struct PatientsSplitView: View {
     }
 }
 
-/// The selected patient's profile model, one object for the split view's lifetime. On
-/// iPhone the list's selection pushes the profile screen, sometimes twice, and a pushed
-/// copy keeps the values it was pushed with: it reads the model from here, so it shows
-/// the profile as soon as the model arrives, whichever copy is on screen.
+/// The selected patient's profile model, shared by every copy of its screen. On iPhone
+/// the list's selection pushes the profile screen, sometimes twice, and a pushed copy
+/// keeps the values it was pushed with. So each copy takes its patient's model when it
+/// is built, never waiting for one to arrive: the selection's own model, or a new one
+/// that its screen then loads. A new selection always starts a new model, so every
+/// opening of a profile is loaded, and audited, by the server. Not observed: a lookup
+/// while a view is built changes nothing on screen.
 @MainActor
-@Observable
-final class SelectedProfile {
-    var model: PatientProfileModel?
-}
+final class ProfileModels {
+    private var current: PatientProfileModel?
+    private let repository: PatientRepository
+    private let photography: PhotographyContext
 
-/// The profile screen of one patient, or its loading state until that patient's model exists.
-struct ProfileDetail: View {
-    let selected: SelectedProfile
-    let patientId: PatientSummary.ID
-    let photography: PhotographyContext
+    init(repository: PatientRepository, photography: PhotographyContext) {
+        self.repository = repository
+        self.photography = photography
+    }
 
-    var body: some View {
-        if let model = selected.model, model.patientId == patientId {
-            PatientProfileView(model: model, photography: photography)
-                .id(patientId)
-        } else {
-            DSStateView(.loading("Opening patient"))
-        }
+    /// The model for a patient: the current one if it is theirs, otherwise a new one.
+    func model(for patientId: PatientSummary.ID) -> PatientProfileModel {
+        if let current, current.patientId == patientId { return current }
+        let model = PatientProfileModel(patientId: patientId, repository: repository, photography: photography)
+        current = model
+        return model
+    }
+
+    /// A patient was selected: their model starts loading at once.
+    func select(_ patientId: PatientSummary.ID) {
+        let model = model(for: patientId)
+        Task { await model.loadIfNeeded() }
+    }
+
+    /// Nothing is selected: the next selection starts afresh.
+    func clear() {
+        current = nil
     }
 }
 

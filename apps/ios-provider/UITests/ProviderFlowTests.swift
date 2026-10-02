@@ -247,8 +247,8 @@ final class ProviderFlowTests: XCTestCase {
     /// The XCUITest accessibility audit (ADR-0023 K2-21). Each finding fails the test
     /// with the screen, the element (identifier, label and frame) and the audit's
     /// explanation, and keeps a picture of the element; the flow continues so one run
-    /// reports them all. The checks that change the text size run last, so their
-    /// re-layout cannot disturb the pixel checks (contrast among them). Left out:
+    /// reports them all. One audit a screen: running the checks in two passes left the
+    /// iPad app unresponsive in two runs out of seven. Left out:
     /// - the synthetic camera's caption, Debug-only scaffolding;
     /// - the clipping, contrast or hit area of an element partly past the visible area,
     ///   which the audit judges by its visible part only: scrolled past the screen's or
@@ -287,40 +287,37 @@ final class ProviderFlowTests: XCTestCase {
         let barItems = bottomBar?.buttons.allElementsBoundByIndex.map(\.frame) ?? []
         let navigationBars = app.navigationBars.allElementsBoundByIndex.map(\.frame)
         let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
-        let sizeTypes: XCUIAccessibilityAuditType = [.dynamicType, .textClipped]
         let findings = AuditFindings()
-        for types in [XCUIAccessibilityAuditType.all.subtracting(sizeTypes), sizeTypes] {
-            do {
-                try app.performAccessibilityAudit(for: types) { issue in
-                    guard let element = issue.element else {
-                        if !sheet.isEmpty { return true }
-                        if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") { return true }
-                        findings.items.append("\(issue.compactDescription): \(issue.detailedDescription) (no element)")
-                        return true
-                    }
-                    if element.label == "Synthetic camera" { return true }
-                    let frame = element.frame
-                    if edgeTypes.contains(issue.auditType), !visible.contains(frame), !barItems.contains(frame) { return true }
-                    if issue.auditType == .dynamicType, element.elementType == .button,
-                       navigationBars.contains(where: { $0.contains(frame) }) { return true }
-                    if issue.auditType == .textClipped, element.elementType == .searchField { return true }
-                    let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
-                    let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
-                    let finding = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
-                        + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)"
-                    let picture = !frame.isEmpty && window.contains(frame) ? element.screenshot() : nil
-                    // Measured once the audit has finished, outside its time limit.
-                    if issue.auditType == .contrast, let picture {
-                        findings.contrast.append((finding: finding, picture: picture))
-                        return true
-                    }
-                    findings.items.append(finding)
-                    if let picture { findings.pictures.append(picture) }
+        do {
+            try app.performAccessibilityAudit { issue in
+                guard let element = issue.element else {
+                    if !sheet.isEmpty { return true }
+                    if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") { return true }
+                    findings.items.append("\(issue.compactDescription): \(issue.detailedDescription) (no element)")
                     return true
                 }
-            } catch {
-                XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
+                if element.label == "Synthetic camera" { return true }
+                let frame = element.frame
+                if edgeTypes.contains(issue.auditType), !visible.contains(frame), !barItems.contains(frame) { return true }
+                if issue.auditType == .dynamicType, element.elementType == .button,
+                   navigationBars.contains(where: { $0.contains(frame) }) { return true }
+                if issue.auditType == .textClipped, element.elementType == .searchField { return true }
+                let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
+                let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
+                let finding = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
+                    + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)"
+                let picture = !frame.isEmpty && window.contains(frame) ? element.screenshot() : nil
+                // Measured once the audit has finished, outside its time limit.
+                if issue.auditType == .contrast, let picture {
+                    findings.contrast.append((finding: finding, picture: picture))
+                    return true
+                }
+                findings.items.append(finding)
+                if let picture { findings.pictures.append(picture) }
+                return true
             }
+        } catch {
+            XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
         }
         for (finding, picture) in findings.contrast {
             guard let ratio = Contrast.measured(picture.image) else {
