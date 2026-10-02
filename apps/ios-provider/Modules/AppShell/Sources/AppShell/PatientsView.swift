@@ -7,6 +7,7 @@
 import Authentication
 import CoreNetworking
 import DesignSystem
+import Observation
 import PatientDomain
 import Photography
 import SwiftUI
@@ -21,7 +22,7 @@ struct PatientsSplitView: View {
     @State private var creating = false
     @State private var reload = 0
     /// The selected patient's profile, shared by every copy of its screen.
-    @State private var profile: PatientProfileModel?
+    @State private var selected = SelectedProfile()
 
     var body: some View {
         NavigationSplitView {
@@ -38,12 +39,7 @@ struct PatientsSplitView: View {
                 }
         } detail: {
             if let selection {
-                if let profile, profile.patientId == selection {
-                    PatientProfileView(model: profile, photography: photography)
-                        .id(selection)
-                } else {
-                    DSStateView(.loading("Opening patient"))
-                }
+                ProfileDetail(selected: selected, patientId: selection, photography: photography)
             } else {
                 DSStateView(.empty(title: "No patient selected", message: "Search for a patient or choose one from the list."))
             }
@@ -51,12 +47,12 @@ struct PatientsSplitView: View {
         // One load per selected patient, started as soon as it is selected.
         .onChange(of: selection, initial: true) { _, id in
             guard let id else {
-                profile = nil
+                selected.model = nil
                 return
             }
-            guard profile?.patientId != id else { return }
+            guard selected.model?.patientId != id else { return }
             let model = PatientProfileModel(patientId: id, repository: repository, photography: photography)
-            profile = model
+            selected.model = model
             Task { await model.load() }
         }
         .sheet(isPresented: $creating) {
@@ -69,6 +65,32 @@ struct PatientsSplitView: View {
                 pendingSelection = patientId
                 reload += 1
             }
+        }
+    }
+}
+
+/// The selected patient's profile model, one object for the split view's lifetime. On
+/// iPhone the list's selection pushes the profile screen, sometimes twice, and a pushed
+/// copy keeps the values it was pushed with: it reads the model from here, so it shows
+/// the profile as soon as the model arrives, whichever copy is on screen.
+@MainActor
+@Observable
+final class SelectedProfile {
+    var model: PatientProfileModel?
+}
+
+/// The profile screen of one patient, or its loading state until that patient's model exists.
+struct ProfileDetail: View {
+    let selected: SelectedProfile
+    let patientId: PatientSummary.ID
+    let photography: PhotographyContext
+
+    var body: some View {
+        if let model = selected.model, model.patientId == patientId {
+            PatientProfileView(model: model, photography: photography)
+                .id(patientId)
+        } else {
+            DSStateView(.loading("Opening patient"))
         }
     }
 }
