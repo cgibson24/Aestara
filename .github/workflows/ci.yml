@@ -541,18 +541,17 @@ jobs:
       - name: Generate the provider Xcode project (Tuist)
         run: (cd apps/ios-provider && tuist generate --no-open)
 
-      # Built once, for the simulator's architecture, while the simulators boot; each
-      # device's test run then only links what is already built.
+      # Built once while the simulators boot; each device's test run then only links what
+      # is already built. For the generic simulator: a device still in its first boot is
+      # not yet a destination xcodebuild can name.
       - name: Build the provider app and its UI tests
-        run: |
-          iphone=$(xcrun simctl list devices available --json | python3 -c '
-          import json, sys
-          devices = json.load(sys.stdin)["devices"]
-          runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
-          print(next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith("iPhone")))')
-          xcodebuild build-for-testing -workspace apps/ios-provider/AestaraProvider.xcworkspace \
-            -scheme AestaraProviderTests -destination "id=$iphone" \
-            -derivedDataPath "$RUNNER_TEMP/dd" -skipPackagePluginValidation -skipMacroValidation -quiet
+        run: >-
+          xcodebuild build-for-testing
+          -workspace apps/ios-provider/AestaraProvider.xcworkspace
+          -scheme AestaraProviderTests
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/dd"
+          -skipPackagePluginValidation -skipMacroValidation -quiet
 
       # Bible §32 #9, #12, #13: the provider app against the real api on this
       # runner: sign-in with a wrong password then TOTP, create a patient with the
