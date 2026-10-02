@@ -412,6 +412,7 @@ Layer 2 (photography core) was built in micro-prompts M2.1 to M2.10 on the branc
 - The admin portal's "Saved." notice disappeared in the reload that a save causes; it now sits above the per-version form.
 - The accessibility audit found: profile tabs whose tap area was only their label; capture guidance that large text would cut off; gallery actions whose labels wrapped in half-width buttons; and a search prompt too long for its field. Each is fixed.
 - A completed session's Complete button could be pressed again while its screen closed, and a reviewed photo's Accept while the photo was being saved; both now wait.
+- The api's end-to-end photo test checked a job message for patient data with a pattern that also matched digits in random identifiers; it now looks for the fixture patient's exact values.
 - CI: the UI tests run in their own job, beside the module tests, once both simulators have finished their first boot (data migration included), and with one simulator running at a time: two beside the whole stack slowed the iPhone's run threefold, which dropped taps and timed out audits.
 
 **Security considerations.**

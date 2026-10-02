@@ -351,7 +351,8 @@ describe.runIf(databaseAvailable())("photography (Layer 2)", () => {
       const jobs = await settle();
       expect(jobs).toHaveLength(5);
       for (const job of jobs) {
-        expect(JSON.stringify(job)).not.toMatch(/Synthetic|Ana|1988/);
+        // The fixture patient's exact values: a bare "1988" also occurs by chance in the job's hex identifiers.
+        expect(JSON.stringify(job)).not.toMatch(/Synthetic|"Ana"|1988-04-12/);
         await process(job);
       }
 
