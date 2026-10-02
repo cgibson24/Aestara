@@ -226,7 +226,7 @@ A coverage check lists every `AuditAction` value whose layer exists and fails if
 | 44 pt targets, Reduce Motion | UI and snapshot tests on critical screens |
 | Admin web semantics | Biome's recommended rules, which include its accessibility group, run repo-wide (`pnpm lint`); Playwright checks labels on critical flows |
 
-The `ios` CI job generates both Tuist projects, builds both apps for the simulator and runs the module tests on an iPhone simulator (Xcode 26.6): DesignSystem, CoreNetworking, PatientDomain, CoreSecurity, AuditSupport, Media and Photography, each with a minimum test count. The UI tests run against the real api, worker, image-processing and AWS emulator, and include a standard Face photo session end to end on the Debug-only synthetic camera. Each layer adds its module tests to the job.
+The `ios` CI job generates both Tuist projects, builds both apps for the simulator and runs the module tests on an iPhone simulator (Xcode 26.6): DesignSystem, CoreNetworking, PatientDomain, CoreSecurity, AuditSupport, Media and Photography, each with a minimum test count. The UI tests run against the real api, worker, image-processing and AWS emulator, and include a standard Face photo session end to end on the Debug-only synthetic camera. They keep a screenshot of each screen they pass through, which the job publishes as the `ios-ui-screenshots` artifact for review. Each layer adds its module tests to the job.
 
 ## 11. Offline and sync tests
 

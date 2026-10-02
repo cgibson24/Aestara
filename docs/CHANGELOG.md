@@ -13,6 +13,7 @@ All material changes to the architecture, contracts and repository. Newest first
 - **Shell:** the Photos tab of the patient profile, sync after sign-in, on returning to the foreground and on reconnect, the offline copies of the recent patients and opened profiles, and the camera usage description.
 - **Tests:** module tests for CoreSecurity, AuditSupport, Media, PatientDomain and Photography in CI. The UI test runs a standard Face session end to end with accessibility audits. The snapshot tests of K2-21 wait for reference images recorded on a Mac (Layer 2 acceptance review).
 - **Admin portal:** the offline-policy "Saved." notice now survives the reload a save causes.
+- **Screenshots:** the iOS UI test keeps a screenshot of each screen on iPhone and iPad, and CI publishes them as the `ios-ui-screenshots` artifact.
 
 ## 2026-10-01: Layer 2 backend and image-processing (ADR-0024)
 

@@ -629,3 +629,47 @@ jobs:
           name: ios-ui-test-results
           path: ${{ runner.temp }}/ui-*.xcresult
           retention-days: 7
+
+      # The screens the UI test photographs (synthetic data only), for the owner's review,
+      # on success too: full-size PNGs as an artifact, and small JPEGs in the log, which
+      # can be read where the artifact store cannot be reached.
+      - name: Export the UI screenshots
+        if: always()
+        # A review aid, not a check: the tests' own steps decide the job.
+        continue-on-error: true
+        run: |
+          out="$RUNNER_TEMP/ui-screenshots"
+          mkdir -p "$out"
+          for device in iphone ipad; do
+            bundle="$RUNNER_TEMP/ui-$device.xcresult"
+            [ -d "$bundle" ] || continue
+            xcrun xcresulttool export attachments --path "$bundle" --output-path "$RUNNER_TEMP/raw-$device"
+            python3 - "$RUNNER_TEMP/raw-$device" "$out" "$device" <<'PY'
+          import json, os, re, subprocess, sys
+          raw, out, device = sys.argv[1:4]
+          for test in json.load(open(os.path.join(raw, "manifest.json"))):
+              for a in test.get("attachments", []):
+                  name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
+                  label = re.sub(r"_\d+_[0-9A-Fa-f-]+(\.\w+)?$", "", os.path.splitext(name)[0])
+                  target = os.path.join(out, f"{device} - {label}.png")
+                  subprocess.run(["sips", "-s", "format", "png", os.path.join(raw, a["exportedFileName"]),
+                                  "--out", target], check=True, stdout=subprocess.DEVNULL)
+          PY
+          done
+          ls "$out"
+          for f in "$out"/*.png; do
+            [ -e "$f" ] || continue
+            sips -Z 720 -s format jpeg -s formatOptions 45 "$f" --out "$RUNNER_TEMP/small.jpg" > /dev/null
+            echo "BEGIN-SCREENSHOT $(basename "$f" .png)"
+            base64 -i "$RUNNER_TEMP/small.jpg" | fold -w 4000
+            echo "END-SCREENSHOT"
+          done
+
+      - name: Keep the UI screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-ui-screenshots
+          path: ${{ runner.temp }}/ui-screenshots/*.png
+          retention-days: 14
+          if-no-files-found: warn

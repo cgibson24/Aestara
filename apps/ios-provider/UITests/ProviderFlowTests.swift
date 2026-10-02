@@ -25,6 +25,7 @@ final class ProviderFlowTests: XCTestCase {
         // Login UI: a wrong password shows the server's message.
         let emailField = app.textFields["signin.email"]
         XCTAssertTrue(emailField.waitForExistence(timeout: 60), "The sign-in screen did not appear. Screen: \(screen(app))")
+        snapshot(app, "01 Sign in")
         emailField.tap()
         emailField.typeText(email)
         let passwordField = app.secureTextFields["signin.password"]
@@ -51,6 +52,7 @@ final class ProviderFlowTests: XCTestCase {
         // Signed in: create a patient (duplicate check first).
         let newPatient = app.buttons["patients.new"]
         XCTAssertTrue(newPatient.waitForExistence(timeout: 20), "The patient list did not appear. Screen: \(screen(app))")
+        snapshot(app, "02 Patients")
         newPatient.tap()
         // Each run (each device) gets its own synthetic person, so the duplicate check, which
         // matches the same date of birth with a similar name, never links two test runs.
@@ -71,12 +73,14 @@ final class ProviderFlowTests: XCTestCase {
         year.adjust(toPickerWheelValue: birthYear)
         let create = app.buttons["patient.create"]
         XCTAssertTrue(waitUntil(timeout: 5) { create.isEnabled }, "Create stayed disabled. Screen: \(screen(app))")
+        snapshot(app, "03 New patient")
         create.tap()
 
         // The profile shell opens with all twelve tabs.
         let photos = app.buttons["profile.tab.PHOTOS"]
         XCTAssertTrue(photos.waitForExistence(timeout: 30),
                       "The new patient's profile did not open. Hierarchy: \(app.debugDescription.prefix(8_000))")
+        snapshot(app, "04 Patient profile")
         XCTAssertTrue(element(in: app, containing: lastName).exists, "The profile header does not name the patient. Screen: \(screen(app))")
         for tab in ["OVERVIEW", "TIMELINE", "CONSULTATIONS", "PHOTOS", "BEFORE_AFTER", "SIMULATIONS",
                     "TREATMENT_PLANS", "PROCEDURES", "DOCUMENTS", "INSTRUCTIONS", "APPOINTMENTS", "MESSAGES"] {
@@ -95,6 +99,7 @@ final class ProviderFlowTests: XCTestCase {
         XCTAssertTrue(onScreen(photos), "The Photos tab cannot be reached. Screen: \(screen(app))")
         photos.tap()
         XCTAssertTrue(element(in: app, containing: "no clinical photos").waitForExistence(timeout: 10), "Photos empty state. Screen: \(screen(app))")
+        snapshot(app, "05 Photos tab, empty")
 
         try photoSession(app)
 
@@ -122,11 +127,13 @@ final class ProviderFlowTests: XCTestCase {
         start.tap()
         let face = app.buttons["session.protocol.Face"]
         XCTAssertTrue(face.waitForExistence(timeout: 15), "The Face protocol is not offered. Screen: \(screen(app))")
+        snapshot(app, "06 Choose a protocol")
         face.tap()
 
         let remaining = app.staticTexts["session.remaining"]
         XCTAssertTrue(remaining.waitForExistence(timeout: 15), "The session did not open. Screen: \(screen(app))")
         XCTAssertEqual(remaining.label, "5 required views left")
+        snapshot(app, "07 Photo session")
         app.buttons["session.captureNext"].tap()
 
         // Guided capture: one instruction at a time; the shutter never blocks on it.
@@ -142,6 +149,7 @@ final class ProviderFlowTests: XCTestCase {
             XCTAssertTrue(waitUntil(timeout: 20) { guidance.exists && guidance.label.contains("Hold still") },
                           "Guidance never settled for \(view). Screen: \(screen(app))")
             if !audited {
+                snapshot(app, "08 Guided capture")
                 audit(app, screen: "capture")
                 audited = true
             }
@@ -149,6 +157,7 @@ final class ProviderFlowTests: XCTestCase {
             shutter.tap()
             let accept = app.buttons["capture.accept"]
             XCTAssertTrue(accept.waitForExistence(timeout: 20), "No review after capture. Screen: \(screen(app))")
+            if view == "FRONT" { snapshot(app, "09 Review") }
             XCTAssertTrue(element(in: app, containing: "Camera level").exists, "The review lists no checks. Screen: \(screen(app))")
             accept.tap()
         }
@@ -156,6 +165,7 @@ final class ProviderFlowTests: XCTestCase {
         // Every required view is in; complete once the photos have reached the server.
         XCTAssertTrue(waitUntil(timeout: 20) { remaining.exists && remaining.label == "Every required view is captured" },
                       "The session does not count the photos. Screen: \(screen(app))")
+        snapshot(app, "10 Every view captured")
         let complete = app.buttons["session.complete"]
         XCTAssertTrue(waitUntil(timeout: 120) {
             if !complete.exists { return true }
@@ -171,6 +181,7 @@ final class ProviderFlowTests: XCTestCase {
             let label = tile.label
             return !label.contains("Being checked") && !label.contains("Preparing preview") && !label.contains("could not be checked")
         }, "The thumbnail never arrived: \(tile.label). Screen: \(screen(app))")
+        snapshot(app, "11 Gallery")
         audit(app, screen: "gallery")
 
         // One photo: its preview and a tag.
@@ -181,6 +192,7 @@ final class ProviderFlowTests: XCTestCase {
         tagField.typeText("Baseline")
         app.buttons["photo.addTag"].tap()
         XCTAssertTrue(app.staticTexts["baseline"].waitForExistence(timeout: 15), "The tag was not saved. Screen: \(screen(app))")
+        snapshot(app, "12 Photo with a tag")
         app.navigationBars.buttons["Close"].tap()
 
         // Media permissions: requested, then granted by staff attestation.
@@ -189,6 +201,7 @@ final class ProviderFlowTests: XCTestCase {
         permissions.tap()
         let website = app.buttons["permissions.category.WEBSITE"]
         XCTAssertTrue(website.waitForExistence(timeout: 15), "The permission list did not load. Screen: \(screen(app))")
+        snapshot(app, "13 Media permissions")
         audit(app, screen: "permissions")
         website.tap()
         let save = app.buttons["permission.save"]
@@ -202,11 +215,21 @@ final class ProviderFlowTests: XCTestCase {
         app.buttons["permission.change"].tap()
         let granted = app.buttons["Granted"]
         XCTAssertTrue(granted.waitForExistence(timeout: 5), "Granted is not offered after a request. Screen: \(screen(app))")
+        snapshot(app, "14 Record a grant")
         granted.tap()
         save.tap()
         XCTAssertTrue(waitUntil(timeout: 15) { website.exists && website.label.contains("Granted") },
                       "The grant was not recorded. Screen: \(screen(app))")
         app.navigationBars.buttons["Close"].tap()
+    }
+
+    /// A screenshot kept with the results even when the test passes; CI exports them
+    /// for review. The data on screen is synthetic.
+    private func snapshot(_ app: XCUIApplication, _ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     /// The XCUITest accessibility audit (ADR-0023 K2-21). Findings are recorded without
