@@ -306,16 +306,13 @@ final class ProviderFlowTests: XCTestCase {
                     if issue.auditType == .textClipped, element.elementType == .searchField { return true }
                     let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
                     let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
-                    var finding = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
+                    let finding = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
                         + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)"
                     let picture = !frame.isEmpty && window.contains(frame) ? element.screenshot() : nil
-                    if issue.auditType == .contrast, let picture, let ratio = Contrast.measured(picture.image) {
-                        let measured = "Measured \(ratio.formatted(.number.precision(.fractionLength(1)))):1."
-                        guard ratio < Contrast.minimum else {
-                            findings.unconfirmed.append("\(finding) \(measured)")
-                            return true
-                        }
-                        finding += " \(measured)"
+                    // Measured once the audit has finished, outside its time limit.
+                    if issue.auditType == .contrast, let picture {
+                        findings.contrast.append((finding: finding, picture: picture))
+                        return true
                     }
                     findings.items.append(finding)
                     if let picture { findings.pictures.append(picture) }
@@ -323,6 +320,20 @@ final class ProviderFlowTests: XCTestCase {
                 }
             } catch {
                 XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
+            }
+        }
+        for (finding, picture) in findings.contrast {
+            guard let ratio = Contrast.measured(picture.image) else {
+                findings.items.append("\(finding) Not measurable.")
+                findings.pictures.append(picture)
+                continue
+            }
+            let measured = "\(finding) Measured \(ratio.formatted(.number.precision(.fractionLength(1)))):1."
+            if ratio < Contrast.minimum {
+                findings.items.append(measured)
+                findings.pictures.append(picture)
+            } else {
+                findings.unconfirmed.append(measured)
             }
         }
         for (index, picture) in findings.pictures.enumerated() {
@@ -417,6 +428,8 @@ private final class AuditFindings {
     var items: [String] = []
     /// A picture of each finding's element, in order.
     var pictures: [XCUIScreenshot] = []
+    /// Contrast findings with their element's picture, measured after the audit.
+    var contrast: [(finding: String, picture: XCUIScreenshot)] = []
     /// Contrast findings whose measured ratio meets AA.
     var unconfirmed: [String] = []
 }
@@ -424,12 +437,20 @@ private final class AuditFindings {
 /// WCAG 2 contrast, measured on an element's picture. The background is the most common
 /// colour (grouped into near shades, so a material's grain counts as one); the text is
 /// the 1% of pixels that differ most from it, the cores of the glyphs rather than their
-/// anti-aliased edges. Text covering less than 1% of the picture measures low, so the
-/// measurement can wrongly fail but never wrongly pass.
+/// anti-aliased edges. Ratios are counted in steps of 0.05 and the lower edge of a step
+/// is reported, and text covering less than 1% of the picture measures low, so the
+/// measurement can wrongly fail but never wrongly pass. One pass over the pixels, at
+/// most a quarter of a million of them.
 @MainActor
 private enum Contrast {
     /// WCAG 2 AA for body text.
     static let minimum = 4.5
+
+    /// Each 8-bit sRGB channel value, linearized.
+    static let linear: [Double] = (0..<256).map { value in
+        let c = Double(value) / 255
+        return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+    }
 
     static func measured(_ image: UIImage) -> Double? {
         guard let cgImage = image.cgImage else { return nil }
@@ -445,37 +466,42 @@ private enum Contrast {
             return true
         }
         guard drawn else { return nil }
+        let step = max(1, width * height / 250_000)
+        let sampled = stride(from: 0, to: width * height, by: step).map { $0 * 4 }
         // Near shades share a group (5 bits a channel); a group's colour is its average.
-        var groups: [UInt32: (count: Int, red: Int, green: Int, blue: Int)] = [:]
-        var colours: [UInt32] = []
-        colours.reserveCapacity(width * height)
-        for index in stride(from: 0, to: pixels.count, by: 4) {
-            let (red, green, blue) = (pixels[index], pixels[index + 1], pixels[index + 2])
-            let key = UInt32(red >> 3) << 10 | UInt32(green >> 3) << 5 | UInt32(blue >> 3)
-            let group = groups[key] ?? (count: 0, red: 0, green: 0, blue: 0)
-            groups[key] = (count: group.count + 1, red: group.red + Int(red), green: group.green + Int(green),
-                           blue: group.blue + Int(blue))
-            colours.append(UInt32(red) << 16 | UInt32(green) << 8 | UInt32(blue))
+        var counts = [Int](repeating: 0, count: 1 << 15)
+        var sums = [Int](repeating: 0, count: 3 << 15)
+        for offset in sampled {
+            let (red, green, blue) = (Int(pixels[offset]), Int(pixels[offset + 1]), Int(pixels[offset + 2]))
+            let group = (red >> 3) << 10 | (green >> 3) << 5 | (blue >> 3)
+            counts[group] += 1
+            sums[group * 3] += red
+            sums[group * 3 + 1] += green
+            sums[group * 3 + 2] += blue
         }
-        guard let common = groups.values.max(by: { $0.count < $1.count }) else { return nil }
-        let background = luminance(Double(common.red) / Double(common.count), Double(common.green) / Double(common.count),
-                                   Double(common.blue) / Double(common.count))
-        let ratios = colours.map { rgb in
-            ratio(background, luminance(Double(rgb >> 16 & 0xFF), Double(rgb >> 8 & 0xFF), Double(rgb & 0xFF)))
-        }.sorted(by: >)
-        return ratios[max(0, ratios.count / 100 - 1)]
-    }
-
-    static func ratio(_ first: Double, _ second: Double) -> Double {
-        (max(first, second) + 0.05) / (min(first, second) + 0.05)
-    }
-
-    /// Relative luminance of an sRGB colour with 0–255 channels.
-    static func luminance(_ red: Double, _ green: Double, _ blue: Double) -> Double {
-        func linear(_ value: Double) -> Double {
-            let c = value / 255
-            return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        guard let common = counts.indices.max(by: { counts[$0] < counts[$1] }) else { return nil }
+        let count = Double(counts[common])
+        func averaged(_ channel: Int) -> Double {
+            let value = Double(sums[common * 3 + channel]) / count
+            let low = linear[Int(value.rounded(.down))]
+            let high = linear[min(255, Int(value.rounded(.up)))]
+            return low + (high - low) * (value - value.rounded(.down))
         }
-        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        let background = 0.2126 * averaged(0) + 0.7152 * averaged(1) + 0.0722 * averaged(2)
+        // Ratios from 1:1 to 21:1 in steps of 0.05.
+        var steps = [Int](repeating: 0, count: 401)
+        for offset in sampled {
+            let pixel = 0.2126 * linear[Int(pixels[offset])] + 0.7152 * linear[Int(pixels[offset + 1])]
+                + 0.0722 * linear[Int(pixels[offset + 2])]
+            let ratio = (max(background, pixel) + 0.05) / (min(background, pixel) + 0.05)
+            steps[min(400, Int((ratio - 1) * 20))] += 1
+        }
+        let wanted = max(1, sampled.count / 100)
+        var seen = 0
+        for index in steps.indices.reversed() {
+            seen += steps[index]
+            if seen >= wanted { return 1 + Double(index) / 20 }
+        }
+        return 1
     }
 }
