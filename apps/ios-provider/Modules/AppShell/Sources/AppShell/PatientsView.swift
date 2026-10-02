@@ -19,6 +19,8 @@ struct PatientsSplitView: View {
     /// A patient to open once the reloaded list shows it (see PatientListView.load).
     @State private var pendingSelection: PatientSummary.ID?
     @State private var creating = false
+    /// The patient the sheet created or chose, opened once the sheet has gone.
+    @State private var created: PatientSummary.ID?
     @State private var reload = 0
     /// The selected patient's profile, shared by every copy of its screen.
     @State private var profiles: ProfileModels
@@ -55,15 +57,20 @@ struct PatientsSplitView: View {
         .onChange(of: selection, initial: true) { _, id in
             if let id { profiles.select(id) }
         }
-        .sheet(isPresented: $creating) {
+        // The patient opens only after the sheet has gone: on iPhone, a profile pushed while
+        // the sheet was still closing could stop updating and stay on its loading screen.
+        .sheet(isPresented: $creating, onDismiss: {
+            guard let patientId = created else { return }
+            created = nil
+            pendingSelection = patientId
+            reload += 1
+        }) {
             CreatePatientView(repository: repository) { patientId in
+                created = patientId
                 creating = false
-                pendingSelection = patientId
-                reload += 1
             } openExisting: { patientId in
+                created = patientId
                 creating = false
-                pendingSelection = patientId
-                reload += 1
             }
         }
     }
