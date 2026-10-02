@@ -20,6 +20,8 @@ struct PatientsSplitView: View {
     @State private var pendingSelection: PatientSummary.ID?
     @State private var creating = false
     @State private var reload = 0
+    /// The selected patient's profile, shared by every copy of its screen.
+    @State private var profile: PatientProfileModel?
 
     var body: some View {
         NavigationSplitView {
@@ -36,11 +38,26 @@ struct PatientsSplitView: View {
                 }
         } detail: {
             if let selection {
-                PatientProfileView(repository: repository, photography: photography, patientId: selection)
-                    .id(selection)
+                if let profile, profile.patientId == selection {
+                    PatientProfileView(model: profile, photography: photography)
+                        .id(selection)
+                } else {
+                    DSStateView(.loading("Opening patient"))
+                }
             } else {
                 DSStateView(.empty(title: "No patient selected", message: "Search for a patient or choose one from the list."))
             }
+        }
+        // One load per selected patient, started as soon as it is selected.
+        .onChange(of: selection, initial: true) { _, id in
+            guard let id else {
+                profile = nil
+                return
+            }
+            guard profile?.patientId != id else { return }
+            let model = PatientProfileModel(patientId: id, repository: repository, photography: photography)
+            profile = model
+            Task { await model.load() }
         }
         .sheet(isPresented: $creating) {
             CreatePatientView(repository: repository) { patientId in

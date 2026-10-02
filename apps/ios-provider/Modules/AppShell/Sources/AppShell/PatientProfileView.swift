@@ -6,61 +6,47 @@
 // Bible §4.3 · tier: app · Layers 1–2.
 import CoreNetworking
 import DesignSystem
+import Observation
 import PatientDomain
 import Photography
 import SwiftUI
 
-struct PatientProfileView: View {
-    let repository: PatientRepository
-    let photography: PhotographyContext
-    let patientId: String
-    @State private var state: LoadState = .loading
-    @State private var tab: ProfileTab = .overview
-    @State private var offline = false
-
+/// One patient's profile, loaded once per selection and shared by every copy of its
+/// screen. On iPhone the list's selection drives the pushed profile, and SwiftUI can
+/// briefly hold two copies of it of which only one runs its task; with the state here,
+/// whichever copy is on screen shows the loaded profile.
+@MainActor
+@Observable
+final class PatientProfileModel {
     enum LoadState: Equatable {
         case loading
         case loaded(PatientProfile)
         case failed(DSViewState)
     }
 
-    var body: some View {
-        Group {
-            switch state {
-            case .loading:
-                DSStateView(.loading("Opening patient"))
-            case let .failed(viewState):
-                DSStateView(viewState) { Task { await load() } }
-            case let .loaded(profile):
-                VStack(spacing: 0) {
-                    ProfileHeader(patient: profile.patient)
-                    if offline {
-                        DSBanner("You are offline. This is the copy saved on this device; photos you take upload when you reconnect.", tone: .info)
-                            .padding(.horizontal, DSSpacing.lg)
-                            .padding(.vertical, DSSpacing.sm)
-                    }
-                    TabStrip(selection: $tab)
-                    Divider()
-                    ScrollView {
-                        TabContent(tab: tab, profile: profile, photography: photography)
-                            .padding(DSSpacing.xxl)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .background(DSColor.canvas)
-            }
-        }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+    let patientId: String
+    private(set) var state: LoadState = .loading
+    private(set) var offline = false
+    private let repository: PatientRepository
+    private let photography: PhotographyContext
+    private var inFlight = false
+
+    init(patientId: String, repository: PatientRepository, photography: PhotographyContext) {
+        self.patientId = patientId
+        self.repository = repository
+        self.photography = photography
     }
 
-    private var title: String {
-        if case let .loaded(profile) = state { return profile.patient.displayName }
-        return "Patient"
+    /// Loads unless a load is running or the profile is already here.
+    func loadIfNeeded() async {
+        if case .loaded = state { return }
+        await load()
     }
 
-    private func load() async {
+    func load() async {
+        guard !inFlight else { return }
+        inFlight = true
+        defer { inFlight = false }
         state = .loading
         do throws(APIError) {
             let profile = try await repository.profile(id: patientId)
@@ -81,6 +67,48 @@ struct PatientProfileView: View {
                 ? .error(message: "This patient is not available.", reference: error.requestId)
                 : error.viewState)
         }
+    }
+}
+
+struct PatientProfileView: View {
+    let model: PatientProfileModel
+    let photography: PhotographyContext
+    @State private var tab: ProfileTab = .overview
+
+    var body: some View {
+        Group {
+            switch model.state {
+            case .loading:
+                DSStateView(.loading("Opening patient"))
+            case let .failed(viewState):
+                DSStateView(viewState) { Task { await model.load() } }
+            case let .loaded(profile):
+                VStack(spacing: 0) {
+                    ProfileHeader(patient: profile.patient)
+                    if model.offline {
+                        DSBanner("You are offline. This is the copy saved on this device; photos you take upload when you reconnect.", tone: .info)
+                            .padding(.horizontal, DSSpacing.lg)
+                            .padding(.vertical, DSSpacing.sm)
+                    }
+                    TabStrip(selection: $tab)
+                    Divider()
+                    ScrollView {
+                        TabContent(tab: tab, profile: profile, photography: photography)
+                            .padding(DSSpacing.xxl)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .background(DSColor.canvas)
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await model.loadIfNeeded() }
+    }
+
+    private var title: String {
+        if case let .loaded(profile) = model.state { return profile.patient.displayName }
+        return "Patient"
     }
 }
 
