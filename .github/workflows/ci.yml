@@ -113,6 +113,13 @@ jobs:
           python docs/technical-spec/verification/export_bible.py --check
           python docs/technical-spec/verification/check_docs.py
 
+      # A script that does not parse never runs its commands, and a trap can still end the
+      # step green (run 83): every workflow script must parse as bash.
+      - name: Workflow scripts parse
+        run: |
+          python -m pip install --quiet pyyaml==6.0.2
+          python .github/scripts/check_workflow_scripts.py
+
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
@@ -622,17 +629,18 @@ jobs:
           users="$RUNNER_TEMP/ios-users.json"
           node services/api/scripts/local-stack.ts --ios "$users" iphone ipad &
           stack=$!
-          trap 'kill $stack 2>/dev/null || true' EXIT
+          # The step keeps its own exit status: stopping the stack must not turn a failure green.
+          trap 'status=$?; kill $stack 2>/dev/null || true; exit $status' EXIT
           for _ in $(seq 1 180); do [ -s "$users" ] && break; sleep 1; done
           [ -s "$users" ] || { echo "The api test stack did not start"; exit 1; }
+          # The smallest iPad, regular width like every iPad: the 13-inch one has nearly twice
+          # the pixels of the iPhone, and its accessibility audits ran out of time or misread text.
           devices=$(xcrun simctl list devices available --json | python3 -c '
           import json, sys
           devices = json.load(sys.stdin)["devices"]
           runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
           names = [d for r in runtimes for d in devices[r]]
           pick = lambda *prefixes: next(d["udid"] for p in prefixes for d in names if d["name"].startswith(p))
-          # The smallest iPad, regular width like every iPad: the 13-inch one has nearly twice
-          # the iPhone's pixels, and its accessibility audits ran out of time or misread text.
           print(pick("iPhone"), pick("iPad mini", "iPad (A16)", "iPad Air 11", "iPad"))')
           read -r iphone ipad <<< "$devices"
           failed=""
@@ -691,6 +699,10 @@ jobs:
             echo "UI tests failed on:$failed"
             exit 1
           fi
+          # Both devices ran and passed: each left its summary.
+          for name in iphone ipad; do
+            [ -s "$RUNNER_TEMP/ui-$name.json" ] || { echo "No UI test result for $name"; exit 1; }
+          done
 
       - name: Keep the UI test results
         if: failure()
