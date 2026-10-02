@@ -267,10 +267,12 @@ final class ProviderFlowTests: XCTestCase {
     ///   text scrolls;
     /// - in a sheet, findings without an element: the screen dimmed behind the sheet, which
     ///   the system hides from assistive technologies while the sheet is up.
-    /// A contrast finding is confirmed on the element's own pixels: it fails when the
-    /// measured WCAG ratio is below AA's 4.5:1. On iPad the audit flags text measured at 7:1
-    /// and more, and different elements on identical screens; those it does not confirm
-    /// are kept with the results, not failed.
+    /// Each finding must be confirmed. A contrast finding is measured on the element's own
+    /// pixels and fails below WCAG AA's 4.5:1. Any other finding fails when a second audit
+    /// of the same, unchanged screen reports it again: on the iPad simulator the audit
+    /// flagged one label of a row and not its identical neighbours, and every text of a
+    /// screen in one run and none in the next. Findings not confirmed are kept with the
+    /// results and printed by CI, not failed.
     /// `sheet` names the parts of a presented sheet (its bar and its content), whose union
     /// is then the visible area.
     private func audit(_ app: XCUIApplication, screen name: String, sheet: [XCUIElement] = []) {
@@ -284,75 +286,108 @@ final class ProviderFlowTests: XCTestCase {
         let sheetFound = sheet.allSatisfy(\.exists)
         XCTAssertTrue(sheetFound, "The \(name) sheet's parts were not all found. Screen: \(screen(app))")
         let sheetParts = sheetFound ? sheet.map(\.frame) : []
-        let visible = sheetParts.isEmpty
-            ? bottomBar.map {
-                CGRect(x: window.minX, y: window.minY, width: window.width, height: $0.frame.minY - window.minY)
-            } ?? window
-            : sheetParts.dropFirst().reduce(sheetParts[0]) { $0.union($1) }
-        let barItems = bottomBar?.buttons.allElementsBoundByIndex.map(\.frame) ?? []
-        let navigationBars = app.navigationBars.allElementsBoundByIndex.map(\.frame)
-        let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
-        let findings = AuditFindings()
-        do {
-            try app.performAccessibilityAudit { issue in
-                guard let element = issue.element else {
-                    if !sheet.isEmpty { return true }
-                    if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") { return true }
-                    findings.items.append("\(issue.compactDescription): \(issue.detailedDescription) (no element)")
-                    return true
-                }
-                if element.label == "Synthetic camera" { return true }
-                let frame = element.frame
-                if edgeTypes.contains(issue.auditType), !visible.contains(frame), !barItems.contains(frame) { return true }
-                if issue.auditType == .dynamicType, element.elementType == .button,
-                   navigationBars.contains(where: { $0.contains(frame) }) { return true }
-                if issue.auditType == .textClipped, element.elementType == .searchField { return true }
-                let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
-                let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
-                let finding = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
-                    + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)"
-                let picture = !frame.isEmpty && window.contains(frame) ? element.screenshot() : nil
-                // Measured once the audit has finished, outside its time limit.
-                if issue.auditType == .contrast, let picture {
-                    findings.contrast.append((finding: finding, picture: picture))
-                    return true
-                }
-                findings.items.append(finding)
-                if let picture { findings.pictures.append(picture) }
-                return true
-            }
-        } catch {
+        let area = AuditArea(
+            window: window,
+            visible: sheetParts.isEmpty
+                ? bottomBar.map {
+                    CGRect(x: window.minX, y: window.minY, width: window.width, height: $0.frame.minY - window.minY)
+                } ?? window
+                : sheetParts.dropFirst().reduce(sheetParts[0]) { $0.union($1) },
+            barItems: bottomBar?.buttons.allElementsBoundByIndex.map(\.frame) ?? [],
+            navigationBars: app.navigationBars.allElementsBoundByIndex.map(\.frame),
+            inSheet: !sheet.isEmpty
+        )
+
+        let first = auditPass(app, area: area)
+        if let error = first.error {
             XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
         }
-        for (finding, picture) in findings.contrast {
-            guard let ratio = Contrast.measured(picture.image) else {
-                findings.items.append("\(finding) Not measurable.")
-                findings.pictures.append(picture)
-                continue
-            }
-            let measured = "\(finding) Measured \(ratio.formatted(.number.precision(.fractionLength(1)))):1."
-            if ratio < Contrast.minimum {
-                findings.items.append(measured)
-                findings.pictures.append(picture)
+        var confirmed = first.findings.filter(\.isContrast)
+        var unconfirmed: [String] = []
+        let others = first.findings.filter { !$0.isContrast }
+        if !others.isEmpty {
+            // The same screen, audited again: only what is reported twice counts.
+            let second = auditPass(app, area: area)
+            if second.error != nil {
+                confirmed += others
             } else {
-                findings.unconfirmed.append(measured)
+                let again = Set(second.findings.map(\.key))
+                confirmed += others.filter { again.contains($0.key) }
+                unconfirmed += others.filter { !again.contains($0.key) }.map { "\($0.text) Not reported again." }
             }
         }
-        for (index, picture) in findings.pictures.enumerated() {
+        var failures: [String] = []
+        var pictures: [XCUIScreenshot] = []
+        for finding in confirmed {
+            guard finding.isContrast, let picture = finding.picture else {
+                failures.append(finding.text)
+                if let picture = finding.picture { pictures.append(picture) }
+                continue
+            }
+            guard let ratio = Contrast.measured(picture.image) else {
+                failures.append("\(finding.text) Not measurable.")
+                pictures.append(picture)
+                continue
+            }
+            let measured = "\(finding.text) Measured \(ratio.formatted(.number.precision(.fractionLength(1)))):1."
+            if ratio < Contrast.minimum {
+                failures.append(measured)
+                pictures.append(picture)
+            } else {
+                unconfirmed.append(measured)
+            }
+        }
+        for (index, picture) in pictures.enumerated() {
             let attachment = XCTAttachment(screenshot: picture)
             attachment.name = "Audit \(name) \(index + 1)"
             attachment.lifetime = .keepAlways
             add(attachment)
         }
-        if !findings.unconfirmed.isEmpty {
-            let note = XCTAttachment(string: findings.unconfirmed.joined(separator: "\n"))
-            note.name = "Audit \(name): contrast findings the measurement does not confirm"
+        if !unconfirmed.isEmpty {
+            let note = XCTAttachment(string: unconfirmed.joined(separator: "\n"))
+            note.name = "Audit \(name): findings not confirmed"
             note.lifetime = .keepAlways
             add(note)
         }
-        for finding in findings.items {
-            XCTFail("Accessibility audit, \(name) screen: \(finding)")
+        for failure in failures {
+            XCTFail("Accessibility audit, \(name) screen: \(failure)")
         }
+    }
+
+    /// One run of the audit: its findings after the exclusions above, or the error that stopped it.
+    private func auditPass(_ app: XCUIApplication, area: AuditArea) -> (findings: [AuditFinding], error: Error?) {
+        let found = AuditFindings()
+        let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
+        do {
+            try app.performAccessibilityAudit { issue in
+                guard let element = issue.element else {
+                    if area.inSheet { return true }
+                    if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") { return true }
+                    let text = "\(issue.compactDescription): \(issue.detailedDescription) (no element)"
+                    found.items.append(AuditFinding(key: "\(issue.auditType.rawValue)|\(issue.detailedDescription)",
+                                                    text: text, picture: nil, isContrast: false))
+                    return true
+                }
+                if element.label == "Synthetic camera" { return true }
+                let frame = element.frame
+                if edgeTypes.contains(issue.auditType), !area.visible.contains(frame), !area.barItems.contains(frame) { return true }
+                if issue.auditType == .dynamicType, element.elementType == .button,
+                   area.navigationBars.contains(where: { $0.contains(frame) }) { return true }
+                if issue.auditType == .textClipped, element.elementType == .searchField { return true }
+                let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
+                let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
+                let text = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
+                    + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)"
+                let key = "\(issue.auditType.rawValue)|\(element.identifier)|\(element.label)|\(place)"
+                let picture = !frame.isEmpty && area.window.contains(frame) ? element.screenshot() : nil
+                found.items.append(AuditFinding(key: key, text: text, picture: picture,
+                                                isContrast: issue.auditType == .contrast))
+                return true
+            }
+        } catch {
+            return (found.items, error)
+        }
+        return (found.items, nil)
     }
 
     /// What is on screen, for failure messages: texts, buttons and fields with their identifiers.
@@ -424,16 +459,28 @@ enum TOTP {
     }
 }
 
+/// Where an audit looks: the window, the part of it on screen, the bottom bar's own items,
+/// the navigation bars, and whether a sheet is up.
+private struct AuditArea {
+    let window: CGRect
+    let visible: CGRect
+    let barItems: [CGRect]
+    let navigationBars: [CGRect]
+    let inSheet: Bool
+}
+
+/// One finding: what identifies it across two audits, its words, its element's picture.
+private struct AuditFinding {
+    let key: String
+    let text: String
+    let picture: XCUIScreenshot?
+    let isContrast: Bool
+}
+
 /// The findings of one accessibility audit, collected by its issue handler.
 @MainActor
 private final class AuditFindings {
-    var items: [String] = []
-    /// A picture of each finding's element, in order.
-    var pictures: [XCUIScreenshot] = []
-    /// Contrast findings with their element's picture, measured after the audit.
-    var contrast: [(finding: String, picture: XCUIScreenshot)] = []
-    /// Contrast findings whose measured ratio meets AA.
-    var unconfirmed: [String] = []
+    var items: [AuditFinding] = []
 }
 
 /// WCAG 2 contrast, measured on an element's picture. The background is the most common
