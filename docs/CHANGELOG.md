@@ -4,7 +4,7 @@ All material changes to the architecture, contracts and repository. Newest first
 
 ## 2026-10-02: Layer 2 acceptance review (M2.11)
 
-- **Review:** [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §7, on CI run 75 (`1608e4b`), green in all nine jobs. The standard photo session works end to end on iPhone and iPad against the real api, worker, image-processing and AWS emulator. Sign-off moves to §8. The api's photo test now checks job messages for the fixture patient's exact values; a bare "1988" also matched random identifiers. Awaiting the owner's sign-off; F-68 and F-69 stay open for the owner.
+- **Review:** [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §7, on CI run 78 (`baf752d`), green in all nine jobs. The standard photo session works end to end on iPhone and iPad against the real api, worker, image-processing and AWS emulator. Sign-off moves to §8. The api's photo test now checks job messages for the fixture patient's exact values; a bare "1988" also matched random identifiers. Awaiting the owner's sign-off; F-68 and F-69 stay open for the owner.
 
 ## 2026-10-01: Layer 2 provider app: capture, gallery, permissions, offline (ADR-0025)
 
