@@ -53,11 +53,7 @@ struct PatientsSplitView: View {
         }
         // One load per selection, started as soon as the patient is selected.
         .onChange(of: selection, initial: true) { _, id in
-            if let id {
-                profiles.select(id)
-            } else {
-                profiles.clear()
-            }
+            if let id { profiles.select(id) }
         }
         .sheet(isPresented: $creating) {
             CreatePatientView(repository: repository) { patientId in
@@ -73,41 +69,43 @@ struct PatientsSplitView: View {
     }
 }
 
-/// The selected patient's profile model, shared by every copy of its screen. On iPhone
-/// the list's selection pushes the profile screen, sometimes twice, and a pushed copy
-/// keeps the values it was pushed with. So each copy takes its patient's model when it
-/// is built, never waiting for one to arrive: the selection's own model, or a new one
-/// that its screen then loads. A new selection always starts a new model, so every
-/// opening of a profile is loaded, and audited, by the server. Not observed: a lookup
-/// while a view is built changes nothing on screen.
+/// The patients' profile models, one per patient, shared by every copy of its screen. On
+/// iPhone the list's selection pushes the profile screen, sometimes twice, and a pushed
+/// copy keeps the values it was pushed with; two copies holding two models of the same
+/// patient left one on "Opening patient". Each copy takes its patient's model when it is
+/// built, and a patient's model is never replaced, so every copy shows the same state.
+/// Each selection loads the model again, so every opening of a profile is loaded, and
+/// audited, by the server. Not observed: a lookup while a view is built changes nothing
+/// on screen. Only the last few patients are kept.
 @MainActor
 final class ProfileModels {
-    private var current: PatientProfileModel?
+    private var models: [PatientSummary.ID: PatientProfileModel] = [:]
+    private var order: [PatientSummary.ID] = []
     private let repository: PatientRepository
     private let photography: PhotographyContext
+    private let limit = 4
 
     init(repository: PatientRepository, photography: PhotographyContext) {
         self.repository = repository
         self.photography = photography
     }
 
-    /// The model for a patient: the current one if it is theirs, otherwise a new one.
+    /// The patient's model, made the first time it is asked for.
     func model(for patientId: PatientSummary.ID) -> PatientProfileModel {
-        if let current, current.patientId == patientId { return current }
+        if let model = models[patientId] { return model }
         let model = PatientProfileModel(patientId: patientId, repository: repository, photography: photography)
-        current = model
+        models[patientId] = model
+        order.append(patientId)
+        if order.count > limit {
+            models[order.removeFirst()] = nil
+        }
         return model
     }
 
-    /// A patient was selected: their model starts loading at once.
+    /// A patient was selected: their profile loads again at once.
     func select(_ patientId: PatientSummary.ID) {
         let model = model(for: patientId)
-        Task { await model.loadIfNeeded() }
-    }
-
-    /// Nothing is selected: the next selection starts afresh.
-    func clear() {
-        current = nil
+        Task { await model.load() }
     }
 }
 
