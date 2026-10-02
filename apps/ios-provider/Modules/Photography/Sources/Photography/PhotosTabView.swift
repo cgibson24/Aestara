@@ -99,18 +99,25 @@ public struct PhotosTabView: View {
         let reloads: Int
     }
 
+    /// Side by side where both labels fit on one line, otherwise stacked, so a label
+    /// never wraps inside its button (DESIGN_SYSTEM.md §11: nothing clips).
     private var actions: some View {
-        HStack(spacing: DSSpacing.md) {
-            if context.can("photo.capture") {
-                Button("Start photo session", systemImage: "camera") { startingSession = true }
-                    .buttonStyle(DSButtonStyle(.primary))
-                    .accessibilityIdentifier("photos.startSession")
-            }
-            if context.can("photo.permission.read") {
-                Button("Media permissions", systemImage: "hand.raised") { showingPermissions = true }
-                    .buttonStyle(DSButtonStyle(.secondary))
-                    .accessibilityIdentifier("photos.permissions")
-            }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: DSSpacing.md) { actionButtons }
+            VStack(spacing: DSSpacing.sm) { actionButtons }
+        }
+    }
+
+    @ViewBuilder private var actionButtons: some View {
+        if context.can("photo.capture") {
+            Button("Start photo session", systemImage: "camera") { startingSession = true }
+                .buttonStyle(DSButtonStyle(.primary))
+                .accessibilityIdentifier("photos.startSession")
+        }
+        if context.can("photo.permission.read") {
+            Button("Media permissions", systemImage: "hand.raised") { showingPermissions = true }
+                .buttonStyle(DSButtonStyle(.secondary))
+                .accessibilityIdentifier("photos.permissions")
         }
     }
 

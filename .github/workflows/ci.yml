@@ -409,11 +409,10 @@ jobs:
           skip-dirs: node_modules
 
   ios:
-    name: iOS · Tuist generate · build · test · UI tests
+    name: iOS · Tuist generate · build · module and hosted tests
     runs-on: macos-26
-    # Seven module test runs (each builds its own dependencies), then a full photo
-    # session on two devices.
-    timeout-minutes: 120
+    # Seven module test runs, each building its own dependencies.
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -456,18 +455,6 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/dd-patient"
           -skipPackagePluginValidation -skipMacroValidation
           CODE_SIGNING_ALLOWED=NO -quiet
-
-      # A simulator's first boot migrates data for minutes. The UI tests' iPad boots now,
-      # while the module tests run on an iPhone, instead of beside the whole test stack.
-      - name: Boot the iPad simulator for the UI tests
-        run: |
-          ipad=$(xcrun simctl list devices available --json | python3 -c '
-          import json, sys
-          devices = json.load(sys.stdin)["devices"]
-          runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
-          print(next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith("iPad")))')
-          echo "iPad: $ipad"
-          xcrun simctl boot "$ipad"
 
       # Each module's tests on an iPhone simulator, with a minimum count per
       # module: a green step alone does not show the tests executed.
@@ -518,6 +505,38 @@ jobs:
           print(f"hosted: result={s['result']} passed={s['passedTests']} failed={s['failedTests']}")
           assert s["result"] == "Passed" and s["failedTests"] == 0 and s["passedTests"] >= 2, "Hosted tests did not all run and pass"
           PY
+
+  # The UI tests run beside the module tests, on their own runner.
+  ios-ui:
+    name: iOS · UI tests against the real api (iPhone and iPad)
+    runs-on: macos-26
+    # A build, then a full photo session on two devices.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
+
+      # A simulator's first boot migrates data for minutes: both boot now, while the
+      # app and the test stack build.
+      - name: Boot the simulators for the UI tests
+        run: |
+          xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
+          for prefix in ("iPhone", "iPad"):
+              print(next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith(prefix)))' |
+          while read -r udid; do
+            echo "Booting $udid"
+            xcrun simctl boot "$udid"
+          done
+
+      - name: Generate the provider Xcode project (Tuist)
+        run: (cd apps/ios-provider && tuist generate --no-open)
 
       # Bible §32 #9, #12, #13: the provider app against the real api on this
       # runner: sign-in with a wrong password then TOTP, create a patient with the
@@ -654,7 +673,11 @@ jobs:
                       continue
                   name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
                   label = re.sub(r"_\d+_[0-9A-Fa-f-]+(\.\w+)?$", "", os.path.splitext(name)[0])
-                  target = os.path.join(out, f"{device} - {label}.png")
+                  # Attachments can share a name (the audit's element screenshots do): number them.
+                  target, n = os.path.join(out, f"{device} - {label}.png"), 1
+                  while os.path.exists(target):
+                      n += 1
+                      target = os.path.join(out, f"{device} - {label} {n}.png")
                   subprocess.run(["sips", "-s", "format", "png", os.path.join(raw, a["exportedFileName"]),
                                   "--out", target], check=True, stdout=subprocess.DEVNULL)
           PY

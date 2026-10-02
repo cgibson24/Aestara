@@ -232,25 +232,40 @@ final class ProviderFlowTests: XCTestCase {
         add(attachment)
     }
 
-    /// The XCUITest accessibility audit (ADR-0023 K2-21). Findings are recorded without
-    /// stopping the flow, so one run reports them all. Two things are left out: the
-    /// synthetic camera's caption, Debug-only scaffolding; and clipping or contrast of an
-    /// element scrolled partly past the screen's edge, such as the last view in the
-    /// capture screen's scrolling strip (DESIGN_SYSTEM.md §4), which the audit cannot judge.
+    /// The XCUITest accessibility audit (ADR-0023 K2-21). Each finding fails the test
+    /// with the screen, the element (identifier, label and frame) and the audit's
+    /// explanation, and the flow continues so one run reports them all. Two things are
+    /// left out: the synthetic camera's caption, Debug-only scaffolding; and clipping,
+    /// contrast or hit area of an element scrolled partly past the screen's edge, such as
+    /// the last view in the capture screen's strip or the profile's tab strip
+    /// (DESIGN_SYSTEM.md §4), which the audit judges by its visible part only.
     private func audit(_ app: XCUIApplication, screen name: String) {
         let previous = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = previous }
         let window = app.windows.firstMatch.frame
-        let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast]
+        let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
+        let findings = AuditFindings()
         do {
             try app.performAccessibilityAudit { issue in
-                guard let element = issue.element else { return false }
+                guard let element = issue.element else {
+                    findings.items.append("\(issue.compactDescription): \(issue.detailedDescription) (no element)")
+                    return true
+                }
                 if element.label == "Synthetic camera" { return true }
-                return edgeTypes.contains(issue.auditType) && !window.contains(element.frame)
+                let frame = element.frame
+                if edgeTypes.contains(issue.auditType), !window.contains(frame) { return true }
+                let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
+                let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
+                findings.items.append("\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
+                    + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)")
+                return true
             }
         } catch {
             XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
+        }
+        for finding in findings.items {
+            XCTFail("Accessibility audit, \(name) screen: \(finding)")
         }
     }
 
@@ -321,4 +336,10 @@ enum TOTP {
         }
         return Data(bytes)
     }
+}
+
+/// The findings of one accessibility audit, collected by its issue handler.
+@MainActor
+private final class AuditFindings {
+    var items: [String] = []
 }
