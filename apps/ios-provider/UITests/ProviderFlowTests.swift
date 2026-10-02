@@ -138,7 +138,7 @@ final class ProviderFlowTests: XCTestCase {
 
         // Guided capture: one instruction at a time; the shutter never blocks on it.
         let shutter = app.buttons["capture.shutter"]
-        let guidance = app.descendants(matching: .any)["capture.guidance"]
+        let guidance = app.descendants(matching: .any).matching(identifier: "capture.guidance").firstMatch
         XCTAssertTrue(shutter.waitForExistence(timeout: 20), "The camera did not open. Screen: \(screen(app))")
         XCTAssertTrue(app.staticTexts["capture.noReference"].waitForExistence(timeout: 15),
                       "A first session has no reference photo. Screen: \(screen(app))")
@@ -212,8 +212,8 @@ final class ProviderFlowTests: XCTestCase {
                       "The request was not recorded. Screen: \(screen(app))")
         website.tap()
         XCTAssertTrue(save.waitForExistence(timeout: 10), "The change sheet did not open again. Screen: \(screen(app))")
-        app.buttons["permission.change"].tap()
-        let granted = app.buttons["Granted"]
+        app.buttons["permission.change"].firstMatch.tap()
+        let granted = app.buttons["Granted"].firstMatch
         XCTAssertTrue(granted.waitForExistence(timeout: 5), "Granted is not offered after a request. Screen: \(screen(app))")
         snapshot(app, "14 Record a grant")
         granted.tap()

@@ -649,6 +649,9 @@ jobs:
           raw, out, device = sys.argv[1:4]
           for test in json.load(open(os.path.join(raw, "manifest.json"))):
               for a in test.get("attachments", []):
+                  # Only the images: the bundle also holds hierarchies and debug descriptions.
+                  if os.path.splitext(a["exportedFileName"])[1].lower() not in (".png", ".jpg", ".jpeg", ".heic"):
+                      continue
                   name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
                   label = re.sub(r"_\d+_[0-9A-Fa-f-]+(\.\w+)?$", "", os.path.splitext(name)[0])
                   target = os.path.join(out, f"{device} - {label}.png")

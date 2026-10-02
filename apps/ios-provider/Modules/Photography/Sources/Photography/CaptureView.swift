@@ -186,6 +186,8 @@ struct CaptureView: View {
                 .padding(.vertical, DSSpacing.sm)
                 .background(DSColor.scrim, in: Capsule())
                 .padding(.top, DSSpacing.md)
+                // One element for VoiceOver and the UI tests: the instruction, not its icon.
+                .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("capture.guidance")
         }
     }
