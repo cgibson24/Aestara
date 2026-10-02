@@ -8,6 +8,7 @@ consumer, and nothing from one job's decoding survives into the next.
 
 import multiprocessing
 import resource
+import sys
 from collections.abc import Sequence
 from multiprocessing.connection import Connection
 from typing import Final
@@ -18,6 +19,12 @@ from .errors import JobFailure
 # Heap and mappings a child may use: ample for 100 megapixels decoded in strips.
 MEMORY_LIMIT_BYTES: Final = 3 * 1024 * 1024 * 1024
 
+# The limit is applied where the service runs, on Linux. macOS runs it only for local
+# development and CI's UI tests, and its allocator reserves more address space at
+# start-up than the limit allows, so every render there would fail; there the time
+# limit alone bounds a job.
+LIMIT_MEMORY: Final = sys.platform.startswith("linux")
+
 # A fresh interpreter forked from a clean server process, never from the consumer
 # (which holds AWS clients and threads).
 _CONTEXT: Final = multiprocessing.get_context("forkserver")
@@ -25,7 +32,8 @@ _CONTEXT.set_forkserver_preload([])
 
 
 def _child(conn: Connection, data: bytes, content_type: str, specs: Sequence[tuple[str, int]]) -> None:
-    resource.setrlimit(resource.RLIMIT_DATA, (MEMORY_LIMIT_BYTES, MEMORY_LIMIT_BYTES))
+    if LIMIT_MEMORY:
+        resource.setrlimit(resource.RLIMIT_DATA, (MEMORY_LIMIT_BYTES, MEMORY_LIMIT_BYTES))
     from . import imaging  # libvips is loaded in the child only
 
     imaging.harden()

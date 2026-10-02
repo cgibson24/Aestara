@@ -14,6 +14,7 @@ All material changes to the architecture, contracts and repository. Newest first
 - **Tests:** module tests for CoreSecurity, AuditSupport, Media, PatientDomain and Photography in CI. The UI test runs a standard Face session end to end with accessibility audits. The snapshot tests of K2-21 wait for reference images recorded on a Mac (Layer 2 acceptance review).
 - **Admin portal:** the offline-policy "Saved." notice now survives the reload a save causes.
 - **Screenshots:** the iOS UI test keeps a screenshot of each screen on iPhone and iPad, and CI publishes them as the `ios-ui-screenshots` artifact.
+- **image-processing on macOS:** the render child's 3 GiB data limit now applies on Linux only. On macOS (local development and CI's UI tests) the allocator's start-up reservations exceed it and every render crashed (ADR-0024).
 
 ## 2026-10-01: Layer 2 backend and image-processing (ADR-0024)
 

@@ -606,7 +606,7 @@ Status values:
 - **Decision, image-processing** (K2-01, K2-06):
   - **Process model.** A single SQS consumer handles one job at a time; capacity comes from running more tasks.
     - Each job decodes in a fresh child process, started from a clean fork server and never forked from the consumer.
-    - In the child, libvips is hardened and the data segment is limited to 3 GiB.
+    - In the child, libvips is hardened and the data segment is limited to 3 GiB. The limit applies on Linux, where the service runs; on macOS, used only for local development and CI's UI tests, the system allocator reserves more address space at start-up than the limit allows, so it is not applied there and the time limit alone bounds a job.
     - The parent kills the child when the job's 60 seconds run out. The 60 seconds cover the download, rendering and uploads.
   - **Rendering:**
     - The JPEG decoder scales down while loading.

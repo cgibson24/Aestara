@@ -233,15 +233,21 @@ final class ProviderFlowTests: XCTestCase {
     }
 
     /// The XCUITest accessibility audit (ADR-0023 K2-21). Findings are recorded without
-    /// stopping the flow, so one run reports them all. The synthetic camera's caption is
-    /// Debug-only scaffolding and is left out.
+    /// stopping the flow, so one run reports them all. Two things are left out: the
+    /// synthetic camera's caption, Debug-only scaffolding; and clipping or contrast of an
+    /// element scrolled partly past the screen's edge, such as the last view in the
+    /// capture screen's scrolling strip (DESIGN_SYSTEM.md §4), which the audit cannot judge.
     private func audit(_ app: XCUIApplication, screen name: String) {
         let previous = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = previous }
+        let window = app.windows.firstMatch.frame
+        let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast]
         do {
             try app.performAccessibilityAudit { issue in
-                issue.element?.label == "Synthetic camera"
+                guard let element = issue.element else { return false }
+                if element.label == "Synthetic camera" { return true }
+                return edgeTypes.contains(issue.auditType) && !window.contains(element.frame)
             }
         } catch {
             XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
