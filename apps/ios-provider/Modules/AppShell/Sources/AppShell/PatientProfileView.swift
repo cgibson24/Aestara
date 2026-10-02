@@ -155,6 +155,8 @@ struct TabStrip: View {
                             .frame(minHeight: DSSize.touchTarget)
                             .foregroundStyle(selection == tab ? DSColor.accentText : DSColor.textSecondary)
                             .background(selection == tab ? DSColor.accentSoft : .clear, in: Capsule())
+                            // The whole capsule takes the tap, not only the label's glyphs (C1: 44 pt).
+                            .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selection == tab ? .isSelected : [])

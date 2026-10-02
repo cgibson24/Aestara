@@ -182,9 +182,14 @@ struct CaptureView: View {
             Label(guidanceText, systemImage: guidance == .aligned ? "checkmark.circle" : "info.circle")
                 .font(DSFont.headline)
                 .foregroundStyle(DSColor.photoStageText)
+                .multilineTextAlignment(.center)
+                // At large text sizes the stage shrinks: the instruction wraps to its full
+                // height over the photo rather than being cut to the stage's.
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, DSSpacing.md)
                 .padding(.vertical, DSSpacing.sm)
-                .background(DSColor.scrim, in: Capsule())
+                .background(DSColor.scrim, in: RoundedRectangle(cornerRadius: DSRadius.lg))
+                .padding(.horizontal, DSSpacing.md)
                 .padding(.top, DSSpacing.md)
                 // One element for VoiceOver and the UI tests: the instruction, not its icon.
                 .accessibilityElement(children: .combine)

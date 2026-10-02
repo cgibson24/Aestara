@@ -234,16 +234,26 @@ final class ProviderFlowTests: XCTestCase {
 
     /// The XCUITest accessibility audit (ADR-0023 K2-21). Each finding fails the test
     /// with the screen, the element (identifier, label and frame) and the audit's
-    /// explanation, and the flow continues so one run reports them all. Two things are
-    /// left out: the synthetic camera's caption, Debug-only scaffolding; and clipping,
-    /// contrast or hit area of an element scrolled partly past the screen's edge, such as
-    /// the last view in the capture screen's strip or the profile's tab strip
-    /// (DESIGN_SYSTEM.md §4), which the audit judges by its visible part only.
+    /// explanation, and the flow continues so one run reports them all. Left out:
+    /// - the synthetic camera's caption, Debug-only scaffolding;
+    /// - the clipping, contrast or hit area of an element partly past the visible area,
+    ///   which the audit judges by its visible part only: scrolled past the screen's edge
+    ///   (the capture screen's view strip, the profile's tab strip; DESIGN_SYSTEM.md §4)
+    ///   or under the tab bar at the bottom, which shows it through the bar's edge effect;
+    /// - Dynamic Type on a navigation bar's own buttons, which the system draws at a
+    ///   fixed size and enlarges with the Large Content Viewer instead.
     private func audit(_ app: XCUIApplication, screen name: String) {
         let previous = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = previous }
         let window = app.windows.firstMatch.frame
+        let tabBar = app.tabBars.firstMatch
+        let bottomBar = tabBar.exists && tabBar.isHittable && tabBar.frame.minY > window.midY ? tabBar : nil
+        let visible = bottomBar.map {
+            CGRect(x: window.minX, y: window.minY, width: window.width, height: $0.frame.minY - window.minY)
+        } ?? window
+        let barItems = bottomBar?.buttons.allElementsBoundByIndex.map(\.frame) ?? []
+        let navigationBars = app.navigationBars.allElementsBoundByIndex.map(\.frame)
         let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
         let findings = AuditFindings()
         do {
@@ -254,7 +264,9 @@ final class ProviderFlowTests: XCTestCase {
                 }
                 if element.label == "Synthetic camera" { return true }
                 let frame = element.frame
-                if edgeTypes.contains(issue.auditType), !window.contains(frame) { return true }
+                if edgeTypes.contains(issue.auditType), !visible.contains(frame), !barItems.contains(frame) { return true }
+                if issue.auditType == .dynamicType, element.elementType == .button,
+                   navigationBars.contains(where: { $0.contains(frame) }) { return true }
                 let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
                 let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
                 findings.items.append("\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "

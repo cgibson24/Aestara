@@ -184,6 +184,7 @@ struct PhotoDetailView: View {
                         PermissionStateBadge(state: state)
                     }
                     .frame(minHeight: DSSize.touchTarget)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(!context.can("photo.permission.manage") || photo.isArchived)

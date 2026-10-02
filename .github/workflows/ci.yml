@@ -597,6 +597,7 @@ jobs:
           pick = lambda prefix: next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith(prefix))
           print(pick("iPhone"), pick("iPad"))')
           read -r iphone ipad <<< "$devices"
+          failed=""
           for entry in "iphone:$iphone" "ipad:$ipad"; do
             name="${entry%%:*}"; udid="${entry##*:}"
             echo "::group::UI tests on $name ($udid)"
@@ -622,24 +623,30 @@ jobs:
           import json, sys
           def walk(node):
               if node.get("nodeType") == "Failure Message":
-                  print("FAILURE:", node.get("name"))
+                  print(f"FAILURE ({sys.argv[1]}):", node.get("name"))
               for child in node.get("children", []):
                   walk(child)
           for node in json.load(sys.stdin).get("testNodes", []):
-              walk(node)'
-              exit "$status"
-            fi
-            xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$RUNNER_TEMP/ui-$name.json"
-            python3 - "$RUNNER_TEMP/ui-$name.json" "$name" <<'PY'
+              walk(node)' "$name"
+              # The other device still runs, so one run reports both.
+              failed="$failed $name"
+            else
+              xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$RUNNER_TEMP/ui-$name.json"
+              python3 - "$RUNNER_TEMP/ui-$name.json" "$name" <<'PY'
           import json, sys
           s = json.load(open(sys.argv[1]))
           print(f"{sys.argv[2]}: result={s['result']} passed={s['passedTests']} failed={s['failedTests']}")
           assert s["result"] == "Passed" and s["failedTests"] == 0 and s["passedTests"] >= 1, "UI tests did not all run and pass"
           PY
+            fi
             # Free the machine for the next device's run.
             xcrun simctl shutdown "$udid"
             echo "::endgroup::"
           done
+          if [ -n "$failed" ]; then
+            echo "UI tests failed on:$failed"
+            exit 1
+          fi
 
       - name: Keep the UI test results
         if: failure()
