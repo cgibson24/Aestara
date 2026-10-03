@@ -665,10 +665,24 @@ jobs:
             )"
             bundle="$RUNNER_TEMP/ui-$name.xcresult"
             status=0
+            # F-70: when the app's main thread stays busy (XCTest logs it), sample the app's
+            # stacks once, to show what keeps it busy.
+            (
+              while sleep 20; do
+                if xcrun simctl spawn "$udid" log show --last 25s --style compact \
+                  --predicate 'eventMessage CONTAINS "process main thread busy"' 2> /dev/null | grep -q "main thread busy"; then
+                  pid=$(pgrep -f "AestaraProvider.app/AestaraProvider" | head -1)
+                  [ -n "$pid" ] && sample "$pid" 5 -file "$RUNNER_TEMP/sample-$name.txt" > /dev/null 2>&1
+                  break
+                fi
+              done
+            ) &
+            watcher=$!
             xcodebuild test -workspace apps/ios-provider/AestaraProvider.xcworkspace \
               -scheme AestaraProviderTests -only-testing:AestaraProviderUITests -destination "id=$udid" \
               -derivedDataPath "$RUNNER_TEMP/dd" -skipPackagePluginValidation -skipMacroValidation \
               -resultBundlePath "$bundle" -quiet || status=$?
+            kill "$watcher" 2> /dev/null || true
             if [ "$status" -ne 0 ]; then
               # Print each failure's message (it carries a summary of the screen).
               xcrun xcresulttool get test-results tests --path "$bundle" --format json | python3 -c '
@@ -687,6 +701,11 @@ jobs:
                 echo "BEGIN-SCREENSHOT $name - end of the failed run"
                 base64 -i "$RUNNER_TEMP/end-$name.jpg" | fold -w 4000
                 echo "END-SCREENSHOT"
+              fi
+              if [ -s "$RUNNER_TEMP/sample-$name.txt" ]; then
+                echo "::group::Sample of the app while its main thread was busy ($name)"
+                sed -n '/^Call graph:/,/^Total number in stack/p' "$RUNNER_TEMP/sample-$name.txt" | head -300
+                echo "::endgroup::"
               fi
               echo "::group::Device log, last 20 minutes ($name)"
               xcrun simctl spawn "$udid" log show --last 20m --style compact \
@@ -767,8 +786,8 @@ jobs:
           for f in "$out"/*.png; do
             [ -e "$f" ] || continue
             case "$(basename "$f")" in
-              # An audit finding's element, small already: kept at full resolution.
-              *" - Audit "*) cp "$f" "$RUNNER_TEMP/small.img" ;;
+              # An audit finding's element ("Audit gallery 2"), small already: full resolution.
+              *" - Audit "*[0-9].png) cp "$f" "$RUNNER_TEMP/small.img" ;;
               *) sips -Z 720 -s format jpeg -s formatOptions 45 "$f" --out "$RUNNER_TEMP/small.img" > /dev/null ;;
             esac
             echo "BEGIN-SCREENSHOT $(basename "$f" .png)"
