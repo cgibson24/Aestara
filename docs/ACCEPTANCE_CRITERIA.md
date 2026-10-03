@@ -262,7 +262,7 @@ F-32 covers these platform prerequisites, each now resolved or scheduled:
 | F-67 | 2 | Who manages platform-wide feature-flag defaults (`configuration.manage` is held by organization and practice admins) | **Resolved** (ADR-0023 K2-18): defaults in code; no platform-wide rows in Layer 2 |
 | F-68 | Owner, 3 | The K2-21 snapshot tests need reference images. This environment cannot record them: they are rendered on a Mac with Xcode, and the first run of each test records its image and fails by design | The owner chooses one: record the references on a Mac and commit them, or allow a CI job to record missing references and commit them to the branch (a workflow with write access to the repository). The snapshot tests then join the `ios` job (ADR-0025) |
 | F-69 | Pre-clinical use | The camera path (AVFoundation capture, Vision face and body detection, Core Motion tilt) runs only on a device; CI exercises capture through the synthetic frame source. The sign of Vision's yaw is flipped to the protocol's convention by reasoning, not by measurement | Before first clinical use, capture each standard view on an iPhone and an iPad and confirm the guidance (in particular PATIENT_TURN_LEFT and RIGHT) and the recorded pose (ADR-0025) |
-| F-70 | 3 | On the 13-inch iPad simulator, the accessibility audit of the gallery or the permission screen sometimes cannot complete, even when run again after a pause, and the app then answers no UI query for minutes; no request reaches the api meanwhile (CI runs 67, 71, 80, 82 and 86). The iPhone audits the same screens without it, and run 87 passed on both devices. The cause is not found | Find it from the device screen and log that CI prints when a UI test fails, and fix it in the app or the test before the Layer 3 acceptance (ADR-0025) |
+| F-70 | 3 | On the 13-inch iPad simulator, the accessibility audit of the gallery or the permission screen sometimes cannot complete, even when run again after a pause, and the app then answers no UI query for minutes; no request reaches the api meanwhile (CI runs 67, 71, 80, 82, 86 and 88). The iPhone audits the same screens without it. Likely cause, fixed in `8e8abcc`: the test's issue handler queried the app (element frames, labels and pictures) while the audit held the accessibility connection; it now only collects the issues | Watch the CI runs from `8e8abcc` on; close at the Layer 3 kickoff if none recurs, otherwise diagnose from the device screen and log CI prints on a failure (ADR-0025) |
 
 F-35 covers these photo details:
 - resumable upload and upload-URL renewal
@@ -359,7 +359,7 @@ cd apps/ios-provider && tuist generate                       # Xcode workspace (
 
 ## 7. Layer 2 acceptance review [B §29; spec §9.1 row 2]
 
-Layer 2 (photography core) was built in micro-prompts M2.1 to M2.10 on the branch `claude/jolly-keller-qmwt2o` (ADR-0023 to ADR-0025); this review is M2.11. The exit condition is the Bible §29 one, "standard photo session works end to end", and the must-pass tests are those of spec §9.1 row 2. Evidence is the test named and the CI job that runs it on every push; the final run is [CI run 87](https://github.com/cgibson24/Aestara/actions/runs/37084960460) on commit `2b94b27`, green in all nine jobs. Format: [TESTING_STRATEGY.md](TESTING_STRATEGY.md#17-acceptance-review-format).
+Layer 2 (photography core) was built in micro-prompts M2.1 to M2.10 on the branch `claude/jolly-keller-qmwt2o` (ADR-0023 to ADR-0025); this review is M2.11. The exit condition is the Bible §29 one, "standard photo session works end to end", and the must-pass tests are those of spec §9.1 row 2. Evidence is the test named and the CI job that runs it on every push; the final run is [CI run 90](https://github.com/cgibson24/Aestara/actions/runs/37089540547) on commit `8e8abcc`, green in all nine jobs. Format: [TESTING_STRATEGY.md](TESTING_STRATEGY.md#17-acceptance-review-format).
 
 ### 7.1 Criteria
 
@@ -380,7 +380,7 @@ Layer 2 (photography core) was built in micro-prompts M2.1 to M2.10 on the branc
 | 13 | Outbox and the WORM audit copy | `configuration-and-worker.test.ts` "archives every committed audit row, publishes events to the bus, and reconciles" and "publishes domain events to the bus without PHI"; database check G5 | PASS | K2-07 |
 | 14 | Cross-tenant access is still rejected server-side | `authorization.test.ts`, generated from the registry for all 95 operations; the RLS suite; the RLS gate | PASS | |
 | 15 | Accessibility audits on the capture, gallery and permission screens (K2-21) | `performAccessibilityAudit()` in `ProviderFlowTests` on iPhone and iPad: every finding fails the test with its screen and element, except the exclusions ADR-0025 lists (elements partly scrolled out of view or under the tab bar, the system bars' titles and buttons, the system search field, the screen dimmed behind a sheet); contrast findings are confirmed on the element's pixels against WCAG AA, and any other finding by a second audit of the same screen | PASS | The snapshot half of K2-21 is open (F-68) |
-| 16 | Required tests pass | CI green on the final commit: lint, typecheck, unit and HTTP tests (api 351 against PostgreSQL 18 and moto, database 60 plus 125 database checks and the seed check, contracts 45, admin web 11, tokens 63, prototype 173, shared types 2), the end-to-end RLS gate, Playwright (9), image-processing (47 pytest tests and the container test), the iOS module tests (62 across seven modules), the hosted Keychain tests (3) and the UI test on iPhone and iPad, Terraform checks, OSV-Scanner, gitleaks, Trivy and CodeQL ([run 64](https://github.com/cgibson24/Aestara/actions/runs/37084960441)) | PASS | No test is skipped to get green; the RLS gate runs as its own CI step |
+| 16 | Required tests pass | CI green on the final commit: lint, typecheck, unit and HTTP tests (api 351 against PostgreSQL 18 and moto, database 60 plus 125 database checks and the seed check, contracts 45, admin web 11, tokens 63, prototype 173, shared types 2), the end-to-end RLS gate, Playwright (9), image-processing (47 pytest tests and the container test), the iOS module tests (62 across seven modules), the hosted Keychain tests (3) and the UI test on iPhone and iPad, Terraform checks, OSV-Scanner, gitleaks, Trivy and CodeQL ([run 67](https://github.com/cgibson24/Aestara/actions/runs/37089540546)) | PASS | No test is skipped to get green; the RLS gate runs as its own CI step |
 
 ### 7.2 What Layer 2 delivers
 
@@ -394,7 +394,7 @@ Layer 2 (photography core) was built in micro-prompts M2.1 to M2.10 on the branc
 - Configuration: feature flags, practice settings including the offline cache policy, retention policies, and the admin configuration page (K2-17 to K2-19).
 - Provider iOS app: guided capture with live guidance, ghost overlay and position match; sessions; the gallery and photo detail; media permissions and releases; the encrypted offline store, upload queue, derivative and patient-summary caches, and offline view replay (ADR-0025).
 
-**Files.** 193 files changed between the Layer 1 acceptance commit `a2dffbe` and `2b94b27`: 90 added, 100 modified, 3 removed (the Layer 0 placeholders of three iOS modules). By area: `services/api` (29 new, including the worker), `apps/ios-provider` (26), `services/image-processing` (22, a new service), `packages/database` (4 migrations), `infrastructure/terraform` (the messaging module), `packages/api-contracts`, `apps/admin-web`, `docs` and `.github`. `git diff --stat a2dffbe` lists them.
+**Files.** 193 files changed between the Layer 1 acceptance commit `a2dffbe` and `8e8abcc`: 90 added, 100 modified, 3 removed (the Layer 0 placeholders of three iOS modules). By area: `services/api` (29 new, including the worker), `apps/ios-provider` (26), `services/image-processing` (22, a new service), `packages/database` (4 migrations), `infrastructure/terraform` (the messaging module), `packages/api-contracts`, `apps/admin-web`, `docs` and `.github`. `git diff --stat a2dffbe` lists them.
 
 **Migrations** (`packages/database/prisma/migrations`): `20261001100000_layer2_tables`, `20261001100100_layer2_constraints`, `20261001100200_layer2_security`, `20261001100300_layer2_protocols`. 36 tables in all.
 
@@ -435,7 +435,7 @@ Layer 2 (photography core) was built in micro-prompts M2.1 to M2.10 on the branc
 - The snapshot tests of K2-21 are not in place (F-68).
 - Patient-app visibility of released photos arrives in Layer 5; patient photo requests arrive in Layer 5; before/after and registration arrive in Layer 3.
 - Retention policies are recorded, not enforced; deletion waits for legal holds (K2-19).
-- The iPad's accessibility audit of the gallery or permission screen sometimes cannot complete on the CI simulator (F-70); the run of record passed on both devices.
+- The iPad's accessibility audit of the gallery or permission screen sometimes could not complete on the CI simulator (F-70). The likely cause is fixed; the finding stays open until later runs confirm it.
 - Open owner items: F-33 (success metrics), F-56 (repository visibility), F-59 (CloudTrail account), F-68, F-69.
 
 **Commands.**
@@ -459,4 +459,4 @@ The owner authorized Layer 1 (Bible Appendix B #38). Its kickoff, confirmed on 2
 
 **Layer 1: accepted by the owner on 2026-10-01**, with the go-ahead for Layer 2. The owner confirmed the Layer 2 kickoff the same day ([LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md), ADR-0023), resolving the Layer 2 findings in §5.3.
 
-**Layer 2: awaiting the owner's sign-off.** The review is §7. Two owner items stay open: F-68 (how the snapshot references are recorded) and F-69 (the device camera check before first clinical use). F-70 (the iPad audit that sometimes cannot complete on CI) is carried to Layer 3.
+**Layer 2: awaiting the owner's sign-off.** The review is §7. Two owner items stay open: F-68 (how the snapshot references are recorded) and F-69 (the device camera check before first clinical use). F-70 (the iPad audit that sometimes could not complete on CI; likely cause fixed) is carried to Layer 3 for confirmation.
