@@ -362,39 +362,47 @@ final class ProviderFlowTests: XCTestCase {
     }
 
     /// One run of the audit: its findings after the exclusions above, or the error that stopped it.
+    /// The issue handler only collects the issues: querying the app from inside it (an
+    /// element's frame, label or picture) while the audit holds the accessibility connection
+    /// left the iPad's audits unable to complete (F-70). Each issue is read once the audit
+    /// has returned.
     private func auditPass(_ app: XCUIApplication, area: AuditArea) -> (findings: [AuditFinding], error: Error?) {
-        let found = AuditFindings()
-        let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
+        let collected = AuditIssues()
+        var failure: Error?
         do {
             try app.performAccessibilityAudit { issue in
-                guard let element = issue.element else {
-                    if area.inSheet { return true }
-                    if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") { return true }
-                    let text = "\(issue.compactDescription): \(issue.detailedDescription) (no element)"
-                    found.items.append(AuditFinding(key: "\(issue.auditType.rawValue)|\(issue.detailedDescription)",
-                                                    text: text, picture: nil, isContrast: false))
-                    return true
-                }
-                if element.label == "Synthetic camera" { return true }
-                let frame = element.frame
-                if edgeTypes.contains(issue.auditType), !area.visible.contains(frame), !area.barItems.contains(frame) { return true }
-                if issue.auditType == .dynamicType, element.elementType == .button,
-                   area.navigationBars.contains(where: { $0.contains(frame) }) { return true }
-                if issue.auditType == .textClipped, element.elementType == .searchField { return true }
-                let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
-                let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
-                let text = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
-                    + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)"
-                let key = "\(issue.auditType.rawValue)|\(element.identifier)|\(element.label)|\(place)"
-                let picture = !frame.isEmpty && area.window.contains(frame) ? element.screenshot() : nil
-                found.items.append(AuditFinding(key: key, text: text, picture: picture,
-                                                isContrast: issue.auditType == .contrast))
+                collected.items.append(issue)
                 return true
             }
         } catch {
-            return (found.items, error)
+            failure = error
         }
-        return (found.items, nil)
+        let edgeTypes: XCUIAccessibilityAuditType = [.textClipped, .contrast, .hitRegion]
+        var findings: [AuditFinding] = []
+        for issue in collected.items {
+            guard let element = issue.element, element.exists else {
+                if area.inSheet { continue }
+                if issue.auditType == .dynamicType, issue.detailedDescription.contains("UILabel") { continue }
+                let text = "\(issue.compactDescription): \(issue.detailedDescription) (no element)"
+                findings.append(AuditFinding(key: "\(issue.auditType.rawValue)|\(issue.detailedDescription)",
+                                             text: text, picture: nil, isContrast: false))
+                continue
+            }
+            if element.label == "Synthetic camera" { continue }
+            let frame = element.frame
+            if edgeTypes.contains(issue.auditType), !area.visible.contains(frame), !area.barItems.contains(frame) { continue }
+            if issue.auditType == .dynamicType, element.elementType == .button,
+               area.navigationBars.contains(where: { $0.contains(frame) }) { continue }
+            if issue.auditType == .textClipped, element.elementType == .searchField { continue }
+            let id = element.identifier.isEmpty ? "" : " #\(element.identifier)"
+            let place = "x \(Int(frame.minX)) y \(Int(frame.minY)) w \(Int(frame.width)) h \(Int(frame.height))"
+            let text = "\(issue.compactDescription): type \(element.elementType.rawValue)\(id) "
+                + "'\(element.label.prefix(60))' at \(place). \(issue.detailedDescription)"
+            let key = "\(issue.auditType.rawValue)|\(element.identifier)|\(element.label)|\(place)"
+            let picture = !frame.isEmpty && area.window.contains(frame) ? element.screenshot() : nil
+            findings.append(AuditFinding(key: key, text: text, picture: picture, isContrast: issue.auditType == .contrast))
+        }
+        return (findings, failure)
     }
 
     /// What is on screen, for failure messages: texts, buttons and fields with their identifiers.
@@ -484,10 +492,10 @@ private struct AuditFinding {
     let isContrast: Bool
 }
 
-/// The findings of one accessibility audit, collected by its issue handler.
+/// The issues of one accessibility audit, collected by its issue handler.
 @MainActor
-private final class AuditFindings {
-    var items: [AuditFinding] = []
+private final class AuditIssues {
+    var items: [XCUIAccessibilityAuditIssue] = []
 }
 
 /// WCAG 2 contrast, measured on an element's picture. The background is the most common
