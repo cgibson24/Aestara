@@ -538,7 +538,7 @@ jobs:
           names = [d for r in runtimes for d in devices[r]]
           pick = lambda *prefixes: next(d["udid"] for p in prefixes for d in names if d["name"].startswith(p))
           print(pick("iPhone"))
-          print(pick("iPad mini", "iPad (A16)", "iPad Air 11", "iPad"))' |
+          print(pick("iPad Pro 13", "iPad"))' |
           while read -r udid; do
             echo "Booting $udid"
             # Followed from the start, through the first boot's data migration, which a
@@ -610,7 +610,7 @@ jobs:
           names = [d for r in runtimes for d in devices[r]]
           pick = lambda *prefixes: next(d["udid"] for p in prefixes for d in names if d["name"].startswith(p))
           print(pick("iPhone"))
-          print(pick("iPad mini", "iPad (A16)", "iPad Air 11", "iPad"))' |
+          print(pick("iPad Pro 13", "iPad"))' |
           while read -r udid; do
             for _ in $(seq 1 1800); do [ -s "$RUNNER_TEMP/booted-$udid" ] && break; sleep 1; done
             cat "$RUNNER_TEMP/boot-$udid.log"
@@ -633,15 +633,15 @@ jobs:
           trap 'status=$?; kill $stack 2>/dev/null || true; exit $status' EXIT
           for _ in $(seq 1 180); do [ -s "$users" ] && break; sleep 1; done
           [ -s "$users" ] || { echo "The api test stack did not start"; exit 1; }
-          # The smallest iPad, regular width like every iPad: the 13-inch one has nearly twice
-          # the pixels of the iPhone, and its accessibility audits ran out of time or misread text.
+          # The 13-inch iPad in portrait shows the patient list beside the profile; in landscape
+          # the simulator's screenshots of the app are cut off, which the audit measures.
           devices=$(xcrun simctl list devices available --json | python3 -c '
           import json, sys
           devices = json.load(sys.stdin)["devices"]
           runtimes = [r for r in sorted(devices, reverse=True) if "iOS-26" in r]
           names = [d for r in runtimes for d in devices[r]]
           pick = lambda *prefixes: next(d["udid"] for p in prefixes for d in names if d["name"].startswith(p))
-          print(pick("iPhone"), pick("iPad mini", "iPad (A16)", "iPad Air 11", "iPad"))')
+          print(pick("iPhone"), pick("iPad Pro 13", "iPad"))')
           read -r iphone ipad <<< "$devices"
           failed=""
           for entry in "iphone:$iphone" "ipad:$ipad"; do

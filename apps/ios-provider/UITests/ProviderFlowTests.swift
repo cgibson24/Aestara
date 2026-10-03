@@ -21,11 +21,6 @@ final class ProviderFlowTests: XCTestCase {
         let password = try XCTUnwrap(env["UITEST_PASSWORD"], "UITEST_PASSWORD is not set")
         let secret = try XCTUnwrap(env["UITEST_TOTP_SECRET"], "UITEST_TOTP_SECRET is not set")
         let lastStep = try XCTUnwrap(Int(env["UITEST_TOTP_LAST_STEP"] ?? ""), "UITEST_TOTP_LAST_STEP is not set")
-        // iPad in landscape, iPhone in portrait: the orientations every screen is designed for
-        // (DESIGN_SYSTEM.md §11), and on iPad the one that keeps the patient list beside the profile.
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            XCUIDevice.shared.orientation = .landscapeLeft
-        }
         app.launch()
 
         // Login UI: a wrong password shows the server's message.
@@ -272,7 +267,8 @@ final class ProviderFlowTests: XCTestCase {
     /// of the same, unchanged screen reports it again: on the iPad simulator the audit
     /// flagged one label of a row and not its identical neighbours, and every text of a
     /// screen in one run and none in the next. Findings not confirmed are kept with the
-    /// results and printed by CI, not failed.
+    /// results and printed by CI, not failed. An audit that cannot complete in time runs
+    /// once more after a pause; a second failure fails the test.
     /// `sheet` names the parts of a presented sheet (its bar and its content), whose union
     /// is then the visible area.
     private func audit(_ app: XCUIApplication, screen name: String, sheet: [XCUIElement] = []) {
@@ -298,9 +294,15 @@ final class ProviderFlowTests: XCTestCase {
             inSheet: !sheet.isEmpty
         )
 
-        let first = auditPass(app, area: area)
+        var first = auditPass(app, area: area)
+        if first.error != nil {
+            // The audit itself ran out of time, which on the iPad simulator also left the
+            // app's accessibility unanswered for a while: once more, after a pause.
+            RunLoop.current.run(until: Date().addingTimeInterval(60))
+            first = auditPass(app, area: area)
+        }
         if let error = first.error {
-            XCTFail("The accessibility audit of the \(name) screen could not run: \(error)")
+            XCTFail("The accessibility audit of the \(name) screen could not run, twice: \(error)")
         }
         var confirmed = first.findings.filter(\.isContrast)
         var unconfirmed: [String] = []
