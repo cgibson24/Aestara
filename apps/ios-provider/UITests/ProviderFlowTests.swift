@@ -302,6 +302,11 @@ final class ProviderFlowTests: XCTestCase {
             first = auditPass(app, area: area)
         }
         if let error = first.error {
+            // The screen as it is now, from the device rather than the app, which may not answer.
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "Audit \(name): screen when the audit could not run"
+            shot.lifetime = .keepAlways
+            add(shot)
             XCTFail("The accessibility audit of the \(name) screen could not run, twice: \(error)")
         }
         var confirmed = first.findings.filter(\.isContrast)

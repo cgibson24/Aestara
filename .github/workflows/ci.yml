@@ -688,10 +688,10 @@ jobs:
                 base64 -i "$RUNNER_TEMP/end-$name.jpg" | fold -w 4000
                 echo "END-SCREENSHOT"
               fi
-              echo "::group::Device log, last 15 minutes ($name)"
-              xcrun simctl spawn "$udid" log show --last 15m --style compact \
-                --predicate 'process == "AestaraProvider" OR process == "testmanagerd" OR eventMessage CONTAINS[c] "hang"' \
-                2> /dev/null | tail -400 || true
+              echo "::group::Device log, last 20 minutes ($name)"
+              xcrun simctl spawn "$udid" log show --last 20m --style compact \
+                --predicate 'process == "AestaraProvider" OR subsystem == "com.apple.hangtracer" OR eventMessage CONTAINS "Hang detected" OR eventMessage CONTAINS "AttributeGraph" OR (process == "testmanagerd" AND eventMessage CONTAINS[c] "audit")' \
+                2> /dev/null | grep -v '^$' | tail -300 || true
               echo "::endgroup::"
               # The other device still runs, so one run reports both.
               failed="$failed $name"
