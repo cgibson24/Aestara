@@ -1,6 +1,6 @@
 # image-processing
 
-Renders each accepted photo's `THUMBNAIL` (long edge 400 px) and `DISPLAY_PREVIEW` (long edge 2048 px) as JPEG, in sRGB, with the orientation applied and all metadata removed. Python 3.13 with pyvips (libvips 8.18 from the `pyvips-binary` wheel), managed with uv. Decisions: ADR-0023 K2-01 and K2-06, ADR-0024. Before/after registration joins in Layer 3.
+Renders each accepted photo's `THUMBNAIL` (long edge 400 px) and `DISPLAY_PREVIEW` (long edge 2048 px) as JPEG, in sRGB, with the orientation applied and all metadata removed. It also aligns before/after pairs: it estimates the transform that places an after photo over its before photo. Python 3.13 with pyvips (libvips 8.18 from the `pyvips-binary` wheel) and, for registration, OpenCV (`opencv-python-headless` 4.14, Apache-2.0), managed with uv. Decisions: ADR-0023 K2-01 and K2-06, ADR-0024, ADR-0026 K3-13.
 
 ## What it does
 
@@ -12,12 +12,20 @@ The api worker sends `image.derivative.requested` to the `image-jobs` queue (`se
 4. Writes each output through its `PUT`. The write is write-once: a `412` means an earlier delivery already wrote it.
 5. Sends `image.derivative.completed` or `image.derivative.failed` to `image-results`. The worker then verifies the outputs and records the derivatives.
 
+A registration job (`"task": "REGISTRATION"`, sent by `services/api/src/worker/registrations.ts`) holds presigned `GET`s for the two display previews, never the originals. The service downloads and checks both like an original, then, in a fresh child process:
+
+1. Decodes each preview with libvips only, applies its orientation and reduces it to grey at most 1024 px on its long edge. OpenCV never decodes a file; it receives the pixel arrays.
+2. Finds AKAZE features in both, keeps the matches that pass a ratio test, and fits a similarity transform (uniform scale, rotation, translation) with RANSAC. No shear and no perspective: alignment can move and turn a photo, never reshape it.
+3. Refuses the fit as `NO_RELIABLE_ALIGNMENT` with fewer than 12 agreeing matches, under a quarter of matches agreeing, a scale outside 0.5–2, a turn beyond 20° or a shift beyond two image heights.
+4. Sends `image.registration.completed` (the transform, in units of the before image's height from its centre, and the number of agreeing matches) or `image.registration.failed`. Nothing is written.
+
 The whole job has 60 seconds. The service has **no database access** and sees **no PHI**: the URLs and the object keys inside them are opaque. It never changes an original.
 
 | Module | Role |
 |---|---|
 | `contract.py` | Job validation and result shapes (spec §6.7) |
 | `imaging.py` | libvips hardening, rendering, the metadata check |
+| `registration.py` | Before/after registration: decoding to grey, AKAZE features, RANSAC similarity fit |
 | `sandbox.py` | The child process: time limit, memory limit, kill |
 | `transfer.py` | Presigned `GET`/`PUT`: no redirects, size limits, deadlines |
 | `service.py` | One job, from message to result |
@@ -43,6 +51,7 @@ A retried code gets a new attempt with fresh URLs, after 1, 5 and 30 minutes. An
 | `DECODE_FAILED` | no | The file is corrupt or truncated |
 | `PIXEL_LIMIT_EXCEEDED` | no | The image is over 100 megapixels |
 | `METADATA_NOT_STRIPPED` | no | An output still had a metadata segment (a defect; never served) |
+| `NO_RELIABLE_ALIGNMENT` | no | Registration found no plausible alignment; the set stays as it was |
 
 A message that names no job gets no answer. It reaches the dead-letter queue after five receives.
 

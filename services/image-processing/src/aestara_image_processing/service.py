@@ -1,9 +1,11 @@
-"""One image job, from message to result (spec §6.7; ADR-0023 K2-06).
+"""One image job, from message to result (spec §6.7; ADR-0023 K2-06, ADR-0026 K3-13).
 
-Read the original through its presigned GET, check its size and SHA-256
-against the ledger's, render the derivatives in the sandbox, write each
-through its write-once PUT, and report what was written. The whole job has 60
-seconds. The original is only ever read.
+A derivative job reads the original through its presigned GET, checks its
+size and SHA-256 against the ledger's, renders the derivatives in the sandbox,
+writes each through its write-once PUT, and reports what was written. A
+registration job reads two display previews the same way and reports the
+transform that aligns them; it writes nothing. The whole job has 60 seconds.
+Sources are only ever read.
 """
 
 import hashlib
@@ -15,26 +17,46 @@ from typing import Any
 
 from . import sandbox, transfer
 from .config import JOB_SECONDS, Config
-from .contract import InvalidJob, Job, Rendered, failed, generator, parse_job, succeeded
+from .contract import (
+    InvalidJob,
+    Job,
+    RegistrationJob,
+    Rendered,
+    Source,
+    Transform,
+    failed,
+    generator,
+    parse_message,
+    registration_failed,
+    registration_succeeded,
+    succeeded,
+)
 from .errors import JobFailure
 from .log import event
 
 logger = logging.getLogger(__name__)
 
 Renderer = Callable[[bytes, str, list[tuple[str, int]], float], list[Rendered]]
+Registrar = Callable[[bytes, str, bytes, str, float], Transform]
 
 
 class JobRunner:
-    def __init__(self, config: Config, renderer: Renderer = sandbox.render_isolated) -> None:
+    def __init__(
+        self,
+        config: Config,
+        renderer: Renderer = sandbox.render_isolated,
+        registrar: Registrar = sandbox.register_isolated,
+    ) -> None:
         self._origin = config.object_origin
         self._render = renderer
+        self._register = registrar
         self._generator = generator()
 
     def run(self, body: str) -> dict[str, Any] | None:
         """The result to report, or None for a message that names no job (left for the dead-letter queue)."""
         started = time.monotonic()
         try:
-            job = parse_job(body, self._origin)
+            job = parse_message(body, self._origin)
         except InvalidJob as invalid:
             event(
                 logger,
@@ -47,11 +69,20 @@ class JobRunner:
             )
             if invalid.job_id is None or invalid.attempt is None:
                 return None
-            return failed(invalid.job_id, invalid.attempt, JobFailure("INVALID_JOB"), self._generator)
-        try:
-            result = succeeded(job, self._process(job, started + JOB_SECONDS), self._generator)
-        except JobFailure as failure:
-            result = failed(job.job_id, job.attempt, failure, self._generator)
+            report = registration_failed if invalid.registration else failed
+            return report(invalid.job_id, invalid.attempt, JobFailure("INVALID_JOB"), self._generator)
+        result: dict[str, Any]
+        if isinstance(job, RegistrationJob):
+            try:
+                transform = self._registration(job, started + JOB_SECONDS)
+                result = registration_succeeded(job, transform, self._generator)
+            except JobFailure as failure:
+                result = registration_failed(job.job_id, job.attempt, failure, self._generator)
+        else:
+            try:
+                result = succeeded(job, self._process(job, started + JOB_SECONDS), self._generator)
+            except JobFailure as failure:
+                result = failed(job.job_id, job.attempt, failure, self._generator)
         event(
             logger,
             logging.INFO,
@@ -64,6 +95,22 @@ class JobRunner:
             durationMs=round((time.monotonic() - started) * 1000),
         )
         return result
+
+    @staticmethod
+    def _read(source: Source, deadline: float) -> bytes:
+        data = transfer.get(source.url, source.byte_size, deadline)
+        if len(data) != source.byte_size or hashlib.sha256(data).hexdigest() != source.sha256:
+            raise JobFailure("SOURCE_INTEGRITY")
+        return data
+
+    def _registration(self, job: RegistrationJob, deadline: float) -> Transform:
+        if job.expires_at <= datetime.now(UTC):
+            raise JobFailure("JOB_EXPIRED")
+        before = self._read(job.before, deadline)
+        after = self._read(job.after, deadline)
+        return self._register(
+            before, job.before.content_type, after, job.after.content_type, deadline - time.monotonic()
+        )
 
     def _process(self, job: Job, deadline: float) -> list[Rendered]:
         if job.expires_at <= datetime.now(UTC):

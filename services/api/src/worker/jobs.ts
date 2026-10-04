@@ -1,6 +1,7 @@
 // Scheduled work (ADR-0023 K2-06, K2-07, K2-15). Each job loops over the active
 // organizations and runs in each one's tenant transaction:
-//   - every minute: retry derivative attempts whose result never arrived;
+//   - every minute: retry derivative and registration attempts whose result
+//     never arrived;
 //   - every hour: expire media permissions past expiresAt;
 //   - every day: reconcile the audit table with its WORM copy for the last
 //     8 days (offline views can be replayed up to 7 days late), and raise an
@@ -14,6 +15,7 @@ import { Database } from "../db/database.ts";
 import { PermissionLedger } from "../photos/permission-ledger.ts";
 import { DerivativeJobs } from "./derivatives.ts";
 import { WORKER_LOGGER } from "./logger.ts";
+import { RegistrationJobs } from "./registrations.ts";
 import { AUDIT_ARCHIVE_PREFIX } from "./relay.ts";
 import { systemContext } from "./system-context.ts";
 import { WorkerDb } from "./worker-db.ts";
@@ -35,6 +37,7 @@ export class ScheduledJobs {
     private readonly aws: AwsClients,
     private readonly ledger: PermissionLedger,
     private readonly derivatives: DerivativeJobs,
+    private readonly registrations: RegistrationJobs,
     @Inject(CONFIG) private readonly config: Pick<WorkerConfig, "AUDIT_ARCHIVE_BUCKET">,
     @Inject(WORKER_LOGGER) private readonly logger: Logger,
   ) {}
@@ -48,8 +51,10 @@ export class ScheduledJobs {
 
   async sweepDerivatives(now = new Date()): Promise<number> {
     let total = 0;
-    for (const organizationId of await this.workerDb.activeOrganizations())
+    for (const organizationId of await this.workerDb.activeOrganizations()) {
       total += await this.derivatives.sweepStuck(organizationId, now);
+      total += await this.registrations.sweepStuck(organizationId, now);
+    }
     return total;
   }
 

@@ -32,4 +32,9 @@ export class BeforeAfterController {
   update(@Ctx() ctx: RequestContext): Promise<OperationResult> {
     return this.sets.update(ctx, pid(ctx), sid(ctx), ctx.body as z.output<typeof BeforeAfterSetUpdate>);
   }
+
+  @Operation("requestBeforeAfterRegistration")
+  requestRegistration(@Ctx() ctx: RequestContext): Promise<OperationResult> {
+    return this.sets.requestRegistration(ctx, pid(ctx), sid(ctx));
+  }
 }

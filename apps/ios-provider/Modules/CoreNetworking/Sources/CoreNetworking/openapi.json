@@ -4977,7 +4977,8 @@
         "type": "string",
         "enum": [
           "photography.ghostOverlay",
-          "photography.liveGuidance"
+          "photography.liveGuidance",
+          "beforeAfter.autoRegistration"
         ]
       },
       "FeatureFlagPut": {
@@ -12173,6 +12174,92 @@
           },
           "428": {
             "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/before-after/{setId}/auto-registration": {
+      "post": {
+        "operationId": "requestBeforeAfterRegistration",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Queue automatic alignment of the set from its display previews. The result applies only if the set has not changed meanwhile.",
+        "description": "Permission: `photo.annotate` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "setId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/BeforeAfterSet"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
           },
           "500": {
             "$ref": "#/components/responses/Error500"

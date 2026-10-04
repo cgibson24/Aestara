@@ -11,7 +11,7 @@ import type {
   BeforeAfterSetUpdate,
   RegistrationTransform,
 } from "@aestara/api-contracts";
-import { Prisma } from "@aestara/database";
+import { Prisma, uuidv7 } from "@aestara/database";
 import { Injectable, type OnModuleInit } from "@nestjs/common";
 import type { z } from "zod";
 import { AuditWriter } from "../audit/audit-writer.ts";
@@ -22,6 +22,8 @@ import { ApiError, notFound } from "../common/errors.ts";
 import { Idempotency } from "../common/idempotency.ts";
 import type { OperationResult } from "../common/operation.ts";
 import type { Tx } from "../db/database.ts";
+import { Outbox } from "../outbox/outbox.ts";
+import { resolveFlag } from "../settings/configuration.service.ts";
 
 type SetRow = {
   id: string;
@@ -102,9 +104,14 @@ export class BeforeAfterService implements OnModuleInit {
     private readonly audit: AuditWriter,
     private readonly cursors: CursorCodec,
     private readonly idempotency: Idempotency,
+    private readonly outbox: Outbox,
   ) {}
 
   onModuleInit(): void {
+    this.idempotency.register("requestBeforeAfterRegistration", async (ctx, id) => {
+      const row = await this.set(requireTx(ctx), ctx.params.patientId ?? "", id);
+      return { data: setDto(row), version: row.version, resource: { type: "BeforeAfterSet", id } };
+    });
     this.idempotency.register("createBeforeAfterSet", async (ctx, id) => {
       const row = await this.set(requireTx(ctx), ctx.params.patientId ?? "", id);
       return { data: setDto(row), version: row.version, resource: { type: "BeforeAfterSet", id } };
@@ -256,5 +263,67 @@ export class BeforeAfterService implements OnModuleInit {
       include: INCLUDE,
     })) as SetRow;
     return { data: setDto(updated), version: updated.version };
+  }
+
+  /**
+   * Queues automatic registration (ADR-0026 K3-13): an IMAGE_REGISTRATION job
+   * over the two display previews. The job records the set's version; its
+   * result applies only if the set is still at that version, so an alignment
+   * made by hand meanwhile wins.
+   */
+  async requestRegistration(ctx: RequestContext, patientId: string, id: string): Promise<OperationResult> {
+    const tx = requireTx(ctx);
+    const organizationId = requireOrganization(ctx);
+    await lockRow(tx, "BeforeAfterSet", id);
+    const current = await this.set(tx, patientId, id);
+    if (!(await resolveFlag(tx, "beforeAfter.autoRegistration", null)).enabled)
+      throw new ApiError(
+        "INVALID_STATE_TRANSITION",
+        "Automatic alignment is turned off for this organization.",
+      );
+    if (current.registrationJob !== null && ["QUEUED", "RUNNING"].includes(current.registrationJob.status))
+      throw new ApiError("INVALID_STATE_TRANSITION", "Automatic alignment is already running for this set.");
+    const previews = await tx.photoDerivative.count({
+      where: {
+        sourcePhotoId: { in: [current.beforePhotoId, current.afterPhotoId] },
+        kind: "DISPLAY_PREVIEW",
+        storageObject: { status: "AVAILABLE" },
+      },
+    });
+    if (previews < 2)
+      throw new ApiError(
+        "INVALID_STATE_TRANSITION",
+        "The photos' previews are not ready yet. Try again shortly.",
+      );
+    const jobId = uuidv7();
+    await tx.aIJob.create({
+      data: {
+        id: jobId,
+        organizationId,
+        patientId,
+        jobType: "IMAGE_REGISTRATION",
+        status: "QUEUED",
+        idempotencyKey: `registration:${jobId}`,
+        requestedById: requireAuth(ctx).userId,
+        inputSummary: {
+          setId: id,
+          setVersion: current.version + 1,
+          beforePhotoId: current.beforePhotoId,
+          afterPhotoId: current.afterPhotoId,
+        },
+      },
+    });
+    const updated = (await tx.beforeAfterSet.update({
+      where: { id },
+      data: { registrationJobId: jobId, version: { increment: 1 } },
+      include: INCLUDE,
+    })) as SetRow;
+    await this.outbox.add(tx, {
+      organizationId,
+      eventType: "image.registration.requested",
+      aggregateId: jobId,
+      payload: { jobId, attempt: 1 },
+    });
+    return { data: setDto(updated), version: updated.version, resource: { type: "BeforeAfterSet", id } };
   }
 }

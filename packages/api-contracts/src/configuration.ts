@@ -22,6 +22,10 @@ export const FEATURE_FLAGS = {
     default: true,
     description: "Show live pose, framing and lighting guidance while capturing [B §6.3–6.4].",
   },
+  "beforeAfter.autoRegistration": {
+    default: true,
+    description: "Offer automatic alignment of before/after sets; manual alignment stays (ADR-0026 K3-13).",
+  },
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;

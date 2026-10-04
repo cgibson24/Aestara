@@ -1,5 +1,7 @@
 """The container image as deployed: non-root, read-only root filesystem, no capabilities (ADR-0023 K2-01).
 
+It renders a derivative job and runs a registration job (ADR-0026 K3-13).
+
 Runs when IMAGE_UNDER_TEST names a built image (CI builds one); it needs Docker.
 """
 
@@ -10,6 +12,7 @@ import uuid
 
 import pytest
 from support import PLANTED_TEXT, Emulator, jpeg_with_metadata, markers
+from test_registration import jpeg, moved, registration_job, texture
 
 IMAGE = os.environ.get("IMAGE_UNDER_TEST")
 
@@ -46,6 +49,18 @@ def test_the_image_renders_a_job_as_a_locked_down_container(emulator: Emulator) 
                 break
             time.sleep(1)
         assert [r["status"] for r in results] == ["SUCCEEDED"]
+        # Registration loads OpenCV in the sandbox child of the same locked-down container.
+        before = texture()
+        emulator.send(registration_job(emulator, jpeg(before), jpeg(moved(before, 1.0, 3.0, (10.0, 5.0)))))
+        registered = []
+        for _ in range(60):
+            registered = emulator.results()
+            if registered:
+                break
+            time.sleep(1)
+        assert [(r["type"], r["status"]) for r in registered] == [
+            ("image.registration.completed", "SUCCEEDED")
+        ]
         for spec in job["outputs"]:
             written = emulator.read(spec["key"])
             assert PLANTED_TEXT not in written

@@ -2,6 +2,14 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Automatic before/after registration (M3.6 backend; ADR-0027)
+
+- **API:** `POST …/before-after/{setId}/auto-registration` queues an `IMAGE_REGISTRATION` job (`202`); the flag `beforeAfter.autoRegistration` (on by default) hides it per organization or practice.
+- **Worker:** dispatches registration jobs over the two display previews and applies a result only if the set has not changed since the request; retries and the stuck-job sweep as for derivatives.
+- **image-processing:** OpenCV 4.14 (`opencv-python-headless`, Apache-2.0) joins; `registration.py` fits a similarity transform with AKAZE features and RANSAC from libvips-decoded grey images, in the sandbox child. New failure code `NO_RELIABLE_ALIGNMENT`.
+- **Routing:** `image.registration.requested` added to the outbox types, the local emulator's worker rule and Terraform's `worker_event_types`.
+- **Tests:** 14 pytest tests (known transforms recovered, preview-size independence, featureless, unrelated and over-turned pairs refused, the contract, the consumer end to end); the container test now also runs a registration job; 5 api tests with the worker; and a real-service end-to-end test that uploads two photos, renders their previews and aligns them.
+
 ## 2026-10-04: Before/after sets (M3.5 backend; ADR-0027)
 
 - **API:** list, create, read and update before/after sets: two accepted, unarchived photos of the patient with the same view key and pose target, the before one earlier (`422 INCOMPATIBLE_VIEWS`, `422 BEFORE_AFTER_ORDER`); one indistinguishable `404` for unknown, other-patient and other-tenant photos; manual alignment and reset with `photo.annotate` and `If-Match`; `BEFORE_AFTER_CREATED`.

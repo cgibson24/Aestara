@@ -12,6 +12,8 @@ export const OUTBOX_EVENT_TYPES = {
   "photo.captured": "PatientPhoto",
   /** A derivative job is due, first or retried (K2-06). Consumed by the worker's dispatcher. */
   "image.derivative.requested": "AIJob",
+  /** A before/after registration job is due (ADR-0026 K3-13). Consumed by the worker's dispatcher. */
+  "image.registration.requested": "AIJob",
   /** A grant ended; the payload lists the releases revoked with it [B §7.3] (K2-15). */
   "photo_permission.revoked": "PhotoPermission",
 } as const;

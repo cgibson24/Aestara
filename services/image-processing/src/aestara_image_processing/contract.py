@@ -1,15 +1,19 @@
-"""The image job contract with the api worker (spec §6.7; ADR-0023 K2-06).
+"""The image job contract with the api worker (spec §6.7; ADR-0023 K2-06, ADR-0026 K3-13).
 
 The worker sends `image.derivative.requested` with opaque presigned URLs and
 output parameters (services/api/src/worker/derivatives.ts, ImageJobMessage);
 this service answers `image.derivative.completed` or `image.derivative.failed`
-in the shape of ImageJobResult there. Neither carries PHI.
+in the shape of ImageJobResult there. A message with `"task": "REGISTRATION"`
+asks for the alignment of two display previews instead
+(services/api/src/worker/registrations.ts, RegistrationJobMessage) and is
+answered with `image.registration.completed` or `.failed`. None carries PHI.
 """
 
 import hashlib
 import json
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
@@ -56,13 +60,48 @@ class Rendered:
     height: int
 
 
+@dataclass(frozen=True)
+class Transform:
+    """A registration result (ADR-0026 K3-13); see registration.py for its units."""
+
+    scale: float
+    rotation_deg: float
+    translate_x: float
+    translate_y: float
+    inliers: int
+
+
+@dataclass(frozen=True)
+class Source:
+    url: str
+    content_type: str
+    byte_size: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class RegistrationJob:
+    job_id: str
+    attempt: int
+    before: Source
+    after: Source
+    expires_at: datetime
+
+
 class InvalidJob(ValueError):
     """A message that is not a valid job. It names the job when it can, so the job can be failed."""
 
-    def __init__(self, reason: str, job_id: str | None = None, attempt: int | None = None) -> None:
+    def __init__(
+        self,
+        reason: str,
+        job_id: str | None = None,
+        attempt: int | None = None,
+        registration: bool = False,
+    ) -> None:
         super().__init__(reason)
         self.job_id = job_id
         self.attempt = attempt
+        self.registration = registration
 
 
 def _is_int(value: object) -> TypeIs[int]:
@@ -80,40 +119,87 @@ def _allowed_url(url: object, origin: str | None) -> bool:
     return parts.scheme == "https" and host.endswith(".amazonaws.com")
 
 
-def parse_job(body: str, origin: str | None) -> Job:
-    """Validates a job message. `origin` is the emulator's origin locally, None in AWS."""
+def parse_message(body: str, origin: str | None) -> Job | RegistrationJob:
+    """Validates a job message of either kind. `origin` is the emulator's origin locally, None in AWS."""
     try:
         raw = json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise InvalidJob("not JSON") from error
     if not isinstance(raw, dict):
         raise InvalidJob("not an object")
+    if raw.get("task") == "REGISTRATION":
+        return _parse_registration(raw, origin)
+    return _parse_derivative(raw, origin)
+
+
+def parse_job(body: str, origin: str | None) -> Job:
+    """Validates a derivative job message."""
+    job = parse_message(body, origin)
+    if not isinstance(job, Job):
+        raise InvalidJob("task", job.job_id, job.attempt, registration=True)
+    return job
+
+
+def _job_identity(raw: dict[str, Any], registration: bool = False) -> tuple[str, int]:
     job_id = raw.get("jobId")
     attempt = raw.get("attempt")
     try:
         if not isinstance(job_id, str) or str(uuid.UUID(job_id)) != job_id:
             raise ValueError
     except ValueError:
-        raise InvalidJob("jobId") from None
+        raise InvalidJob("jobId", registration=registration) from None
     if not _is_int(attempt) or not 1 <= attempt <= 100:
-        raise InvalidJob("attempt")
+        raise InvalidJob("attempt", registration=registration)
+    return job_id, attempt
+
+
+def _expiry(raw: dict[str, Any], invalid: Callable[[str], InvalidJob]) -> datetime:
+    expires = raw.get("expiresAt")
+    try:
+        if not isinstance(expires, str):
+            raise ValueError
+        expires_at = datetime.fromisoformat(expires)
+        if expires_at.tzinfo is None:
+            raise ValueError
+    except ValueError:
+        raise invalid("expiresAt") from None
+    return expires_at
+
+
+def _source(raw: object, origin: str | None, name: str, invalid: Callable[[str], InvalidJob]) -> Source:
+    if not isinstance(raw, dict):
+        raise invalid(name)
+    if not _allowed_url(raw.get("url"), origin):
+        raise invalid(f"{name}.url")
+    if raw.get("contentType") not in SOURCE_TYPES:
+        raise invalid(f"{name}.contentType")
+    size = raw.get("byteSize")
+    if not _is_int(size) or not 1 <= size <= MAX_SOURCE_BYTES:
+        raise invalid(f"{name}.byteSize")
+    sha = raw.get("sha256")
+    if not isinstance(sha, str) or _SHA256.match(sha) is None:
+        raise invalid(f"{name}.sha256")
+    return Source(raw["url"], raw["contentType"], size, sha)
+
+
+def _parse_registration(raw: dict[str, Any], origin: str | None) -> RegistrationJob:
+    job_id, attempt = _job_identity(raw, registration=True)
+
+    def invalid(reason: str) -> InvalidJob:
+        return InvalidJob(reason, job_id, attempt, registration=True)
+
+    before = _source(raw.get("before"), origin, "before", invalid)
+    after = _source(raw.get("after"), origin, "after", invalid)
+    return RegistrationJob(job_id, attempt, before, after, _expiry(raw, invalid))
+
+
+def _parse_derivative(raw: dict[str, Any], origin: str | None) -> Job:
+    job_id, attempt = _job_identity(raw)
 
     def invalid(reason: str) -> InvalidJob:
         return InvalidJob(reason, job_id, attempt)
 
-    source = raw.get("source")
-    if not isinstance(source, dict):
-        raise invalid("source")
-    if not _allowed_url(source.get("url"), origin):
-        raise invalid("source.url")
-    if source.get("contentType") not in SOURCE_TYPES:
-        raise invalid("source.contentType")
-    size = source.get("byteSize")
-    if not _is_int(size) or not 1 <= size <= MAX_SOURCE_BYTES:
-        raise invalid("source.byteSize")
-    sha = source.get("sha256")
-    if not isinstance(sha, str) or _SHA256.match(sha) is None:
-        raise invalid("source.sha256")
+    source = _source(raw.get("source"), origin, "source", invalid)
 
     outputs_raw = raw.get("outputs")
     if not isinstance(outputs_raw, list) or not 1 <= len(outputs_raw) <= len(KINDS):
@@ -143,23 +229,15 @@ def parse_job(body: str, origin: str | None) -> Job:
             raise invalid("outputs.headers")
         outputs.append(OutputSpec(item["kind"], item["url"], dict(headers), edge))
 
-    expires = raw.get("expiresAt")
-    try:
-        if not isinstance(expires, str):
-            raise ValueError
-        expires_at = datetime.fromisoformat(expires)
-        if expires_at.tzinfo is None:
-            raise ValueError
-    except ValueError:
-        raise invalid("expiresAt") from None
+    expires_at = _expiry(raw, invalid)
 
     return Job(
         job_id=job_id,
         attempt=attempt,
-        source_url=source["url"],
-        source_type=source["contentType"],
-        source_bytes=size,
-        source_sha256=sha,
+        source_url=source.url,
+        source_type=source.content_type,
+        source_bytes=source.byte_size,
+        source_sha256=source.sha256,
         outputs=tuple(outputs),
         expires_at=expires_at,
     )
@@ -205,6 +283,40 @@ def failed(job_id: str, attempt: int, failure: JobFailure, gen: dict[str, str]) 
         "attempt": attempt,
         "status": "FAILED",
         "outputs": [],
+        "errorCode": failure.code,
+        "retryable": failure.retryable,
+        "generator": gen,
+    }
+
+
+def registration_succeeded(job: RegistrationJob, transform: Transform, gen: dict[str, str]) -> dict[str, Any]:
+    return {
+        "type": "image.registration.completed",
+        "task": "REGISTRATION",
+        "jobId": job.job_id,
+        "attempt": job.attempt,
+        "status": "SUCCEEDED",
+        "transform": {
+            "scale": transform.scale,
+            "rotationDeg": transform.rotation_deg,
+            "translateX": transform.translate_x,
+            "translateY": transform.translate_y,
+        },
+        "inliers": transform.inliers,
+        "retryable": False,
+        "generator": gen,
+    }
+
+
+def registration_failed(
+    job_id: str, attempt: int, failure: JobFailure, gen: dict[str, str]
+) -> dict[str, Any]:
+    return {
+        "type": "image.registration.failed",
+        "task": "REGISTRATION",
+        "jobId": job_id,
+        "attempt": attempt,
+        "status": "FAILED",
         "errorCode": failure.code,
         "retryable": failure.retryable,
         "generator": gen,

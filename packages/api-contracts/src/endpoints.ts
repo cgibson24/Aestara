@@ -1340,6 +1340,22 @@ export const ENDPOINTS = [
     patientData: true,
   },
   {
+    operationId: "requestBeforeAfterRegistration",
+    method: "POST",
+    path: "/patients/{patientId}/before-after/{setId}/auto-registration",
+    tag: "Photography",
+    summary:
+      "Queue automatic alignment of the set from its display previews. The result applies only if " +
+      "the set has not changed meanwhile.",
+    auth: perm("photo.annotate"),
+    params: SetParams,
+    idempotency: "required",
+    response: { status: 202, shape: "resource", schema: BeforeAfterSet, etag: true },
+    notFound: "BEFORE_AFTER_SET_NOT_FOUND",
+    patientData: true,
+    errors: [409],
+  },
+  {
     operationId: "updateBeforeAfterSet",
     method: "PATCH",
     path: "/patients/{patientId}/before-after/{setId}",

@@ -46,13 +46,13 @@ def check_signature(data: bytes, content_type: str) -> None:
         raise JobFailure("UNSUPPORTED_FORMAT")
 
 
-def _load(data: bytes, content_type: str, shrink: int = 1) -> pyvips.Image:
+def load_image(data: bytes, content_type: str, shrink: int = 1) -> pyvips.Image:
     if content_type == "image/jpeg":
         return pyvips.Image.jpegload_buffer(data, shrink=shrink, access="sequential", fail_on="error")
     return pyvips.Image.pngload_buffer(data, access="sequential", fail_on="error")
 
 
-def _to_srgb(image: pyvips.Image) -> pyvips.Image:
+def to_srgb(image: pyvips.Image) -> pyvips.Image:
     if image.get_typeof("icc-profile-data") != 0:
         try:
             return image.icc_transform("srgb", embedded=True, intent="perceptual")
@@ -70,7 +70,7 @@ def _render_one(data: bytes, content_type: str, long_edge: int, kind: str, max_e
     if content_type == "image/jpeg":
         while shrink < 8 and long_edge // (shrink * 2) >= max_edge:
             shrink *= 2
-    image = _to_srgb(_load(data, content_type, shrink))
+    image = to_srgb(load_image(data, content_type, shrink))
     if image.hasalpha():
         image = image.flatten(background=[255, 255, 255])
     if image.format != "uchar":
@@ -89,7 +89,7 @@ def render(data: bytes, content_type: str, specs: Sequence[tuple[str, int]]) -> 
     """Renders each (kind, max edge) from the original bytes; the original is only read."""
     check_signature(data, content_type)
     try:
-        header = _load(data, content_type)
+        header = load_image(data, content_type)
         width, height = header.width, header.height
     except pyvips.Error:
         raise JobFailure("DECODE_FAILED") from None

@@ -3,8 +3,11 @@
 // view and capture order; unknown, other-patient and other-tenant photos give
 // one indistinguishable 404; originals untouched; manual alignment and reset.
 import { uuidv7 } from "@aestara/database";
+import { ReceiveMessageCommand, SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { databaseAvailable, startApi, type TestApi } from "./support/app.ts";
+import type { Worker } from "../src/worker/module.ts";
+import type { RegistrationJobMessage } from "../src/worker/registrations.ts";
+import { databaseAvailable, startApi, startWorker, type TestApi } from "./support/app.ts";
 import { bearer, Fixtures, type StaffMember } from "./support/fixtures.ts";
 
 const FACE_FRONT = { subject: "FACE", yawDeg: 0 };
@@ -318,6 +321,197 @@ describe.runIf(databaseAvailable())("before/after sets (Layer 3)", () => {
     expect(reset.json().data.registrationMode).toBe("NONE");
     expect(reset.json().data.registrationTransform).toBeUndefined();
     expect([await original(before), await original(after)].every(Boolean)).toBe(true);
+  });
+
+  describe("automatic registration (ADR-0026 K3-13; B §34.1 #17)", () => {
+    let worker: Worker;
+    let sqs: SQSClient;
+
+    beforeAll(async () => {
+      worker = await startWorker(api);
+      sqs = new SQSClient({
+        endpoint: api.aws.endpoint,
+        region: "us-east-1",
+        credentials: { accessKeyId: "l", secretAccessKey: "l" },
+      });
+    });
+    afterAll(async () => {
+      sqs?.destroy();
+      await worker?.stop();
+    });
+
+    /** A display preview of a photo, as image-processing would have recorded it. */
+    async function preview(photoId: string): Promise<void> {
+      const objectId = uuidv7();
+      await api.db.query(
+        `INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", "byteSize", sha256, status, "scanStatus", "verifiedAt")
+         VALUES ($1, $2, 'CLINICAL_DERIVATIVE', 'aestara-test-media', $3, 'image/jpeg', 10, $4, 'AVAILABLE', 'NOT_REQUIRED', now())`,
+        [objectId, org, `CLINICAL_DERIVATIVE/${uuidv7()}`, "d".repeat(64)],
+      );
+      await api.db.query(
+        `INSERT INTO "PhotoDerivative" (id, "organizationId", "patientId", "sourcePhotoId", kind, "storageObjectId", "generationMetadata")
+         VALUES ($1, $2, $3, $4, 'DISPLAY_PREVIEW', $5, '{}')`,
+        [uuidv7(), org, patient, photoId, objectId],
+      );
+    }
+
+    async function pairWithPreviews(): Promise<{ id: string; version: number }> {
+      const before = await photo(org, patient, front, "FRONT", 60);
+      const after = await photo(org, patient, front, "FRONT", 1);
+      await preview(before);
+      await preview(after);
+      return (
+        await call(surgeon, "POST", "/before-after", { beforePhotoId: before, afterPhotoId: after }, idem())
+      ).json().data;
+    }
+
+    /** Relays the outbox and dispatches: returns the job image-processing would receive. */
+    async function dispatched(): Promise<RegistrationJobMessage> {
+      const relay = worker.context.get((await import("../src/worker/relay.ts")).OutboxRelay);
+      await relay.relayOnce();
+      await worker.consumer("worker-events").pollOnce(1);
+      const out = await sqs.send(
+        new ReceiveMessageCommand({
+          QueueUrl: api.aws.queues.imageJobs,
+          MaxNumberOfMessages: 10,
+          WaitTimeSeconds: 1,
+        }),
+      );
+      const jobs = (out.Messages ?? []).map((m) => JSON.parse(m.Body ?? "{}") as RegistrationJobMessage);
+      expect(jobs).toHaveLength(1);
+      return jobs[0] as RegistrationJobMessage;
+    }
+
+    async function report(job: RegistrationJobMessage, result: Record<string, unknown>): Promise<void> {
+      await sqs.send(
+        new SendMessageCommand({
+          QueueUrl: api.aws.queues.imageResults,
+          MessageBody: JSON.stringify({
+            task: "REGISTRATION",
+            jobId: job.jobId,
+            attempt: job.attempt,
+            ...result,
+          }),
+        }),
+      );
+      await worker.consumer("image-results").pollOnce(1);
+    }
+
+    const transform = { scale: 1.03, rotationDeg: -1.5, translateX: 0.012, translateY: -0.004 };
+
+    it("queues a job over the two previews and applies its transform", async () => {
+      const set = await pairWithPreviews();
+      const queued = await call(
+        surgeon,
+        "POST",
+        `/before-after/${set.id}/auto-registration`,
+        undefined,
+        idem(),
+      );
+      expect(queued.statusCode, queued.body).toBe(202);
+      expect(queued.json().data).toMatchObject({ registrationJob: { status: "QUEUED" }, version: 2 });
+      const again = await call(
+        surgeon,
+        "POST",
+        `/before-after/${set.id}/auto-registration`,
+        undefined,
+        idem(),
+      );
+      expect(again.statusCode).toBe(409);
+      const job = await dispatched();
+      expect(job.task).toBe("REGISTRATION");
+      expect(job.before.url).toContain("CLINICAL_DERIVATIVE");
+      expect(job.after.url).toContain("CLINICAL_DERIVATIVE");
+      expect(JSON.stringify(job)).not.toMatch(/CLINICAL_ORIGINAL|Synthetic/);
+      await report(job, { status: "SUCCEEDED", transform, inliers: 140 });
+      const done = (await call(surgeon, "GET", `/before-after/${set.id}`)).json().data;
+      expect(done).toMatchObject({
+        registrationMode: "AUTOMATIC",
+        registrationTransform: transform,
+        registrationJob: { status: "SUCCEEDED" },
+        version: 3,
+      });
+      const reset = await call(
+        surgeon,
+        "PATCH",
+        `/before-after/${set.id}`,
+        { registration: { mode: "NONE" } },
+        at(3),
+      );
+      expect(reset.json().data.registrationMode).toBe("NONE");
+    });
+
+    it("keeps an alignment made by hand while the job ran", async () => {
+      const set = await pairWithPreviews();
+      await call(surgeon, "POST", `/before-after/${set.id}/auto-registration`, undefined, idem());
+      const job = await dispatched();
+      const manual = { scale: 1, rotationDeg: 0, translateX: 0.1, translateY: 0 };
+      await call(
+        surgeon,
+        "PATCH",
+        `/before-after/${set.id}`,
+        { registration: { mode: "MANUAL", transform: manual } },
+        at(2),
+      );
+      await report(job, { status: "SUCCEEDED", transform, inliers: 90 });
+      const after = (await call(surgeon, "GET", `/before-after/${set.id}`)).json().data;
+      expect(after).toMatchObject({ registrationMode: "MANUAL", registrationTransform: manual, version: 3 });
+      const summary = await api.db.query(`SELECT "resultSummary" FROM "AIJob" WHERE id = $1`, [job.jobId]);
+      expect(summary.rows[0].resultSummary).toEqual({ inliers: 90, applied: false });
+    });
+
+    it("leaves the set unchanged when no reliable alignment is found", async () => {
+      const set = await pairWithPreviews();
+      await call(surgeon, "POST", `/before-after/${set.id}/auto-registration`, undefined, idem());
+      const job = await dispatched();
+      await report(job, { status: "FAILED", errorCode: "NO_RELIABLE_ALIGNMENT", retryable: false });
+      const after = (await call(surgeon, "GET", `/before-after/${set.id}`)).json().data;
+      expect(after).toMatchObject({
+        registrationMode: "NONE",
+        registrationJob: { status: "FAILED", failure: "NO_RELIABLE_ALIGNMENT" },
+      });
+      expect(after.registrationTransform).toBeUndefined();
+    });
+
+    it("treats a transform beyond the automatic limits as no alignment", async () => {
+      const set = await pairWithPreviews();
+      await call(surgeon, "POST", `/before-after/${set.id}/auto-registration`, undefined, idem());
+      const job = await dispatched();
+      await report(job, { status: "SUCCEEDED", transform: { ...transform, rotationDeg: 35 }, inliers: 50 });
+      const after = (await call(surgeon, "GET", `/before-after/${set.id}`)).json().data;
+      expect(after.registrationMode).toBe("NONE");
+      expect(after.registrationJob).toEqual({ status: "FAILED", failure: "NO_RELIABLE_ALIGNMENT" });
+    });
+
+    it("waits for previews, needs photo.annotate, and honours the organization's flag", async () => {
+      const before = await photo(org, patient, front, "FRONT", 60);
+      const after = await photo(org, patient, front, "FRONT", 1);
+      const bare = (
+        await call(surgeon, "POST", "/before-after", { beforePhotoId: before, afterPhotoId: after }, idem())
+      ).json().data;
+      const notReady = await call(
+        surgeon,
+        "POST",
+        `/before-after/${bare.id}/auto-registration`,
+        undefined,
+        idem(),
+      );
+      expect(notReady.statusCode).toBe(409);
+      expect(notReady.json().error.message).toContain("previews");
+      const set = await pairWithPreviews();
+      expect(
+        (await call(photographer, "POST", `/before-after/${set.id}/auto-registration`, undefined, idem()))
+          .statusCode,
+      ).toBe(403);
+      await api.db.query(
+        `INSERT INTO "FeatureFlag" (id, "organizationId", key, enabled, "updatedAt") VALUES ($1, $2, 'beforeAfter.autoRegistration', false, now())`,
+        [uuidv7(), org],
+      );
+      const off = await call(surgeon, "POST", `/before-after/${set.id}/auto-registration`, undefined, idem());
+      expect(off.statusCode).toBe(409);
+      expect(off.json().error.message).toContain("turned off");
+      await api.db.query(`DELETE FROM "FeatureFlag" WHERE "organizationId" = $1`, [org]);
+    });
   });
 
   it("is photo data: patient.read alone does not reach it", async () => {
