@@ -459,4 +459,4 @@ The owner authorized Layer 1 (Bible Appendix B #38). Its kickoff, confirmed on 2
 
 **Layer 1: accepted by the owner on 2026-10-01**, with the go-ahead for Layer 2. The owner confirmed the Layer 2 kickoff the same day ([LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md), ADR-0023), resolving the Layer 2 findings in §5.3.
 
-**Layer 2: awaiting the owner's sign-off.** The review is §7. Two owner items stay open: F-68 (how the snapshot references are recorded) and F-69 (the device camera check before first clinical use). F-70 (on iPad the app's main thread sometimes stays busy during an audit) is open.
+**Layer 2: accepted by the owner on 2026-10-03** on the review in §7, with F-68 (how the snapshot references are recorded), F-69 (the device camera check before first clinical use) and F-70 (on iPad the app's main thread sometimes stays busy during an audit) still open. The Layer 3 kickoff decisions are proposed in [LAYER_3_KICKOFF.md](LAYER_3_KICKOFF.md).

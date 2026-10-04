@@ -2,6 +2,11 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-03: Layer 2 accepted; Layer 3 kickoff proposed
+
+- The owner accepted the Layer 2 acceptance review (`ACCEPTANCE_CRITERIA.md` §7). F-68 (snapshot references), F-69 (the device camera check before first clinical use) and F-70 (the iPad main-thread hang during an audit) stay open.
+- `LAYER_3_KICKOFF.md` proposes K3-01 to K3-24: one recommendation for each Layer 3 decision (UD-15, UD-28, UD-33), each finding carried to Layer 3 (F-35's compatible-view rule, F-37, F-55's cancellation policy, F-64, F-68, F-70), the Layer 3 open items in the documentation pack, and the Node.js re-evaluation scheduled by ADR-0023 K2-22.
+
 ## 2026-10-02: Layer 2 acceptance review (M2.11)
 
 - **Review:** [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §7, on CI run 92 (`750394a`), green in all nine jobs. The standard photo session works end to end on iPhone and iPad against the real api, worker, image-processing and AWS emulator. Sign-off moves to §8. The api's photo test now checks job messages for the fixture patient's exact values; a bare "1988" also matched random identifiers. Awaiting the owner's sign-off; F-68 and F-69 stay open for the owner, and F-70 is open: on iPad the app's main thread sometimes stays busy during an accessibility audit.
