@@ -15,7 +15,9 @@ const APP_ROLES = [
 ];
 /**
  * Tables the application may delete from (ADR-0018 K-18: never clinical or audit
- * rows). A draft protocol's views and a photo's tags are replaced as sets.
+ * rows). A draft protocol's views, a photo's tags and an open consultation's
+ * concern links are replaced as sets; an author discards a note only while it is
+ * a DRAFT, and the database refuses deleting a FINAL one (ADR-0026 K3-07).
  */
 const APP_DELETABLE = new Set([
   "UserToken",
@@ -23,6 +25,8 @@ const APP_DELETABLE = new Set([
   "IdempotencyKey",
   "PhotographyProtocolView",
   "PhotoTag",
+  "ConsultationConcern",
+  "ConsultationNote",
 ]);
 /**
  * The SECURITY DEFINER functions, their owners and who may call them: the

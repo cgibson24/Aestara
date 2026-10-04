@@ -34,7 +34,9 @@ describe("ownership classification (ADR-0018 K-08)", () => {
       } else {
         expect(entry.practiceColumn).toBeUndefined();
       }
-      if (entry.locationColumn) expect(hasColumn(entry.table, entry.locationColumn, true)).toBe(true);
+      // A location may be optional: a LOCATION grant then covers only the rows that
+      // name its location (spec §4.6), such as a consultation held at one.
+      if (entry.locationColumn) expect(hasColumn(entry.table, entry.locationColumn)).toBe(true);
     });
   }
 

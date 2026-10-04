@@ -965,7 +965,7 @@ Two runs share one behavior suite, `docs/technical-spec/verification/behavior/`.
 | Run | Command | What it proves |
 |---|---|---|
 | Design | `pnpm verify:schema` (`run_schema_checks.sh`) | `schema.prisma` validates with Prisma 7.10; the full schema plus all of `constraints.sql` applies to an **empty** PostgreSQL; all fragments pass (145 checks) |
-| Built layers | `pnpm --filter @aestara/database db:test` | The real migrations apply as a non-superuser, Prisma sees no drift, `check-rls.ts` passes, and the built layers' fragments plus the RLS suite (`test/sql/rls.sql`) pass (61 checks in Layer 1) |
+| Built layers | `pnpm --filter @aestara/database db:test` | The real migrations apply as a non-superuser, Prisma sees no drift, `check-rls.ts` passes, and the built layers' fragments plus the RLS suite (`test/sql/rls.sql`) pass (157 checks with Layers 1 to 3) |
 
 Prerequisites: Node.js, the `psql` client, and a PostgreSQL superuser connection (local `docker compose` or the CI service).
 

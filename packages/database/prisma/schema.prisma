@@ -1,6 +1,6 @@
 // =============================================================================
 // GENERATED FILE. Do not edit. Source: docs/technical-spec/schema.prisma.
-// Contains the tables of layers 1..2 (spec §5.8), copied verbatim.
+// Contains the tables of layers 1..3 (spec §5.8), copied verbatim.
 // Regenerate: pnpm --filter @aestara/database schema:promote
 // =============================================================================
 
@@ -114,6 +114,44 @@ enum PatientContactKind {
   OTHER
 }
 
+enum MedicalHistoryCategory {
+  ALLERGY
+  MEDICATION
+  CONDITION
+  PRIOR_PROCEDURE
+  PRIOR_AESTHETIC_TREATMENT
+  OTHER
+}
+
+enum RecordSource {
+  STAFF
+  PATIENT_INTAKE
+  INTEGRATION
+}
+
+enum ConsultationStatus {
+  DRAFT
+  IN_PROGRESS
+  AWAITING_INFORMATION
+  READY_FOR_REVIEW
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum NoteStatus {
+  DRAFT
+  FINAL
+}
+
+/// What a consultation released to the patient before completion (spec 5.4.1;
+/// ADR-0026 K3-04). Layer 3 records only NOTHING_TO_RELEASE; Layer 5's
+/// consultation release records MATERIALS_RELEASED.
+enum ConsultationReleaseDecision {
+  NOTHING_TO_RELEASE
+  MATERIALS_RELEASED
+}
+
 enum ProtocolStatus {
   DRAFT
   ACTIVE
@@ -193,6 +231,12 @@ enum PermissionEvidence {
   INTEGRATION_IMPORT
 }
 
+enum RegistrationMode {
+  NONE
+  AUTOMATIC
+  MANUAL
+}
+
 enum StorageObjectClass {
   CLINICAL_ORIGINAL
   CLINICAL_DERIVATIVE
@@ -241,6 +285,21 @@ enum AIJobStatus {
   FAILED
   CANCELLED
   TIMED_OUT
+}
+
+enum DocumentType {
+  CONSULTATION_SUMMARY
+  SIGNED_CONSENT
+  TREATMENT_PLAN
+  ESTIMATE
+  UPLOADED_CLINICAL
+  EXTERNAL_EMR
+  OTHER
+}
+
+enum DocumentStatus {
+  ACTIVE
+  ARCHIVED
 }
 
 enum ActorType {
@@ -331,6 +390,9 @@ enum AuditAction {
   // ---- added at the Layer 1 kickoff (ADR-0018 K-04) ----
   SECURITY_CREDENTIAL_CHANGED
   ORGANIZATION_SWITCHED
+  // ---- added at the Layer 3 kickoff (ADR-0026 K3-19) ----
+  CONSULTATION_NOTE_FINALIZED
+  DOCUMENT_ADDED
 }
 
 enum RetentionRecordCategory {
@@ -389,17 +451,29 @@ model User {
   patientsUpdated             Patient[]               @relation("PatientUpdatedBy")
   patientsArchived            Patient[]               @relation("PatientArchivedBy")
   patientContactsCreated      PatientContact[]
+  medicalHistoryRecorded      PatientMedicalHistory[]
+  concernsRecorded            PatientConcern[]
+  consultationsCreated        Consultation[]          @relation("ConsultationCreatedBy")
+  consultationsCompleted      Consultation[]          @relation("ConsultationCompletedBy")
+  consultationsCancelled      Consultation[]          @relation("ConsultationCancelledBy")
+  consultationReleaseDecisions Consultation[]         @relation("ConsultationReleaseDecidedBy")
+  consultationNotes           ConsultationNote[]
   protocolsCreated            PhotographyProtocol[]
   photoSessionsCaptured       PhotoSession[]
   photosCaptured              PatientPhoto[]          @relation("PhotoCapturedBy")
   photosReviewed              PatientPhoto[]          @relation("PhotoReviewedBy")
   derivativesCreated          PhotoDerivative[]
+  annotations                 PhotoAnnotation[]
   photoTags                   PhotoTag[]
   photoPermissionsRecorded    PhotoPermission[]
   mediaReleasesReleased       MediaRelease[]          @relation("MediaReleaseReleasedBy")
   mediaReleasesRevoked        MediaRelease[]          @relation("MediaReleaseRevokedBy")
+  beforeAfterSets             BeforeAfterSet[]
   storageObjectsUploaded      StorageObject[]
   aiJobsRequested             AIJob[]
+  documentsCreated            Document[]              @relation("DocumentCreatedBy")
+  documentsReleased           Document[]              @relation("DocumentReleasedBy")
+  documentVersionsCreated     DocumentVersion[]
   featureFlagsUpdated         FeatureFlag[]
   practiceSettingsUpdated     PracticeSetting[]
   organizationSettingsUpdated OrganizationSetting[]
@@ -504,6 +578,7 @@ model Practice {
   locations        Location[]
   roleAssignments  UserRole[]
   patients         Patient[]
+  consultations    Consultation[]
   protocols        PhotographyProtocol[]
   featureFlags     FeatureFlag[]
   settings         PracticeSetting[]
@@ -532,6 +607,7 @@ model Location {
 
   practice        Practice       @relation(fields: [organizationId, practiceId], references: [organizationId, id])
   roleAssignments UserRole[]
+  consultations   Consultation[]
   photoSessions   PhotoSession[]
 
   @@unique([organizationId, id])
@@ -737,6 +813,7 @@ model ProviderProfile {
   version        Int      @default(1)
 
   membership          Membership          @relation(fields: [organizationId, userId], references: [organizationId, userId])
+  consultations       Consultation[]
 
   @@unique([organizationId, userId])
 }
@@ -799,11 +876,16 @@ model Patient {
   archivedBy       User?        @relation("PatientArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
 
   contacts           PatientContact[]
+  medicalHistory     PatientMedicalHistory[]
+  concerns           PatientConcern[]
+  consultations      Consultation[]
   photoSessions      PhotoSession[]
   photos             PatientPhoto[]
   photoPermissions   PhotoPermission[]
   mediaReleases      MediaRelease[]
+  beforeAfterSets    BeforeAfterSet[]
   aiJobs             AIJob[]
+  documents          Document[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, mrn])
@@ -840,6 +922,133 @@ model PatientContact {
   @@index([organizationId, patientId])
 }
 
+model PatientMedicalHistory {
+  id             String                 @id @default(uuid(7)) @db.Uuid
+  organizationId String                 @db.Uuid
+  patientId      String                 @db.Uuid
+  category       MedicalHistoryCategory
+  description    String
+  /// Structured detail that varies by category (flexible metadata).
+  details        Json?
+  onsetDate      DateTime?              @db.Date
+  resolvedAt     DateTime?              @db.Date
+  source         RecordSource           @default(STAFF)
+  recordedById   String?                @db.Uuid
+  recordedAt     DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  version        Int                    @default(1)
+
+  patient    Patient @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  recordedBy User?   @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, patientId, category])
+}
+
+model PatientConcern {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @db.Uuid
+  patientId      String    @db.Uuid
+  /// Anatomical/aesthetic area, e.g. LIPS, NOSE, ABDOMEN.
+  area           String
+  description    String
+  recordedById   String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  resolvedAt     DateTime? @db.Timestamptz(3)
+
+  patient       Patient               @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  recordedBy    User?                 @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  consultations ConsultationConcern[]
+
+  @@unique([organizationId, patientId, id])
+}
+
+model Consultation {
+  id                    String             @id @default(uuid(7)) @db.Uuid
+  organizationId        String             @db.Uuid
+  patientId             String             @db.Uuid
+  practiceId            String             @db.Uuid
+  locationId            String?            @db.Uuid
+  primaryProviderUserId String?            @db.Uuid
+  status                ConsultationStatus @default(DRAFT)
+  reason                String?
+  startedAt             DateTime?          @db.Timestamptz(3)
+  readyForReviewAt      DateTime?          @db.Timestamptz(3)
+  completedAt           DateTime?          @db.Timestamptz(3)
+  completedById         String?            @db.Uuid
+  cancelledAt           DateTime?          @db.Timestamptz(3)
+  cancelledById         String?            @db.Uuid
+  cancellationReason    String?
+  /// Required for COMPLETED (ADR-0026 K3-04); the three columns are set together.
+  releaseDecision       ConsultationReleaseDecision?
+  releaseDecidedAt      DateTime?          @db.Timestamptz(3)
+  releaseDecidedById    String?            @db.Uuid
+  archivedAt            DateTime?          @db.Timestamptz(3)
+  createdById           String             @db.Uuid
+  createdAt             DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @db.Timestamptz(3)
+  version               Int                @default(1)
+
+  patient         Patient          @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  practice        Practice         @relation(fields: [organizationId, practiceId], references: [organizationId, id])
+  location        Location?        @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
+  primaryProvider ProviderProfile? @relation(fields: [organizationId, primaryProviderUserId], references: [organizationId, userId], onDelete: Restrict)
+  createdBy       User             @relation("ConsultationCreatedBy", fields: [createdById], references: [id])
+  completedBy     User?            @relation("ConsultationCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
+  cancelledBy     User?            @relation("ConsultationCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  releaseDecidedBy User?           @relation("ConsultationReleaseDecidedBy", fields: [releaseDecidedById], references: [id], onDelete: Restrict)
+
+  concerns           ConsultationConcern[]
+  notes              ConsultationNote[]
+  photoSessions      PhotoSession[]
+  beforeAfterSets    BeforeAfterSet[]
+  documents          Document[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@index([organizationId, patientId, createdAt])
+  @@index([organizationId, practiceId, status])
+}
+
+/// Concerns selected for a consultation (Bible 5.1 "Select reason / concerns").
+model ConsultationConcern {
+  organizationId   String   @db.Uuid
+  patientId        String   @db.Uuid
+  consultationId   String   @db.Uuid
+  patientConcernId String   @db.Uuid
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  consultation Consultation   @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id])
+  concern      PatientConcern @relation(fields: [organizationId, patientId, patientConcernId], references: [organizationId, patientId, id])
+
+  @@id([consultationId, patientConcernId])
+}
+
+model ConsultationNote {
+  /// Client-generated UUIDv7 accepted for offline-drafted notes (spec 8).
+  id             String     @id @default(uuid(7)) @db.Uuid
+  organizationId String     @db.Uuid
+  patientId      String     @db.Uuid
+  consultationId String     @db.Uuid
+  authorUserId   String     @db.Uuid
+  status         NoteStatus @default(DRAFT)
+  body           String
+  /// An addendum names the FINAL note of the same consultation it corrects (UD-15; ADR-0026 K3-07).
+  correctsNoteId String?    @db.Uuid
+  finalizedAt    DateTime?  @db.Timestamptz(3)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
+  version        Int        @default(1)
+
+  consultation Consultation      @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id])
+  author       User              @relation(fields: [authorUserId], references: [id])
+  corrects     ConsultationNote? @relation("NoteAddenda", fields: [consultationId, correctsNoteId], references: [consultationId, id], onDelete: Restrict)
+  addenda      ConsultationNote[] @relation("NoteAddenda")
+
+  @@unique([consultationId, id])
+  @@index([organizationId, consultationId])
+}
+
 /// Ledger of every object in private object storage. Objects are write-once:
 /// once AVAILABLE, bucket/key/checksum never change (trigger in constraints.sql).
 /// Storage keys are never returned by the public API.
@@ -866,6 +1075,7 @@ model StorageObject {
 
   originalOf              PatientPhoto?
   derivativeOf            PhotoDerivative?
+  documentVersion         DocumentVersion?
 
   @@unique([organizationId, id])
   @@index([organizationId, objectClass, createdAt])
@@ -933,6 +1143,7 @@ model PhotoSession {
   status           PhotoSessionStatus @default(IN_PROGRESS)
   /// Required except for IMPORT sessions (CHECK in constraints.sql, Bible 6.1).
   capturedByUserId String?            @db.Uuid
+  consultationId   String?            @db.Uuid
   practiceId       String?            @db.Uuid
   locationId       String?            @db.Uuid
   startedAt        DateTime           @db.Timestamptz(3)
@@ -943,6 +1154,7 @@ model PhotoSession {
   patient      Patient             @relation(fields: [organizationId, patientId], references: [organizationId, id])
   protocol     PhotographyProtocol @relation(fields: [organizationId, protocolId], references: [organizationId, id])
   capturedBy   User?               @relation(fields: [capturedByUserId], references: [id], onDelete: Restrict)
+  consultation Consultation?       @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
   practice     Practice?           @relation(fields: [organizationId, practiceId], references: [organizationId, id], onDelete: Restrict)
   location     Location?           @relation(fields: [organizationId, practiceId, locationId], references: [organizationId, practiceId, id], onDelete: Restrict)
 
@@ -993,9 +1205,12 @@ model PatientPhoto {
   reviewedBy   User?                    @relation("PhotoReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
 
   derivatives         PhotoDerivative[]
+  annotations         PhotoAnnotation[]
   tags                PhotoTag[]
   permissions         PhotoPermission[]
   mediaReleases       MediaRelease[]
+  beforeSets          BeforeAfterSet[]          @relation("BeforePhoto")
+  afterSets           BeforeAfterSet[]          @relation("AfterPhoto")
 
   @@unique([organizationId, id])
   @@unique([organizationId, patientId, id])
@@ -1016,12 +1231,16 @@ model PhotoDerivative {
   /// Generator name/version, parameters, transforms (flexible metadata).
   generationMetadata Json
   generatedByJobId   String?        @db.Uuid
+  beforeAfterSetId   String?        @db.Uuid
+  annotationId       String?        @db.Uuid
   createdById        String?        @db.Uuid
   createdAt          DateTime       @default(now()) @db.Timestamptz(3)
 
   sourcePhoto    PatientPhoto     @relation(fields: [organizationId, patientId, sourcePhotoId], references: [organizationId, patientId, id])
   storageObject  StorageObject    @relation(fields: [organizationId, storageObjectId], references: [organizationId, id])
   generatedByJob AIJob?           @relation(fields: [organizationId, generatedByJobId], references: [organizationId, id], onDelete: Restrict)
+  beforeAfterSet BeforeAfterSet?  @relation(fields: [organizationId, patientId, beforeAfterSetId], references: [organizationId, patientId, id], onDelete: Restrict)
+  annotation     PhotoAnnotation? @relation(fields: [organizationId, patientId, annotationId], references: [organizationId, patientId, id], onDelete: Restrict)
   createdBy      User?            @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   mediaReleases      MediaRelease[]
@@ -1030,6 +1249,31 @@ model PhotoDerivative {
   @@unique([organizationId, patientId, id])
   @@unique([organizationId, storageObjectId])
   @@index([sourcePhotoId, kind])
+}
+
+/// Vector annotation layer (never burned into the original). Coordinates are
+/// normalized 0..1 relative to the original image.
+model PhotoAnnotation {
+  /// Client-generated UUIDv7 accepted for offline annotation (spec 8).
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @db.Uuid
+  patientId      String    @db.Uuid
+  photoId        String    @db.Uuid
+  authorUserId   String    @db.Uuid
+  schemaVersion  Int       @default(1)
+  layer          Json
+  label          String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt      DateTime? @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  photo                PatientPhoto      @relation(fields: [organizationId, patientId, photoId], references: [organizationId, patientId, id])
+  author               User              @relation(fields: [authorUserId], references: [id])
+  renderedDerivatives  PhotoDerivative[]
+
+  @@unique([organizationId, patientId, id])
+  @@index([photoId])
 }
 
 model PhotoTag {
@@ -1096,6 +1340,7 @@ model MediaRelease {
   purpose          MediaPermissionCategory
   photoId          String?                 @db.Uuid
   derivativeId     String?                 @db.Uuid
+  beforeAfterSetId String?                 @db.Uuid
   releasedById     String                  @db.Uuid
   releasedAt       DateTime                @default(now()) @db.Timestamptz(3)
   revokedAt        DateTime?               @db.Timestamptz(3)
@@ -1105,6 +1350,7 @@ model MediaRelease {
   patient        Patient          @relation(fields: [organizationId, patientId], references: [organizationId, id])
   photo          PatientPhoto?    @relation(fields: [organizationId, patientId, photoId], references: [organizationId, patientId, id], onDelete: Restrict)
   derivative     PhotoDerivative? @relation(fields: [organizationId, patientId, derivativeId], references: [organizationId, patientId, id], onDelete: Restrict)
+  beforeAfterSet BeforeAfterSet?  @relation(fields: [organizationId, patientId, beforeAfterSetId], references: [organizationId, patientId, id], onDelete: Restrict)
   releasedBy     User             @relation("MediaReleaseReleasedBy", fields: [releasedById], references: [id])
   revokedBy      User?            @relation("MediaReleaseRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
 
@@ -1126,6 +1372,40 @@ model MediaReleasePermission {
 
   @@id([mediaReleaseId, permissionId])
   @@index([permissionId])
+}
+
+/// Both photos are constrained by composite FKs to the SAME organization and
+/// the SAME patient (Bible 8.1, acceptance 34.1 #12-13).
+model BeforeAfterSet {
+  id                    String           @id @default(uuid(7)) @db.Uuid
+  organizationId        String           @db.Uuid
+  patientId             String           @db.Uuid
+  beforePhotoId         String           @db.Uuid
+  afterPhotoId          String           @db.Uuid
+  consultationId        String?          @db.Uuid
+  viewKey               String?
+  title                 String?
+  registrationMode      RegistrationMode @default(NONE)
+  /// 2D transform (normalized coordinates) applied at display time only.
+  registrationTransform Json?
+  registrationJobId     String?          @db.Uuid
+  createdById           String           @db.Uuid
+  createdAt             DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime         @updatedAt @db.Timestamptz(3)
+  version               Int              @default(1)
+
+  patient         Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  beforePhoto     PatientPhoto  @relation("BeforePhoto", fields: [organizationId, patientId, beforePhotoId], references: [organizationId, patientId, id])
+  afterPhoto      PatientPhoto  @relation("AfterPhoto", fields: [organizationId, patientId, afterPhotoId], references: [organizationId, patientId, id])
+  consultation    Consultation? @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  registrationJob AIJob?        @relation(fields: [organizationId, registrationJobId], references: [organizationId, id], onDelete: Restrict)
+  createdBy       User          @relation(fields: [createdById], references: [id])
+
+  derivatives         PhotoDerivative[]
+  mediaReleases       MediaRelease[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
 }
 
 /// Generic job record (spec 5.8): image derivatives from Layer 2 (ADR-0023 K2-06),
@@ -1156,10 +1436,60 @@ model AIJob {
   requestedBy  User?           @relation(fields: [requestedById], references: [id], onDelete: Restrict)
 
   derivatives        PhotoDerivative[]
+  registrations      BeforeAfterSet[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, idempotencyKey])
   @@index([status, queuedAt])
+}
+
+model Document {
+  id                  String         @id @default(uuid(7)) @db.Uuid
+  organizationId      String         @db.Uuid
+  patientId           String         @db.Uuid
+  type                DocumentType
+  title               String
+  consultationId      String?        @db.Uuid
+  status              DocumentStatus @default(ACTIVE)
+  /// Patient-app visibility requires an explicit release (Bible 13.2).
+  releasedToPatientAt DateTime?      @db.Timestamptz(3)
+  releasedById        String?        @db.Uuid
+  createdById         String?        @db.Uuid
+  createdAt           DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @db.Timestamptz(3)
+
+  patient      Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id])
+  consultation Consultation? @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id], onDelete: Restrict)
+  releasedBy   User?         @relation("DocumentReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
+  createdBy    User?         @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  versions  DocumentVersion[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, patientId, id])
+  @@index([organizationId, patientId, type])
+}
+
+/// Immutable file version (trigger). New content = new version.
+model DocumentVersion {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  organizationId  String   @db.Uuid
+  patientId       String   @db.Uuid
+  documentId      String   @db.Uuid
+  versionNumber   Int
+  storageObjectId String   @db.Uuid
+  sha256          String
+  changeNote      String?
+  createdById     String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  document      Document      @relation(fields: [organizationId, patientId, documentId], references: [organizationId, patientId, id])
+  storageObject StorageObject @relation(fields: [organizationId, storageObjectId], references: [organizationId, id])
+  createdBy     User?         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, versionNumber])
+  @@unique([organizationId, patientId, id])
+  @@unique([organizationId, storageObjectId])
 }
 
 /// Append-only audit trail (Bible 22). Deliberately has NO foreign keys so it
