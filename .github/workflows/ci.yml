@@ -492,6 +492,39 @@ jobs:
             echo "::endgroup::"
           done
 
+      # F-68 (ADR-0026 K3-22): the snapshot tests. A missing reference is recorded and
+      # fails its test; every recorded picture, and every picture that differs from its
+      # reference, is printed into this log, to be reviewed and committed.
+      - name: Snapshot tests on an iPhone simulator
+        working-directory: apps/ios-provider/Snapshots
+        run: |
+          udid=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          print(next(d["udid"] for runtime, ds in sorted(devices.items(), reverse=True)
+                     if "iOS-26" in runtime for d in ds if d["name"].startswith("iPhone")))')
+          artifacts="$RUNNER_TEMP/snapshot-artifacts"
+          mkdir -p "$artifacts"
+          status=0
+          TEST_RUNNER_SNAPSHOT_ARTIFACTS="$artifacts" xcodebuild test -scheme ProviderSnapshots -destination "id=$udid" \
+            -derivedDataPath "$RUNNER_TEMP/dd-snapshots" -skipPackagePluginValidation -skipMacroValidation \
+            -resultBundlePath "$RUNNER_TEMP/snapshots.xcresult" -quiet || status=$?
+          recorded=$(git ls-files --others --exclude-standard -- Tests | grep '\.png$' || true)
+          for file in $recorded; do
+            echo "BEGIN-SNAPSHOT apps/ios-provider/Snapshots/$file"
+            base64 -i "$file" | fold -w 4000
+            echo "END-SNAPSHOT"
+          done
+          find "$artifacts" -name '*.png' | while read -r file; do
+            echo "BEGIN-SNAPSHOT changed/${file#"$artifacts"/}"
+            base64 -i "$file" | fold -w 4000
+            echo "END-SNAPSHOT"
+          done
+          if [ -n "$recorded" ]; then
+            echo "::error::Snapshot references were recorded (printed above): review and commit them."
+          fi
+          exit "$status"
+
       # CoreSecurity's Keychain needs an app's entitlements, so its tests run
       # hosted in the provider app (ADR-0022).
       - name: Hosted app tests (Keychain) on an iPhone simulator
