@@ -58,6 +58,8 @@ enum WorkspaceStep: String, CaseIterable, Identifiable, Hashable {
 struct ConsultationWorkspace: View {
     @State private var model: WorkspaceModel
     @State private var step: WorkspaceStep? = .reason
+    /// The steps stay beside the chosen step, in portrait too.
+    @State private var columns: NavigationSplitViewVisibility = .all
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.dismiss) private var dismiss
 
@@ -68,7 +70,7 @@ struct ConsultationWorkspace: View {
     var body: some View {
         Group {
             if sizeClass == .regular {
-                NavigationSplitView {
+                NavigationSplitView(columnVisibility: $columns) {
                     List(WorkspaceStep.allCases, selection: $step) { item in
                         StepLabel(step: item, number: number(of: item)).tag(item)
                     }
@@ -84,6 +86,7 @@ struct ConsultationWorkspace: View {
                                            message: String(localized: "The consultation's steps are listed in order.")))
                     }
                 }
+                .navigationSplitViewStyle(.balanced)
             } else {
                 NavigationStack {
                     List(WorkspaceStep.allCases) { item in

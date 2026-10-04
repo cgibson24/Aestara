@@ -77,7 +77,10 @@ struct ExportSheet: View {
             .navigationTitle("Export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                        .accessibilityIdentifier("export.close")
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Export") { Task { await start() } }
                         .disabled(purpose == nil || busy || export?.state == .pending)

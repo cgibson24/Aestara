@@ -518,8 +518,8 @@ jobs:
   ios-ui:
     name: iOS · UI tests against the real api (iPhone and iPad)
     runs-on: macos-26
-    # A build, then a full photo session on two devices.
-    timeout-minutes: 75
+    # A build, then a full photo session and a consultation on two devices.
+    timeout-minutes: 95
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 

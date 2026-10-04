@@ -1,6 +1,8 @@
 // End-to-end UI tests of the provider app against the real api, worker,
 // image-processing and AWS emulator (Bible §32 #9, #12, #13; Layer 2 exit:
-// a standard photo session end to end; docs/TESTING_STRATEGY.md §18.1). CI
+// a standard photo session end to end; Layer 3: a consultation from creation
+// to completion with photos, an annotation, a before/after comparison and an
+// export, ADR-0026 K3-22; docs/TESTING_STRATEGY.md §18.1). CI
 // starts them with services/api/scripts/local-stack.ts, which prepares one
 // clinician per device, and passes the sign-in through TEST_RUNNER_* variables:
 // UITEST_EMAIL, UITEST_PASSWORD, UITEST_TOTP_SECRET, UITEST_TOTP_LAST_STEP.
@@ -12,7 +14,7 @@ import XCTest
 
 @MainActor
 final class ProviderFlowTests: XCTestCase {
-    func testSignInCreateAPatientRunAPhotoSessionAndSearch() throws {
+    func testSignInCreateAPatientRunAPhotoSessionAConsultationAndSearch() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-AestaraSyntheticCamera", "YES"]
@@ -47,7 +49,8 @@ final class ProviderFlowTests: XCTestCase {
         let codeField = app.textFields["mfa.code"]
         XCTAssertTrue(codeField.waitForExistence(timeout: 15), "The code screen did not appear. Screen: \(screen(app))")
         codeField.tap()
-        codeField.typeText(TOTP.nextCode(secret: secret, after: lastStep))
+        let signInCode = TOTP.next(secret: secret, after: lastStep)
+        codeField.typeText(signInCode.code)
         app.buttons["mfa.verify"].tap()
 
         // Signed in: create a patient (duplicate check first).
@@ -103,6 +106,7 @@ final class ProviderFlowTests: XCTestCase {
         snapshot(app, "05 Photos tab, empty")
 
         try photoSession(app)
+        try consultation(app, lastName: lastName, password: password, secret: secret, usedStep: signInCode.step)
 
         // Search finds the patient by name prefix.
         // On iPhone the profile covers the list: go back. On iPad the list stays beside it.
@@ -233,6 +237,242 @@ final class ProviderFlowTests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 15) { website.exists && website.label.contains("Granted") },
                       "The grant was not recorded. Screen: \(screen(app))")
         app.navigationBars.buttons["Close"].tap()
+    }
+
+    /// Layer 3 exit (roadmap M3.9; ADR-0026 K3-22): a consultation from creation to
+    /// completion in the workspace: started, a photo taken for it, an annotation drawn, a
+    /// note finalized, a before/after comparison aligned by hand and exported, submitted for
+    /// review, summarized and completed; then the profile's tabs show it. The workspace,
+    /// the annotation editor and the comparison viewer are audited.
+    private func consultation(_ app: XCUIApplication, lastName: String, password: String, secret: String,
+                              usedStep: Int) throws {
+        openTab(app, "CONSULTATIONS")
+        let new = app.buttons["consultations.new"]
+        XCTAssertTrue(new.waitForExistence(timeout: 20), "No way to start a consultation. Screen: \(screen(app))")
+        snapshot(app, "15 Consultations")
+        new.tap()
+        let reason = field(app, "newConsultation.reason")
+        XCTAssertTrue(reason.waitForExistence(timeout: 15), "The new-consultation form did not open. Screen: \(screen(app))")
+        reason.tap()
+        reason.typeText("Brow lines")
+        let create = app.buttons["newConsultation.create"]
+        XCTAssertTrue(waitUntil(timeout: 10) { create.isEnabled }, "Create stayed disabled. Screen: \(screen(app))")
+        create.tap()
+
+        // The workspace opens on the new consultation: start it.
+        let status = app.descendants(matching: .any).matching(identifier: "workspace.status").firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 20), "The workspace did not open. Screen: \(screen(app))")
+        openStep(app, "completion")
+        tapRevealed(app, app.buttons["completion.action.start"], "Start")
+        XCTAssertTrue(waitUntil(timeout: 15) { status.label.contains("In progress") }, "The consultation did not start. Screen: \(screen(app))")
+        snapshot(app, "16 Workspace")
+        audit(app, screen: "workspace")
+
+        // A front photo for the consultation, later than the profile's first one.
+        openStep(app, "photography")
+        tapRevealed(app, app.buttons["photos.startSession"], "Start photo session")
+        let face = app.buttons["session.protocol.Face"]
+        XCTAssertTrue(face.waitForExistence(timeout: 15), "The Face protocol is not offered. Screen: \(screen(app))")
+        face.tap()
+        let captureNext = app.buttons["session.captureNext"]
+        XCTAssertTrue(captureNext.waitForExistence(timeout: 15), "The session did not open. Screen: \(screen(app))")
+        captureNext.tap()
+        let shutter = app.buttons["capture.shutter"]
+        let guidance = app.descendants(matching: .any).matching(identifier: "capture.guidance").firstMatch
+        XCTAssertTrue(shutter.waitForExistence(timeout: 20), "The camera did not open. Screen: \(screen(app))")
+        XCTAssertTrue(waitUntil(timeout: 20) { guidance.exists && guidance.label.contains("Hold still") },
+                      "Guidance never settled. Screen: \(screen(app))")
+        XCTAssertTrue(waitUntil(timeout: 10) { shutter.isEnabled }, "The shutter stayed disabled. Screen: \(screen(app))")
+        shutter.tap()
+        let accept = app.buttons["capture.accept"]
+        XCTAssertTrue(accept.waitForExistence(timeout: 20), "No review after capture. Screen: \(screen(app))")
+        accept.tap()
+        XCTAssertTrue(waitUntil(timeout: 30) { !accept.exists }, "The review did not close. Screen: \(screen(app))")
+        app.buttons["capture.close"].tap()
+        let closeSession = app.buttons["session.close"]
+        XCTAssertTrue(closeSession.waitForExistence(timeout: 15), "The session screen did not return. Screen: \(screen(app))")
+        closeSession.tap()
+        let front = app.buttons["photos.tile.FRONT"]
+        XCTAssertTrue(waitUntil(timeout: 180) {
+            let label = front.label
+            return front.exists && !label.contains("Being checked") && !label.contains("Preparing preview")
+                && !label.contains("could not be checked")
+        }, "The consultation's photo never arrived: \(front.label). Screen: \(screen(app))")
+        snapshot(app, "17 Consultation photos")
+
+        // An annotation layer over that photo.
+        openStep(app, "annotate")
+        let photo = app.buttons["annotate.photo.FRONT"]
+        XCTAssertTrue(photo.waitForExistence(timeout: 20), "No photo to annotate. Screen: \(screen(app))")
+        photo.tap()
+        let newLayer = app.buttons["annotation.newLayer"]
+        XCTAssertTrue(newLayer.waitForExistence(timeout: 30), "The annotation screen did not open. Screen: \(screen(app))")
+        newLayer.tap()
+        let canvas = app.descendants(matching: .any).matching(identifier: "annotation.canvas").firstMatch
+        XCTAssertTrue(canvas.waitForExistence(timeout: 10), "The drawing area did not appear. Screen: \(screen(app))")
+        app.buttons["annotation.tool.arrow"].tap()
+        let from = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.3))
+        from.press(forDuration: 0.1, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.55)))
+        XCTAssertTrue(waitUntil(timeout: 5) { (canvas.value as? String)?.contains("1 shape") == true },
+                      "The arrow was not drawn: \(String(describing: canvas.value)). Screen: \(screen(app))")
+        snapshot(app, "18 Annotation editor")
+        audit(app, screen: "annotation editor")
+        app.buttons["annotation.save"].tap()
+        XCTAssertTrue(element(in: app, containing: "Your layer").waitForExistence(timeout: 20),
+                      "The layer was not saved. Screen: \(screen(app))")
+        app.buttons["annotate.close"].tap()
+
+        // A note, finalized.
+        openStep(app, "notes")
+        tapRevealed(app, app.buttons["notes.new"], "New note")
+        let body = field(app, "note.body")
+        XCTAssertTrue(body.waitForExistence(timeout: 10), "The note editor did not open. Screen: \(screen(app))")
+        body.tap()
+        body.typeText("Discussed options for the brow lines. Synthetic test note.")
+        app.buttons["note.save"].tap()
+        let finalize = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'notes.finalize.'")).firstMatch
+        XCTAssertTrue(finalize.waitForExistence(timeout: 20), "The draft was not saved. Screen: \(screen(app))")
+        tapRevealed(app, finalize, "Finalize")
+        let confirmFinalize = app.buttons["notes.confirmFinalize"]
+        XCTAssertTrue(confirmFinalize.waitForExistence(timeout: 10), "Finalizing asked nothing. Screen: \(screen(app))")
+        confirmFinalize.tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'notes.addendum.'")).firstMatch
+            .waitForExistence(timeout: 20), "The note was not finalized. Screen: \(screen(app))")
+
+        // A before/after comparison of the two front photos, aligned by hand and exported.
+        openStep(app, "beforeAfter")
+        tapRevealed(app, app.buttons["beforeAfter.new"], "New comparison")
+        let first = app.buttons["beforeAfter.photo.FRONT"]
+        XCTAssertTrue(first.waitForExistence(timeout: 20), "No photos to compare. Screen: \(screen(app))")
+        first.tap()
+        XCTAssertTrue(element(in: app, containing: "taken later").waitForExistence(timeout: 5), "The before photo was not taken. Screen: \(screen(app))")
+        app.buttons["beforeAfter.photo.FRONT"].firstMatch.tap()
+        let createSet = app.buttons["beforeAfter.create"]
+        XCTAssertTrue(waitUntil(timeout: 5) { createSet.isEnabled }, "Create stayed disabled. Screen: \(screen(app))")
+        createSet.tap()
+        let viewer = app.descendants(matching: .any).matching(identifier: "comparison.viewer").firstMatch
+        XCTAssertTrue(viewer.waitForExistence(timeout: 30), "The comparison did not open. Screen: \(screen(app))")
+        for mode in ["swipe", "crossFade", "overlay", "sideBySide"] {
+            app.buttons["comparison.mode.\(mode)"].tap()
+            XCTAssertTrue(waitUntil(timeout: 5) { app.buttons["comparison.mode.\(mode)"].isSelected }, "Mode \(mode) was not chosen. Screen: \(screen(app))")
+        }
+        snapshot(app, "19 Comparison")
+        audit(app, screen: "comparison viewer")
+        app.buttons["beforeAfter.alignManually"].tap()
+        let right = app.buttons["alignment.right"]
+        XCTAssertTrue(right.waitForExistence(timeout: 10), "Alignment did not open. Screen: \(screen(app))")
+        right.tap()
+        right.tap()
+        app.buttons["alignment.save"].tap()
+        let mode = app.descendants(matching: .any).matching(identifier: "beforeAfter.mode").firstMatch
+        XCTAssertTrue(waitUntil(timeout: 15) { mode.label.contains("Aligned by hand") }, "The alignment was not saved. Screen: \(screen(app))")
+        app.buttons["beforeAfter.export"].tap()
+        let website = app.buttons["export.purpose.WEBSITE"]
+        XCTAssertTrue(website.waitForExistence(timeout: 15), "The export sheet did not open. Screen: \(screen(app))")
+        XCTAssertTrue(waitUntil(timeout: 10) { website.isEnabled }, "Website is not permitted. Screen: \(screen(app))")
+        website.tap()
+        app.buttons["export.start"].tap()
+        let share = app.buttons["export.share"]
+        let stepUpPassword = app.secureTextFields["stepUp.password"]
+        XCTAssertTrue(waitUntil(timeout: 30) {
+            share.exists || stepUpPassword.exists || app.descendants(matching: .any)["export.pending"].exists
+        }, "The export did not start. Screen: \(screen(app))")
+        if stepUpPassword.exists {
+            // More than 15 minutes since the second factor: confirm it is them (step-up).
+            snapshot(app, "20a Confirm it's you")
+            stepUpPassword.tap()
+            stepUpPassword.typeText(password)
+            app.buttons["stepUp.continue"].tap()
+            let code = app.textFields["stepUp.code"]
+            XCTAssertTrue(code.waitForExistence(timeout: 15), "No code was asked for. Screen: \(screen(app))")
+            code.tap()
+            code.typeText(TOTP.next(secret: secret, after: usedStep).code)
+            app.buttons["stepUp.verify"].tap()
+        }
+        XCTAssertTrue(share.waitForExistence(timeout: 180), "The export never became ready. Screen: \(screen(app))")
+        snapshot(app, "20 Export ready")
+        app.buttons["export.close"].tap()
+        app.buttons["beforeAfter.close"].tap()
+
+        // Review, summary, completion.
+        openStep(app, "completion")
+        tapRevealed(app, app.buttons["completion.action.submitForReview"], "Submit for review")
+        XCTAssertTrue(waitUntil(timeout: 15) { status.label.contains("Ready for review") }, "Not submitted. Screen: \(screen(app))")
+        openStep(app, "summary")
+        tapRevealed(app, app.buttons["summary.generate"], "Generate summary")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'documents.row.'")).firstMatch
+            .waitForExistence(timeout: 30), "The summary was not generated. Screen: \(screen(app))")
+        openStep(app, "completion")
+        let release = app.switches["completion.nothingToRelease"]
+        reveal(app, release)
+        release.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        XCTAssertTrue(waitUntil(timeout: 5) { (release.value as? String) == "1" }, "Nothing to release was not confirmed. Screen: \(screen(app))")
+        tapRevealed(app, app.buttons["completion.action.complete"], "Complete consultation")
+        XCTAssertTrue(waitUntil(timeout: 15) { status.label.contains("Completed") }, "The consultation did not complete. Screen: \(screen(app))")
+        snapshot(app, "21 Completed")
+        app.buttons["workspace.close"].tap()
+
+        // The profile shows it.
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'consultations.row.'")).firstMatch
+            .waitForExistence(timeout: 20), "The consultation is not listed. Screen: \(screen(app))")
+        openTab(app, "DOCUMENTS")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'documents.row.'")).firstMatch
+            .waitForExistence(timeout: 20), "The summary is not among the documents. Screen: \(screen(app))")
+        openTab(app, "TIMELINE")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'timeline.item.'")).firstMatch
+            .waitForExistence(timeout: 20), "The timeline is empty. Screen: \(screen(app))")
+        snapshot(app, "22 Timeline")
+        XCTAssertTrue(element(in: app, containing: lastName).exists, "The profile no longer names the patient. Screen: \(screen(app))")
+    }
+
+    /// A profile tab, dragging the tab strip (no momentum) until it is on screen.
+    private func openTab(_ app: XCUIApplication, _ key: String) {
+        let window = app.windows.firstMatch.frame
+        let tab = app.buttons["profile.tab.\(key)"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 20), "Tab \(key) is missing. Screen: \(screen(app))")
+        let all = ["OVERVIEW", "TIMELINE", "CONSULTATIONS", "PHOTOS", "BEFORE_AFTER", "SIMULATIONS", "TREATMENT_PLANS",
+                   "PROCEDURES", "DOCUMENTS", "INSTRUCTIONS", "APPOINTMENTS", "MESSAGES"].map { app.buttons["profile.tab.\($0)"] }
+        for _ in 0..<8 where !window.contains(tab.frame) {
+            guard let handle = all.first(where: { window.contains($0.frame) }) else { break }
+            let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let left = tab.frame.minX > window.maxX
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: left ? -150 : 150, dy: 0)))
+        }
+        XCTAssertTrue(window.contains(tab.frame), "Tab \(key) cannot be reached. Screen: \(screen(app))")
+        tab.tap()
+    }
+
+    /// A workspace step: on iPad from the steps beside it, on iPhone from the list (back first).
+    private func openStep(_ app: XCUIApplication, _ step: String) {
+        let row = app.descendants(matching: .any).matching(identifier: "workspace.step.\(step)").firstMatch
+        if !(row.exists && row.isHittable) {
+            let back = app.navigationBars.buttons.element(boundBy: 0)
+            if back.exists { back.tap() }
+        }
+        XCTAssertTrue(waitUntil(timeout: 10) { row.exists && row.isHittable }, "Step \(step) is not offered. Screen: \(screen(app))")
+        row.tap()
+    }
+
+    /// Scrolls the step until the element can be tapped.
+    private func reveal(_ app: XCUIApplication, _ element: XCUIElement) {
+        XCTAssertTrue(element.waitForExistence(timeout: 20), "\(element) did not appear. Screen: \(screen(app))")
+        for _ in 0..<6 where !element.isHittable {
+            app.swipeUp()
+        }
+    }
+
+    private func tapRevealed(_ app: XCUIApplication, _ element: XCUIElement, _ name: String) {
+        reveal(app, element)
+        XCTAssertTrue(waitUntil(timeout: 10) { element.isHittable && element.isEnabled }, "\(name) cannot be pressed. Screen: \(screen(app))")
+        element.tap()
+    }
+
+    /// A text field or text view (a multi-line field is a text view), once either appears.
+    private func field(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+        let view = app.textViews[identifier]
+        let line = app.textFields[identifier]
+        _ = waitUntil(timeout: 15) { view.exists || line.exists }
+        return view.exists ? view : line
     }
 
     /// A screenshot kept with the results even when the test passes; CI exports them
@@ -435,7 +675,7 @@ final class ProviderFlowTests: XCTestCase {
 
 /// RFC 6238 codes, for a time step after the last one used (the api refuses replays).
 enum TOTP {
-    static func nextCode(secret: String, after lastStep: Int) -> String {
+    static func next(secret: String, after lastStep: Int) -> (code: String, step: Int) {
         var now = Int(Date().timeIntervalSince1970 / 30)
         let step = max(now, lastStep + 1)
         // The api accepts one step ahead; beyond that, wait for the clock.
@@ -443,7 +683,7 @@ enum TOTP {
             Thread.sleep(forTimeInterval: 1)
             now = Int(Date().timeIntervalSince1970 / 30)
         }
-        return code(secret: secret, step: step)
+        return (code(secret: secret, step: step), step)
     }
 
     static func code(secret: String, step: Int) -> String {
