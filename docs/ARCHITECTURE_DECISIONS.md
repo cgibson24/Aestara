@@ -770,4 +770,10 @@ Status values:
   - `/submit-for-review` with a draft note answers `409 INVALID_STATE_TRANSITION` with `details.unmet` `["NO_DRAFT_NOTES"]`: notes are frozen under review (ADR-0026 K3-02).
   - A summary counts as current when one of the consultation's `CONSULTATION_SUMMARY` document versions was created at or after `readyForReviewAt`.
   - Audit metadata holds the states moved between and, on completion, the release decision; never the reason, the cancellation reason or any other text.
-- **Consequences:** M3.3 fills `concernIds` through `PUT …/concerns` and the notes endpoints; M3.8's summary generator satisfies `CURRENT_SUMMARY`.
+- **Decision, concerns, history and notes (M3.3):**
+  - `PatientConcern` gains a `version` column, because every `PATCH` carries `If-Match` (spec §6.1.7). The Layer 3 table migration, not yet applied anywhere outside tests, was regenerated rather than followed by a fourth migration.
+  - Concerns and history entries are changed by any `consultation.edit` holder in the organization (organization-owned, K3-20). `PATIENT_UPDATED` records the resource, the kind of change and the field names: a concern's area and a history entry's category are codes, so they may appear; descriptions never do. The api accepts history from staff only (`source` STAFF) and leaves the schema's flexible `details` column unused in Layer 3.
+  - `PUT …/concerns` replaces the set while the consultation's content is open, refuses a concern of another patient, and bumps the consultation's version when the set changes.
+  - Notes: the service checks the consultation, the caller's practice scope, authorship, `If-Match` and the note's status in that order. A note of another author answers `403`; a final one `409 IMMUTABLE_RECORD`; a note written in the wrong consultation state `409 INVALID_STATE_TRANSITION`, with a message saying what to do. A client UUIDv7 already used answers `409 CONFLICT`. Notes are listed oldest first.
+  - `CONSULTATION_NOTE_FINALIZED` carries the consultation's ID and whether the note is an addendum.
+- **Consequences:** M3.8's summary generator satisfies `CURRENT_SUMMARY`.

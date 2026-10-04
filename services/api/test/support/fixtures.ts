@@ -230,6 +230,34 @@ export class Fixtures {
     return { protocolId, photoSessionId, photoId, releaseId, permissionId, objectKey };
   }
 
+  /** A draft note in an open consultation, a concern and a history entry of its patient. */
+  async clinicalRecords(
+    organizationId: string,
+    patientId: string,
+    consultationId: string,
+    authorUserId: string,
+  ): Promise<{ noteId: string; concernId: string; entryId: string }> {
+    const noteId = uuidv7();
+    const concernId = uuidv7();
+    const entryId = uuidv7();
+    await this.api.db.query(
+      `INSERT INTO "ConsultationNote" (id, "organizationId", "patientId", "consultationId", "authorUserId", body, "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, 'Fixture note', now())`,
+      [noteId, organizationId, patientId, consultationId, authorUserId],
+    );
+    await this.api.db.query(
+      `INSERT INTO "PatientConcern" (id, "organizationId", "patientId", area, description, "updatedAt")
+       VALUES ($1, $2, $3, 'LIPS', 'Fixture concern', now())`,
+      [concernId, organizationId, patientId],
+    );
+    await this.api.db.query(
+      `INSERT INTO "PatientMedicalHistory" (id, "organizationId", "patientId", category, description, "updatedAt")
+       VALUES ($1, $2, $3, 'ALLERGY', 'Fixture allergy', now())`,
+      [entryId, organizationId, patientId],
+    );
+    return { noteId, concernId, entryId };
+  }
+
   /** A consultation of a patient, in DRAFT or moved along the spec §5.4.1 machine. */
   async consultation(
     organizationId: string,

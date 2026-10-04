@@ -73,6 +73,7 @@ CREATE TABLE "PatientConcern" (
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(3) NOT NULL,
     "resolvedAt" TIMESTAMPTZ(3),
+    "version" INTEGER NOT NULL DEFAULT 1,
 
     CONSTRAINT "PatientConcern_pkey" PRIMARY KEY ("id")
 );

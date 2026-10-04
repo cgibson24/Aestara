@@ -2,6 +2,12 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Concerns, medical history and notes (M3.3 backend; ADR-0027)
+
+- **API:** 12 operations: the patient's concerns and medical history (list, create, correct with `If-Match`), a consultation's concern set (`PUT …/concerns`), and notes (list, draft with an optional client UUIDv7, edit and discard one's own draft, finalize, addenda). `CONSULTATION_NOTE_FINALIZED` is written on finalization; `PATIENT_UPDATED` for concerns and history, without their text.
+- **Schema:** `PatientConcern` gains `version` (every `PATCH` carries `If-Match`).
+- **Tests:** `consultation-notes.test.ts` (12); the generated authorization and cross-tenant tests cover the new operations. The api suite runs 471 tests.
+
 ## 2026-10-04: Consultation lifecycle (M3.1; ADR-0027)
 
 - **Database:** the Layer 3 migrations (tables, the constraints fragment verbatim, forced RLS and grants); 45 tables; the database suite runs 157 checks with no drift.

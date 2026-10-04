@@ -326,6 +326,51 @@ export class ConsultationsService implements OnModuleInit {
     return { data: await this.dto(tx, updated as ConsultationRow), version: updated.version };
   }
 
+  /** Replaces the concerns the consultation addresses, while its content is open (ADR-0026 K3-02). */
+  async putConcerns(
+    ctx: RequestContext,
+    patientId: string,
+    id: string,
+    concernIds: readonly string[],
+  ): Promise<OperationResult> {
+    const tx = requireTx(ctx);
+    await lockRow(tx, "Consultation", id);
+    const current = await this.consultation(tx, patientId, id);
+    this.requireScope(ctx, "consultation.edit", current.practiceId, current.locationId);
+    if (!CONTENT_OPEN.includes(current.status))
+      throw new ApiError(
+        "INVALID_STATE_TRANSITION",
+        current.status === "READY_FOR_REVIEW"
+          ? "The consultation is under review. Return it to progress to change its concerns."
+          : "This consultation can no longer change.",
+      );
+    if (
+      (await tx.patientConcern.count({ where: { id: { in: [...concernIds] }, patientId } })) !==
+      concernIds.length
+    )
+      throw invalid("concernIds", "UNKNOWN_CONCERN", "Choose concerns recorded for this patient.");
+    const existing = new Set(current.concerns.map((k) => k.patientConcernId));
+    const wanted = new Set(concernIds);
+    await tx.consultationConcern.deleteMany({
+      where: { consultationId: id, patientConcernId: { notIn: [...concernIds] } },
+    });
+    const added = concernIds.filter((k) => !existing.has(k));
+    if (added.length > 0)
+      await tx.consultationConcern.createMany({
+        data: added.map((patientConcernId) => ({
+          organizationId: requireOrganization(ctx),
+          patientId,
+          consultationId: id,
+          patientConcernId,
+        })),
+      });
+    const changed = added.length > 0 || [...existing].some((k) => !wanted.has(k));
+    const updated = changed
+      ? await tx.consultation.update({ where: { id }, data: { version: { increment: 1 } }, include: INCLUDE })
+      : await tx.consultation.findUniqueOrThrow({ where: { id }, include: INCLUDE });
+    return { data: await this.dto(tx, updated as ConsultationRow), version: updated.version };
+  }
+
   /** One spec §5.4.1 transition: scope, version, state, preconditions, then the change and its event. */
   async transition(
     ctx: RequestContext,

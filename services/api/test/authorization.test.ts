@@ -60,7 +60,14 @@ async function world(
   await fx.grant(admin.userId, "SURGEON_PHYSICIAN", { organizationId });
   await fx.grant(admin.userId, "PRACTICE_ADMIN", { organizationId });
   const photography = await fx.photography(organizationId, patientId, { capturedByUserId: admin.userId });
-  const consultationId = await fx.consultation(organizationId, patientId, practiceId, admin.userId);
+  const consultationId = await fx.consultation(
+    organizationId,
+    patientId,
+    practiceId,
+    admin.userId,
+    "IN_PROGRESS",
+  );
+  const clinical = await fx.clinicalRecords(organizationId, patientId, consultationId, admin.userId);
   return {
     admin,
     member,
@@ -80,6 +87,7 @@ async function world(
       photoId: photography.photoId,
       releaseId: photography.releaseId,
       consultationId,
+      ...clinical,
     },
   };
 }

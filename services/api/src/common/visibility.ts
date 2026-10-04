@@ -34,6 +34,8 @@ const PATIENT_SUBRESOURCE_READ: Record<string, readonly string[]> = {
   "photo-permissions": ["photo.permission.read"],
   "media-releases": ["photo.view"],
   consultations: ["consultation.create"],
+  concerns: ["consultation.create"],
+  "medical-history": ["consultation.create"],
 };
 
 function segment(op: EndpointDefinition): string {
@@ -41,7 +43,10 @@ function segment(op: EndpointDefinition): string {
 }
 
 export function readPermissionsFor(op: EndpointDefinition): readonly string[] {
-  if (segment(op) === "patients" && /\{(photoId|sessionId|releaseId|consultationId)\}/.test(op.path)) {
+  if (
+    segment(op) === "patients" &&
+    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId)\}/.test(op.path)
+  ) {
     const sub = op.path.split("/")[3];
     if (sub !== undefined && PATIENT_SUBRESOURCE_READ[sub] !== undefined)
       return PATIENT_SUBRESOURCE_READ[sub];
@@ -74,6 +79,28 @@ export async function resourceVisible(
         return (
           (await tx.photoSession.count({
             where: { id: params.sessionId, patientId: params.patientId ?? "" },
+          })) > 0
+        );
+      if (params.noteId !== undefined)
+        return (
+          (await tx.consultationNote.count({
+            where: {
+              id: params.noteId,
+              consultationId: params.consultationId ?? "",
+              patientId: params.patientId ?? "",
+            },
+          })) > 0
+        );
+      if (params.concernId !== undefined)
+        return (
+          (await tx.patientConcern.count({
+            where: { id: params.concernId, patientId: params.patientId ?? "" },
+          })) > 0
+        );
+      if (params.entryId !== undefined)
+        return (
+          (await tx.patientMedicalHistory.count({
+            where: { id: params.entryId, patientId: params.patientId ?? "" },
           })) > 0
         );
       if (params.consultationId !== undefined)

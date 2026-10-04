@@ -27,6 +27,8 @@ import { OperationPipeline } from "./common/pipeline.ts";
 import { CONFIG, type Config } from "./config.ts";
 import { ConsultationsController } from "./consultations/consultations.controller.ts";
 import { ConsultationsService } from "./consultations/consultations.service.ts";
+import { HistoryService } from "./consultations/history.service.ts";
+import { NotesService } from "./consultations/notes.service.ts";
 import { Database } from "./db/database.ts";
 import { EmailService } from "./email/email.ts";
 import { HealthController } from "./health/health.controller.ts";
@@ -91,6 +93,8 @@ class AppModule {
         PermissionLedger,
         PermissionsService,
         ConsultationsService,
+        NotesService,
+        HistoryService,
         ConfigurationService,
         OfflineAuditService,
         OperationPipeline,

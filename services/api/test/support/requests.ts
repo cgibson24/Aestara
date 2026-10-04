@@ -19,6 +19,9 @@ export interface ResourceRefs {
   photoId: string;
   releaseId: string;
   consultationId: string;
+  noteId: string;
+  concernId: string;
+  entryId: string;
 }
 
 let n = 0;
@@ -50,6 +53,9 @@ export function pathFor(e: EndpointDefinition, refs: ResourceRefs): string {
     .replace("{photoId}", refs.photoId)
     .replace("{releaseId}", refs.releaseId)
     .replace("{consultationId}", refs.consultationId)
+    .replace("{noteId}", refs.noteId)
+    .replace("{concernId}", refs.concernId)
+    .replace("{entryId}", refs.entryId)
     .replace("{practiceId}", refs.practiceId)
     .replace("{key}", key)}`;
 }
@@ -126,6 +132,13 @@ export function bodyFor(e: EndpointDefinition, refs: ResourceRefs): Record<strin
     updateConsultation: { reason: `Reason ${u}` },
     cancelConsultation: { reason: "Fixture" },
     completeConsultation: { releaseDecision: "NOTHING_TO_RELEASE" },
+    putConsultationConcerns: { concernIds: [refs.concernId] },
+    createConsultationNote: { body: "Fixture note" },
+    updateConsultationNote: { body: `Fixture note ${u}` },
+    createPatientConcern: { area: "LIPS", description: "Fixture concern" },
+    updatePatientConcern: { description: `Fixture concern ${u}` },
+    createMedicalHistoryEntry: { category: "ALLERGY", description: "Fixture allergy" },
+    updateMedicalHistoryEntry: { description: `Fixture entry ${u}` },
     putFeatureFlag: { enabled: false },
     putPracticeSetting: { value: { maxPatients: 10, maxAgeDays: 3 } },
     createRetentionPolicy: {

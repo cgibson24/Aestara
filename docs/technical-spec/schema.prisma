@@ -784,6 +784,7 @@ model PatientConcern {
   createdAt      DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
   resolvedAt     DateTime? @db.Timestamptz(3)
+  version        Int       @default(1)
 
   patient       Patient               @relation(fields: [organizationId, patientId], references: [organizationId, id])
   recordedBy    User?                 @relation(fields: [recordedById], references: [id], onDelete: Restrict)

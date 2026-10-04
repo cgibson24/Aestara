@@ -56,6 +56,9 @@ const LOCKABLE = new Set([
   "PracticeSetting",
   "StorageObject",
   "Consultation",
+  "ConsultationNote",
+  "PatientConcern",
+  "PatientMedicalHistory",
 ]);
 
 /**
