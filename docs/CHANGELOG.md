@@ -2,6 +2,13 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Layer 3 acceptance review (M3.9)
+
+- `ACCEPTANCE_CRITERIA.md` §8 reviews Layer 3 against the Bible §29 exit condition ("consultation with standardized imagery is functional") and Bible §34.1 #12–21: 21 criteria, all PASS, on [CI run 114](https://github.com/cgibson24/Aestara/actions/runs/37195947250) (commit `c7679c3`), green in all nine jobs with the UI test passing on iPhone and iPad. Sign-off moves to §9; Layer 3 awaits the owner's sign-off.
+- Findings: F-68 resolved (40 snapshot references committed and compared on every push); F-70 resolved (no busy main thread on the iPad in the reworked shell; the Layer 3 rebuilds found and fixed, ADR-0027).
+- `TESTING_STRATEGY.md` §18.2 names the tests that cover Bible §34.1 #12–21.
+- The snapshot test's trait helper runs on the main actor (three Swift concurrency warnings).
+
 ## 2026-10-04: All snapshot references committed; UI test typing and CI output fixed (F-68)
 
 - **Snapshot references:** the 18 pictures recorded with the app's tint (view states, annotation editor, alignment editor, the five comparison modes on iPhone and iPad) are reviewed and committed. All 40 references of `ProviderSnapshotsTests` are in the repository and compared on every push.

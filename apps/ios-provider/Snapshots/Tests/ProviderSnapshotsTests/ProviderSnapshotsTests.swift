@@ -19,6 +19,7 @@ import SwiftUI
 import Testing
 import UIKit
 
+@MainActor
 private func traits(_ style: UIUserInterfaceStyle, _ size: UIContentSizeCategory, scale: CGFloat = 2) -> UITraitCollection {
     UITraitCollection { traits in
         traits.userInterfaceStyle = style

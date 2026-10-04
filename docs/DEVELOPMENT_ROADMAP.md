@@ -152,7 +152,7 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 | M3.6 | Automatic registration job + manual alignment/reset |
 | M3.7 | Export with purpose-specific permission (PHOTO_EXPORTED) |
 | M3.8 | Documents + consultation summary generation; patient timeline |
-| M3.9 | **Layer 3 acceptance** (incl. Bible §34.1 #12–21), then STOP |
+| M3.9 | **Layer 3 acceptance** (incl. Bible §34.1 #12–21), then STOP. Review: `ACCEPTANCE_CRITERIA.md` §8; awaiting the owner's sign-off |
 
 ### Step 7: Layer 4, Documents, Consent, Education, Treatment Plans
 

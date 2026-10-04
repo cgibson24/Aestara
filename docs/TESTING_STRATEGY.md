@@ -337,16 +337,16 @@ Planned locations follow §2. Numbers are the Bible's own.
 
 | # | Criterion | Test | Planned location |
 |---|---|---|---|
-| 12 | Exactly two images of the same patient | Create-set tests; DB C6–C7 | `services/api/test/integration/before-after/`; behaviour suite |
-| 13 | Server rejects another tenant's or patient's image IDs | Cross-tenant suite with body IDs; DB C5, A-series | `services/api/test/cross-tenant/`; behaviour suite |
-| 14 | Original assets remain untouched | Original checksum unchanged after every operation; DB C1–C4 | `services/api/test/integration/before-after/`; behaviour suite |
-| 15 | Side-by-side, slider, cross-fade, blink and overlay work | Snapshot and UI tests of each mode | BeforeAfter module tests; provider UI tests |
-| 16 | Zoom and pan can be synchronized | ViewModel test | BeforeAfter module tests |
-| 17 | Automatic registration can be disabled or reset | Reset API test; UI test | `services/api/test/integration/before-after/`; provider UI tests |
-| 18 | Export verifies purpose-specific permission | Missing, revoked and expired grants return 403 | `services/api/test/integration/media/` |
-| 19 | Export creates `PHOTO_EXPORTED` | Audit assertion | `services/api/test/audit/` |
-| 20 | Invalid or unauthorized images do not reveal existence | Identical 404 bodies | `services/api/test/cross-tenant/` |
-| 21 | Tests cover success, invalid IDs, permission denial and export failure | Acceptance review checks the test list for all four | Layer 3 acceptance review |
+| 12 | Exactly two images of the same patient | Create-set tests; DB C5–C7, C15–C17 | `services/api/test/before-after.test.ts`; behaviour suite |
+| 13 | Server rejects another tenant's or patient's image IDs | One indistinguishable 404; cross-tenant suite with body IDs; DB A1, C5 | `services/api/test/before-after.test.ts`; `services/api/test/authorization.test.ts`; behaviour suite |
+| 14 | Original assets remain untouched | Original key and SHA-256 unchanged after a set, alignment and reset; original read back after rendering; DB C1, C3, C4, C16, C17 | `services/api/test/before-after.test.ts`; `services/api/test/derivatives-e2e.test.ts`; behaviour suite |
+| 15 | Side-by-side, slider, cross-fade, blink and overlay work | Snapshot of each mode on iPhone and iPad; blink rate; UI test of each mode | `apps/ios-provider/Snapshots`; BeforeAfter module tests; provider UI tests |
+| 16 | Zoom and pan can be synchronized | Linked and unlinked viewports | BeforeAfter module tests |
+| 17 | Automatic registration can be disabled or reset | Manual alignment and reset; the job, the flag and no-reliable-alignment; pytest registration; UI test aligns by hand | `services/api/test/before-after.test.ts`; `services/image-processing/tests/test_registration.py`; provider UI tests |
+| 18 | Export verifies purpose-specific permission | Missing, revoked and expired grants return 403 and create nothing; revocation ends downloads | `services/api/test/exports.test.ts` |
+| 19 | Export creates `PHOTO_EXPORTED` | Audit assertion per photo shown | `services/api/test/exports.test.ts` |
+| 20 | Invalid or unauthorized images do not reveal existence | Identical 404 bodies | `services/api/test/before-after.test.ts`; `services/api/test/authorization.test.ts` |
+| 21 | Tests cover success, invalid IDs, permission denial and export failure | All four, listed in the Layer 3 review | [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §8.1 row 13 |
 
 ### 18.3 AI simulation [B §34.2]
 
