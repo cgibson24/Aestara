@@ -9,10 +9,12 @@ let package = Package(
     products: [.library(name: "DocumentsConsent", targets: ["DocumentsConsent"])],
     dependencies: [
         .package(path: "../DesignSystem"),
-        .package(path: "../PatientDomain"),
+        .package(path: "../CoreNetworking"),
         .package(path: "../CoreSecurity"),
+        .package(path: "../Media"),
+        .package(path: "../PatientDomain"),
     ],
     targets: [
-        .target(name: "DocumentsConsent", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "PatientDomain", package: "PatientDomain"), .product(name: "CoreSecurity", package: "CoreSecurity")]),
+        .target(name: "DocumentsConsent", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "CoreSecurity", package: "CoreSecurity"), .product(name: "Media", package: "Media"), .product(name: "PatientDomain", package: "PatientDomain")]),
     ]
 )

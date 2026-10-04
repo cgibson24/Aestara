@@ -10,6 +10,9 @@ public actor PatientRepository {
         self.client = client
     }
 
+    /// For extensions in other files of the module.
+    var apiClient: Client { client }
+
     /// Search by name prefix, or an exact date of birth, email or phone. The term travels in the body.
     public func search(_ query: SearchQuery) async throws(APIError) -> [PatientSummary] {
         let body: Components.Schemas.PatientSearchRequest = switch query {

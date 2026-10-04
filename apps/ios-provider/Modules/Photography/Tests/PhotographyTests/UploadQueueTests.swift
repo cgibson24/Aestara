@@ -44,7 +44,8 @@ private actor FakeServer: UploadService {
     func fail(_ error: APIError?) { failWith = error }
     func setStatus(_ value: String) { status = value }
 
-    func startSession(patientId: String, protocolId: String, sessionId: String, startedAt: Date, idempotencyKey: String) async throws(APIError) -> PhotoSessionModel {
+    func startSession(patientId: String, protocolId: String, consultationId: String?, sessionId: String,
+                      startedAt: Date, idempotencyKey: String) async throws(APIError) -> PhotoSessionModel {
         if let failWith { throw failWith }
         sessions.append((sessionId, idempotencyKey))
         return PhotoSessionModel(id: sessionId, patientId: patientId, protocolId: protocolId, protocolName: "Face", status: "IN_PROGRESS",

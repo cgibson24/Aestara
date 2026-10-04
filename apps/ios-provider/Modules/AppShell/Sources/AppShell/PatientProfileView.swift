@@ -1,11 +1,13 @@
 // The patient profile shell (Bible §4.3; PR-PATIENT-06; roadmap M1.10): the
 // header and all twelve tabs. The server says which tabs the caller's role may
 // read; the clinical content of each tab arrives with its layer, so a readable
-// tab without it shows its empty state. Photos arrive in Layer 2. Opening the
+// tab without it shows its empty state. Photos arrive in Layer 2; the
+// timeline, consultations, before/after and documents in Layer 3. Opening the
 // profile is audited by the server.
-// Bible §4.3 · tier: app · Layers 1–2.
+// Bible §4.3 · tier: app · Layers 1–3.
 import CoreNetworking
 import DesignSystem
+import DocumentsConsent
 import Observation
 import PatientDomain
 import Photography
@@ -27,7 +29,7 @@ final class PatientProfileModel {
     let patientId: String
     private(set) var state: LoadState = .loading
     private(set) var offline = false
-    private let repository: PatientRepository
+    let repository: PatientRepository
     private let photography: PhotographyContext
     private var inFlight = false
 
@@ -73,6 +75,7 @@ final class PatientProfileModel {
 struct PatientProfileView: View {
     let model: PatientProfileModel
     let photography: PhotographyContext
+    let consultations: ConsultationWork
     @State private var tab: ProfileTab = .overview
 
     var body: some View {
@@ -93,7 +96,8 @@ struct PatientProfileView: View {
                     TabStrip(selection: $tab)
                     Divider()
                     ScrollView {
-                        TabContent(tab: tab, profile: profile, photography: photography)
+                        TabContent(tab: tab, profile: profile, photography: photography, consultations: consultations,
+                                   repository: model.repository)
                             .padding(DSSpacing.xxl)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -175,16 +179,28 @@ struct TabContent: View {
     let tab: ProfileTab
     let profile: PatientProfile
     let photography: PhotographyContext
+    let consultations: ConsultationWork
+    let repository: PatientRepository
 
     var body: some View {
         if !profile.readableTabs.contains(tab) {
             DSStateView(.permissionDenied)
-        } else if tab == .overview {
-            OverviewTab(patient: profile.patient)
-        } else if tab == .photos {
-            PhotosTabView(context: photography, patientId: profile.patient.id)
         } else {
-            DSStateView(.empty(title: "Nothing here yet", message: tab.emptyMessage))
+            switch tab {
+            case .overview:
+                OverviewTab(patient: profile.patient)
+            case .timeline:
+                TimelineTab(repository: repository, patientId: profile.patient.id)
+            case .consultations:
+                ConsultationsTab(work: consultations, patient: profile.patient)
+            case .photos:
+                PhotosTabView(context: photography, patientId: profile.patient.id)
+            case .documents:
+                DocumentsTabView(repository: consultations.documents, patientId: profile.patient.id,
+                                 canManage: consultations.can("document.manage"))
+            default:
+                DSStateView(.empty(title: "Nothing here yet", message: tab.emptyMessage))
+            }
         }
     }
 }

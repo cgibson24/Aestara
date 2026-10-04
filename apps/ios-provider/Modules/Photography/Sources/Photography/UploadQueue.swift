@@ -16,7 +16,8 @@ import Media
 
 /// The server operations the queue replays (implemented by `PhotographyRepository`).
 public protocol UploadService: Sendable {
-    func startSession(patientId: String, protocolId: String, sessionId: String, startedAt: Date, idempotencyKey: String) async throws(APIError) -> PhotoSessionModel
+    func startSession(patientId: String, protocolId: String, consultationId: String?, sessionId: String,
+                      startedAt: Date, idempotencyKey: String) async throws(APIError) -> PhotoSessionModel
     func createUpload(_ record: CaptureRecord, idempotencyKey: String) async throws(APIError) -> UploadTicket
     func completeUpload(patientId: String, photoId: String, idempotencyKey: String) async throws(APIError) -> PhotoItem
     func photo(patientId: String, photoId: String) async throws(APIError) -> PhotoItem
@@ -36,6 +37,8 @@ public struct PendingSession: Codable, Sendable, Equatable, Identifiable {
     public let id: String
     public let patientId: String
     public let protocolId: String
+    /// The consultation it was started for, if any (ADR-0027).
+    public var consultationId: String?
     public let startedAt: Date
     let idempotencyKey: String
 }
@@ -96,10 +99,12 @@ public actor UploadQueue {
     // MARK: Adding work
 
     /// Queues a session the server has not seen yet; returns its client ID.
-    public func enqueueSession(patientId: String, protocolId: String, startedAt: Date = Date()) throws(EncryptedStoreError) -> String {
+    public func enqueueSession(patientId: String, protocolId: String, consultationId: String? = nil,
+                               startedAt: Date = Date()) throws(EncryptedStoreError) -> String {
         var state = load()
         let session = PendingSession(id: UUIDv7.make(at: startedAt), patientId: patientId, protocolId: protocolId,
-                                     startedAt: startedAt, idempotencyKey: UUIDv7.make(at: Date()))
+                                     consultationId: consultationId, startedAt: startedAt,
+                                     idempotencyKey: UUIDv7.make(at: Date()))
         state.sessions.append(session)
         try save(state)
         return session.id
@@ -160,7 +165,7 @@ public actor UploadQueue {
         for session in load().sessions {
             do throws(APIError) {
                 _ = try await service.startSession(patientId: session.patientId, protocolId: session.protocolId,
-                                                   sessionId: session.id, startedAt: session.startedAt,
+                                                   consultationId: session.consultationId, sessionId: session.id, startedAt: session.startedAt,
                                                    idempotencyKey: session.idempotencyKey)
                 update { $0.sessions.removeAll { $0.id == session.id } }
                 outcome.sessionsCreated += 1

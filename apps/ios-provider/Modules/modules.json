@@ -57,7 +57,7 @@
       "bible": "§5",
       "layer": 3,
       "summary": "Consultation lifecycle, notes and concerns, following the spec §5.4.1 state machine.",
-      "dependsOn": ["CoreNetworking", "PatientDomain"]
+      "dependsOn": ["CoreNetworking", "CoreSecurity", "PatientDomain"]
     },
     "Photography": {
       "tier": "feature",
@@ -78,14 +78,14 @@
       "bible": "§6.6",
       "layer": 3,
       "summary": "Annotation layers drawn over photos, stored separately from the immutable original.",
-      "dependsOn": ["DesignSystem", "Media"]
+      "dependsOn": ["DesignSystem", "CoreNetworking", "Media"]
     },
     "BeforeAfter": {
       "tier": "feature",
       "bible": "§8",
       "layer": 3,
       "summary": "Before/after comparison: side by side, slider, cross-fade, blink, overlay; display-only alignment.",
-      "dependsOn": ["DesignSystem", "Media", "PatientDomain"]
+      "dependsOn": ["DesignSystem", "CoreNetworking", "Media", "PatientDomain"]
     },
     "Simulation": {
       "tier": "feature",
@@ -106,7 +106,7 @@
       "bible": "§12",
       "layer": 3,
       "summary": "Consent assignment and signing, including staff-assisted in-clinic signing mode, and documents.",
-      "dependsOn": ["DesignSystem", "PatientDomain", "CoreSecurity"]
+      "dependsOn": ["DesignSystem", "CoreNetworking", "CoreSecurity", "Media", "PatientDomain"]
     },
     "Education": {
       "tier": "feature",
@@ -153,7 +153,9 @@
         "CoreNetworking",
         "Authentication",
         "CoreSecurity",
+        "Media",
         "PatientDomain",
+        "ConsultationDomain",
         "Photography",
         "Annotations",
         "BeforeAfter",

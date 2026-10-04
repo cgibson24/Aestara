@@ -31,6 +31,8 @@ public struct PhotoSessionModel: Sendable, Equatable, Identifiable, Codable {
     public let startedAt: Date
     public let views: [SessionViewState]
     public let missingRequiredViews: [String]
+    /// The consultation the photos were taken for, if any (ADR-0027).
+    public var consultationId: String?
 
     public var isOpen: Bool { status == "IN_PROGRESS" }
 }

@@ -9,9 +9,10 @@ let package = Package(
     products: [.library(name: "Annotations", targets: ["Annotations"])],
     dependencies: [
         .package(path: "../DesignSystem"),
+        .package(path: "../CoreNetworking"),
         .package(path: "../Media"),
     ],
     targets: [
-        .target(name: "Annotations", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "Media", package: "Media")]),
+        .target(name: "Annotations", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "Media", package: "Media")]),
     ]
 )

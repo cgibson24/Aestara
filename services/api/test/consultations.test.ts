@@ -447,4 +447,47 @@ describe.runIf(databaseAvailable())("consultations (Layer 3)", () => {
       expect(res.json().error.code).toBe("CONSULTATION_NOT_FOUND");
     });
   });
+
+  describe("photography for a consultation (ADR-0026 K3-06, K3-20)", () => {
+    it("links a session to an open consultation of the patient, in its practice", async () => {
+      const protocol = await fx.photography(org, patient, {
+        capturedByUserId: surgeon.userId,
+        release: false,
+      });
+      const c = await create(surgeon, { reason: "Photos" });
+      const session = (body: Record<string, unknown>, who = surgeon) =>
+        call(who, "POST", "/photo-sessions", { protocolId: protocol.protocolId, ...body }, idem());
+      // Photos join a consultation once it is under way.
+      expect((await session({ consultationId: c.id })).statusCode).toBe(409);
+      expect((await move(surgeon, c.id, "start", 1)).statusCode).toBe(200);
+      const linked = await session({ consultationId: c.id });
+      expect(linked.statusCode, linked.body).toBe(201);
+      expect(linked.json().data).toMatchObject({ consultationId: c.id, practiceId: practice });
+      expect((await session({})).statusCode).toBe(201);
+      const listed = await api.request({
+        method: "GET",
+        url: `/api/v1/patients/${patient}/photo-sessions?consultationId=${c.id}`,
+        headers: bearer(surgeon),
+      });
+      expect(listed.json().data.map((s: { id: string }) => s.id)).toEqual([linked.json().data.id]);
+      // A practice-scoped grant elsewhere does not cover the consultation's practice.
+      expect((await session({ consultationId: c.id }, practiceNurse)).statusCode).toBe(403);
+      const other = await fx.patient(org);
+      const foreign = await api.request({
+        method: "POST",
+        url: `/api/v1/patients/${other}/photo-sessions`,
+        headers: { ...bearer(surgeon), ...idem() },
+        payload: { protocolId: protocol.protocolId, consultationId: c.id },
+      });
+      expect(foreign.statusCode).toBe(400);
+      expect(foreign.json().error.details.fieldErrors[0].code).toBe("UNKNOWN_CONSULTATION");
+      const elsewhere = await session({ consultationId: c.id, practiceId: otherPractice });
+      expect(elsewhere.json().error.details.fieldErrors[0].code).toBe("CONSULTATION_PRACTICE");
+      const cancelled = await create(surgeon);
+      expect((await move(surgeon, cancelled.id, "cancel", 1, { reason: "Booked twice" })).statusCode).toBe(
+        200,
+      );
+      expect((await session({ consultationId: cancelled.id })).statusCode).toBe(409);
+    });
+  });
 });

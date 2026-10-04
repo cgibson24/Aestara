@@ -2,6 +2,15 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: The consultation workspace in the provider app (M3.2, M3.3, M3.8 iOS; ADR-0026 K3-21, K3-23; ADR-0027)
+
+- **Photography for a consultation (api):** a photo session may name a consultation of the patient that is `IN_PROGRESS` or `AWAITING_INFORMATION` (K3-09). It takes the consultation's practice and location; another practice answers `400 CONSULTATION_PRACTICE`, another state `409`. The session list filters by `consultationId`, and the DTO names it.
+- **iPad shell (K3-23, F-70):** the sections sit in the first column of a split view beside each section's own columns; the sidebar-adaptable tab view that nested a split view is gone. iPhone keeps its tab bar.
+- **Profile tabs:** Timeline (by domain, newest first, "Show older"), Consultations (archived on request, a new consultation in a practice, the open ones saved on the device), and Documents (PDF upload as a new document or a new version, preview from a temporary file deleted on close).
+- **Workspace:** opened full screen from the Consultations tab; on iPad a stepper of the Layer 3 steps (reason and concerns, medical history, photography, notes, summary, review and completion), on iPhone the same steps in a navigation stack. Photos are taken for the consultation while it is under way. Completion lists what is left, records "nothing is released" and cancelling asks for a reason.
+- **Notes offline (K3-06):** drafts and edits of one's own drafts wait in the encrypted queue with their client UUIDv7 and Idempotency-Key, replay after the session is re-validated, and a draft that moved on shows both texts for the author to keep one. Finalizing, transitions and the summary need a connection. Signing out counts unsent notes with unsent photos.
+- **Modules:** `ConsultationDomain` (models, repository, offline store) and `DocumentsConsent` (documents) are built; the module graph gains their dependencies.
+
 ## 2026-10-04: Documents, consultation summary and patient timeline (M3.8 backend; ADR-0027)
 
 - **Documents API:** list, read, upload intent, complete-upload and download (`document.read`, `document.manage`). Files are PDF only, at most 50 MiB, verified (size, SHA-256, `%PDF-`) and scanned like photos. A version is created at completion and served once its scan is clean. Downloads are attachments valid 10 minutes. `DOCUMENT_ADDED` and `DOCUMENT_VIEWED` never carry a title.

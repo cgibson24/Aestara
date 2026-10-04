@@ -211,6 +211,7 @@ export class PhotosService implements OnModuleInit {
         capturedByUserId: s.capturedByUserId,
         practiceId: s.practiceId,
         locationId: s.locationId,
+        consultationId: s.consultationId,
         completedAt: s.completedAt && iso(s.completedAt),
       }),
       startedAt: iso(s.startedAt),
@@ -296,7 +297,12 @@ export class PhotosService implements OnModuleInit {
   async listSessions(
     ctx: RequestContext,
     patientId: string,
-    query: { limit: number; cursor?: string; status?: "IN_PROGRESS" | "COMPLETED" | "ABANDONED" },
+    query: {
+      limit: number;
+      cursor?: string;
+      status?: "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+      consultationId?: string;
+    },
   ): Promise<OperationResult> {
     const tx = requireTx(ctx);
     await this.patient(tx, patientId);
@@ -305,6 +311,7 @@ export class PhotosService implements OnModuleInit {
       where: {
         patientId,
         ...(query.status ? { status: query.status } : {}),
+        ...(query.consultationId ? { consultationId: query.consultationId } : {}),
         ...(after
           ? {
               OR: [
@@ -343,12 +350,35 @@ export class PhotosService implements OnModuleInit {
     if (protocol === null || protocol.status !== "ACTIVE")
       throw invalid("protocolId", "PROTOCOL_NOT_ACTIVE", "Choose an active photography protocol.");
     let practiceId = body.practiceId ?? null;
+    let locationId = body.locationId ?? null;
+    // A session for a consultation takes its practice and location; capture then needs a grant
+    // covering them (ADR-0026 K3-20). Photos join a consultation while it is under way (K3-09).
+    if (body.consultationId !== undefined) {
+      const consultation = await tx.consultation.findFirst({
+        where: { id: body.consultationId, patientId },
+        select: { practiceId: true, locationId: true, status: true },
+      });
+      if (consultation === null)
+        throw invalid(
+          "consultationId",
+          "UNKNOWN_CONSULTATION",
+          "Choose one of this patient's consultations.",
+        );
+      if (!["IN_PROGRESS", "AWAITING_INFORMATION"].includes(consultation.status))
+        throw new ApiError(
+          "INVALID_STATE_TRANSITION",
+          "Photos join a consultation only while it is under way.",
+        );
+      if (practiceId !== null && practiceId !== consultation.practiceId)
+        throw invalid("practiceId", "CONSULTATION_PRACTICE", "The consultation belongs to another practice.");
+      practiceId = consultation.practiceId;
+      locationId = locationId ?? consultation.locationId;
+    }
     if (protocol.practiceId !== null) {
       if (practiceId !== null && practiceId !== protocol.practiceId)
         throw invalid("practiceId", "PROTOCOL_PRACTICE", "This protocol belongs to another practice.");
       practiceId = protocol.practiceId;
     }
-    const locationId = body.locationId ?? null;
     if (locationId !== null) {
       if (practiceId === null) throw invalid("practiceId", "REQUIRED", "A location needs its practice.");
       if ((await tx.location.count({ where: { id: locationId, practiceId } })) === 0)
@@ -375,6 +405,7 @@ export class PhotosService implements OnModuleInit {
           capturedByUserId: requireAuth(ctx).userId,
           practiceId,
           locationId,
+          consultationId: body.consultationId ?? null,
           startedAt,
         },
       });

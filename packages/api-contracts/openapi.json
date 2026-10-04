@@ -2965,6 +2965,9 @@
           "locationId": {
             "$ref": "#/components/schemas/Uuid"
           },
+          "consultationId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
           "startedAt": {
             "$ref": "#/components/schemas/Timestamp"
           },
@@ -3076,6 +3079,12 @@
           },
           "locationId": {
             "$ref": "#/components/schemas/Uuid"
+          },
+          "consultationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Capture for an open consultation of the patient (ADR-0026 K3-06, K3-20): the session takes its practice, and the caller's grant must cover it.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
           },
           "startedAt": {
             "type": "string",
@@ -10974,6 +10983,18 @@
             },
             "required": false,
             "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Only the sessions taken for this consultation (ADR-0027).",
+              "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+            },
+            "required": false,
+            "description": "Only the sessions taken for this consultation (ADR-0027).",
+            "name": "consultationId",
             "in": "query"
           }
         ],

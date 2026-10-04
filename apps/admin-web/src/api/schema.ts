@@ -3100,6 +3100,7 @@ export interface components {
             capturedByUserId?: components["schemas"]["Uuid"];
             practiceId?: components["schemas"]["Uuid"];
             locationId?: components["schemas"]["Uuid"];
+            consultationId?: components["schemas"]["Uuid"];
             startedAt: components["schemas"]["Timestamp"];
             completedAt?: components["schemas"]["Timestamp"];
             views: components["schemas"]["PhotoSessionView"][];
@@ -3130,6 +3131,12 @@ export interface components {
             protocolId: components["schemas"]["Uuid"];
             practiceId?: components["schemas"]["Uuid"];
             locationId?: components["schemas"]["Uuid"];
+            /**
+             * Format: uuid
+             * @description Capture for an open consultation of the patient (ADR-0026 K3-06, K3-20): the session takes its practice, and the caller's grant must cover it.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            consultationId?: string;
             /**
              * Format: date-time
              * @description When capture began on the device (offline sessions); defaults to now. Never in the future.
@@ -6551,6 +6558,8 @@ export interface operations {
                 /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
                 cursor?: string;
                 status?: components["schemas"]["PhotoSessionStatus"];
+                /** @description Only the sessions taken for this consultation (ADR-0027). */
+                consultationId?: string;
             };
             header?: {
                 /** @description Optional client correlation ID. Logged, never trusted. */

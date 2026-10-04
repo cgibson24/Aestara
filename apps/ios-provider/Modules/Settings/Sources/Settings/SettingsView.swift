@@ -11,11 +11,16 @@ import SwiftUI
 public struct SignOutCheck: Sendable {
     /// Tries once more to upload, then counts the photos still waiting.
     public let unsentPhotos: @MainActor @Sendable () async -> Int
-    /// Deletes this user's queued photos and cached images.
+    /// Tries once more to send, then counts the note drafts written offline and still waiting (ADR-0026 K3-06).
+    public let unsentNotes: @MainActor @Sendable () async -> Int
+    /// Deletes this user's queued photos and notes and the cached copies.
     public let purge: @MainActor @Sendable () async -> Void
 
-    public init(unsentPhotos: @escaping @MainActor @Sendable () async -> Int, purge: @escaping @MainActor @Sendable () async -> Void) {
+    public init(unsentPhotos: @escaping @MainActor @Sendable () async -> Int,
+                unsentNotes: @escaping @MainActor @Sendable () async -> Int = { 0 },
+                purge: @escaping @MainActor @Sendable () async -> Void) {
         self.unsentPhotos = unsentPhotos
+        self.unsentNotes = unsentNotes
         self.purge = purge
     }
 }
@@ -27,6 +32,7 @@ public struct SettingsView: View {
     @State private var confirmSignOut = false
     @State private var checking = false
     @State private var unsent = 0
+    @State private var unsentNotes = 0
 
     public init(store: AuthStore, signOutCheck: SignOutCheck? = nil) {
         self.store = store
@@ -70,12 +76,12 @@ public struct SettingsView: View {
                 .disabled(checking)
                 .accessibilityIdentifier("settings.signOut")
             } footer: {
-                Text("Signing out ends this session on the server and removes the saved sign-in, cached photos and photos still waiting to upload from this device.")
+                Text("Signing out ends this session on the server and removes the saved sign-in, cached photos and records, and photos and notes still waiting to be sent from this device.")
             }
         }
         .navigationTitle("Settings")
         .confirmationDialog(signOutTitle, isPresented: $confirmSignOut, titleVisibility: .visible) {
-            Button(unsent == 0 ? String(localized: "Sign out") : String(localized: "Sign out and delete photos"), role: .destructive) {
+            Button(unsent + unsentNotes == 0 ? String(localized: "Sign out") : String(localized: "Sign out and delete them"), role: .destructive) {
                 Task {
                     await signOutCheck?.purge()
                     await store.signOut()
@@ -84,23 +90,27 @@ public struct SettingsView: View {
             .accessibilityIdentifier("settings.signOutConfirm")
             Button("Stay signed in", role: .cancel) {}
         } message: {
-            if unsent > 0 {
+            if unsent + unsentNotes > 0 {
                 Text("They have not reached the server. Signing out deletes them from this device, and they cannot be recovered.")
             }
         }
     }
 
     private var signOutTitle: String {
-        switch unsent {
-        case 0: String(localized: "Sign out of Aestara?")
-        case 1: String(localized: "1 photo has not uploaded")
-        default: String(localized: "\(unsent) photos have not uploaded")
+        let photos = unsent == 1 ? String(localized: "1 photo") : String(localized: "\(unsent) photos")
+        let notes = unsentNotes == 1 ? String(localized: "1 note") : String(localized: "\(unsentNotes) notes")
+        switch (unsent, unsentNotes) {
+        case (0, 0): return String(localized: "Sign out of Aestara?")
+        case (_, 0): return unsent == 1 ? String(localized: "1 photo has not uploaded") : String(localized: "\(unsent) photos have not uploaded")
+        case (0, _): return unsentNotes == 1 ? String(localized: "1 note has not been sent") : String(localized: "\(unsentNotes) notes have not been sent")
+        default: return String(localized: "\(photos) and \(notes) have not been sent")
         }
     }
 
     private func prepareSignOut() async {
         checking = true
         unsent = await signOutCheck?.unsentPhotos() ?? 0
+        unsentNotes = await signOutCheck?.unsentNotes() ?? 0
         checking = false
         confirmSignOut = true
     }

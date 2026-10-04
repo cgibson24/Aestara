@@ -125,11 +125,11 @@ public final class PhotographyContext {
     }
 
     /// Records whether the last request reached the server.
-    func note(_ error: APIError) {
+    public func note(_ error: APIError) {
         if error.status == 0 { isOnline = false }
     }
 
-    func reachedServer() {
+    public func reachedServer() {
         isOnline = true
     }
 

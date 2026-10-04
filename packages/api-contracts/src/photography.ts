@@ -209,6 +209,7 @@ export const PhotoSession = z
     capturedByUserId: Uuid.optional(),
     practiceId: Uuid.optional(),
     locationId: Uuid.optional(),
+    consultationId: Uuid.optional(),
     startedAt: Timestamp,
     completedAt: Timestamp.optional(),
     views: z.array(PhotoSessionView),
@@ -227,6 +228,11 @@ export const PhotoSessionCreate = z
     protocolId: Uuid,
     practiceId: Uuid.optional(),
     locationId: Uuid.optional(),
+    consultationId: Uuid.optional().meta({
+      description:
+        "Capture for an open consultation of the patient (ADR-0026 K3-06, K3-20): the session takes its " +
+        "practice, and the caller's grant must cover it.",
+    }),
     startedAt: Timestamp.optional().meta({
       description:
         "When capture began on the device (offline sessions); defaults to now. Never in the future.",
@@ -242,7 +248,12 @@ export const PhotoSessionComplete = z
   })
   .meta({ id: "PhotoSessionComplete" });
 
-export const PhotoSessionListQuery = PageQuery.extend({ status: PhotoSessionStatus.optional() }).meta({
+export const PhotoSessionListQuery = PageQuery.extend({
+  status: PhotoSessionStatus.optional(),
+  consultationId: Uuid.optional().meta({
+    description: "Only the sessions taken for this consultation (ADR-0027).",
+  }),
+}).meta({
   id: "PhotoSessionListQuery",
 });
 

@@ -5,6 +5,7 @@
 // shape the UI; the server decides.
 // Bible §4, §23 · tier: app · Layers 1–2.
 import Authentication
+import ConsultationDomain
 import CoreNetworking
 import DesignSystem
 import PatientDomain
@@ -15,6 +16,9 @@ struct PatientsSplitView: View {
     let repository: PatientRepository
     let session: SessionSummary?
     let photography: PhotographyContext
+    let consultations: ConsultationWork
+    /// On iPad, the app's sections, shown as the first of three columns.
+    let sidebar: SectionSidebar?
     @State private var selection: PatientSummary.ID?
     /// A patient to open once the reloaded list shows it (see PatientListView.load).
     @State private var pendingSelection: PatientSummary.ID?
@@ -25,34 +29,35 @@ struct PatientsSplitView: View {
     /// The selected patient's profile, shared by every copy of its screen.
     @State private var profiles: ProfileModels
 
-    init(repository: PatientRepository, session: SessionSummary?, photography: PhotographyContext) {
+    init(repository: PatientRepository, session: SessionSummary?, photography: PhotographyContext,
+         consultations: ConsultationWork, sidebar: SectionSidebar?) {
         self.repository = repository
         self.session = session
         self.photography = photography
+        self.consultations = consultations
+        self.sidebar = sidebar
         _profiles = State(initialValue: ProfileModels(repository: repository, photography: photography))
     }
 
     var body: some View {
-        NavigationSplitView {
-            PatientListView(repository: repository, cache: photography.patients, selection: $selection,
-                            pendingSelection: $pendingSelection, reload: reload)
-                .navigationTitle("Patients")
-                .toolbar {
-                    if session?.can("patient.create") == true {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button("New patient", systemImage: "plus") { creating = true }
-                                .accessibilityIdentifier("patients.new")
-                        }
-                    }
+        Group {
+            if let sidebar {
+                NavigationSplitView {
+                    sidebar
+                } content: {
+                    list.navigationSplitViewColumnWidth(DSSize.listPaneWidth)
+                } detail: {
+                    detail
                 }
-        } detail: {
-            if let selection {
-                PatientProfileView(model: profiles.model(for: selection), photography: photography)
-                    .id(selection)
             } else {
-                DSStateView(.empty(title: "No patient selected", message: "Search for a patient or choose one from the list."))
+                NavigationSplitView {
+                    list
+                } detail: {
+                    detail
+                }
             }
         }
+        .tint(DSColor.accent)
         // One load per selection, started as soon as the patient is selected.
         .onChange(of: selection, initial: true) { _, id in
             if let id { profiles.select(id) }
@@ -72,6 +77,32 @@ struct PatientsSplitView: View {
                 created = patientId
                 creating = false
             }
+        }
+    }
+}
+
+extension PatientsSplitView {
+    private var list: some View {
+        PatientListView(repository: repository, cache: photography.patients, selection: $selection,
+                        pendingSelection: $pendingSelection, reload: reload)
+            .navigationTitle("Patients")
+            .toolbar {
+                if session?.can("patient.create") == true {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("New patient", systemImage: "plus") { creating = true }
+                            .accessibilityIdentifier("patients.new")
+                    }
+                }
+            }
+    }
+
+    @ViewBuilder private var detail: some View {
+        if let selection {
+            PatientProfileView(model: profiles.model(for: selection), photography: photography,
+                               consultations: consultations)
+                .id(selection)
+        } else {
+            DSStateView(.empty(title: "No patient selected", message: "Search for a patient or choose one from the list."))
         }
     }
 }

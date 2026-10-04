@@ -83,10 +83,13 @@ public actor PhotographyRepository {
         return page.data.map(Self.photoProtocol)
     }
 
-    /// Starts a session. `sessionId` is a client UUIDv7, so a queued replay creates it once.
-    public func startSession(patientId: String, protocolId: String, sessionId: String, startedAt: Date, idempotencyKey: String) async throws(APIError) -> PhotoSessionModel {
+    /// Starts a session, for a consultation when one is named. `sessionId` is a client
+    /// UUIDv7, so a queued replay creates it once.
+    public func startSession(patientId: String, protocolId: String, consultationId: String?, sessionId: String,
+                             startedAt: Date, idempotencyKey: String) async throws(APIError) -> PhotoSessionModel {
         let client = self.client
-        let body = Components.Schemas.PhotoSessionCreate(id: sessionId, protocolId: protocolId, startedAt: startedAt)
+        let body = Components.Schemas.PhotoSessionCreate(id: sessionId, protocolId: protocolId, consultationId: consultationId,
+                                                         startedAt: startedAt)
         let session = try await callAPI {
             try await client.createPhotoSession(
                 path: .init(patientId: patientId),
@@ -105,10 +108,13 @@ public actor PhotographyRepository {
         return Self.session(session)
     }
 
-    public func sessions(patientId: String) async throws(APIError) -> [PhotoSessionModel] {
+    /// The newest sessions, or every session taken for one consultation.
+    public func sessions(patientId: String, consultationId: String? = nil) async throws(APIError) -> [PhotoSessionModel] {
         let client = self.client
         let page = try await callAPI {
-            try await client.listPhotoSessions(path: .init(patientId: patientId), query: .init(limit: 50)).ok.body.json
+            try await client.listPhotoSessions(path: .init(patientId: patientId),
+                                               query: .init(limit: consultationId == nil ? 50 : 100, consultationId: consultationId))
+                .ok.body.json
         }
         return page.data.map(Self.session)
     }
@@ -401,7 +407,8 @@ public actor PhotographyRepository {
                 SessionViewState(viewKey: $0.viewKey, name: $0.name, sortOrder: $0.sortOrder, isRequired: $0.isRequired,
                                  captured: $0.captured, photoCount: $0.photoCount)
             }.sorted { $0.sortOrder < $1.sortOrder },
-            missingRequiredViews: s.missingRequiredViews
+            missingRequiredViews: s.missingRequiredViews,
+            consultationId: s.consultationId
         )
     }
 

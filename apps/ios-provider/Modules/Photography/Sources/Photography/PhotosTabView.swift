@@ -3,8 +3,10 @@
 // photos still waiting to upload, and the ways into a new photo session and
 // the media permissions. Archived photos are hidden unless asked for and then
 // carry a badge; photos being checked or rejected show their state, never an
-// image. The buttons follow the role's permissions; the server decides.
-// Bible §6 · tier: feature · Layer 2.
+// image. The buttons follow the role's permissions; the server decides. In a
+// consultation's workspace it shows only that consultation's sessions and
+// photos, and new sessions are taken for it (ADR-0027).
+// Bible §6 · tier: feature · Layers 2–3.
 import CoreNetworking
 import DesignSystem
 import Media
@@ -21,7 +23,13 @@ struct ActiveSession: Identifiable, Equatable {
 public struct PhotosTabView: View {
     let context: PhotographyContext
     let patientId: String
+    /// Only this consultation's sessions and photos, and new sessions taken for it.
+    let consultationId: String?
+    /// False while the consultation is not under way (ADR-0026 K3-09).
+    let allowsNewSessions: Bool
     @State private var photos: [PhotoItem] = []
+    /// The sessions taken for the consultation, as last loaded.
+    @State private var consultationSessions: Set<String> = []
     @State private var thumbnails: [String: Data] = [:]
     @State private var openSessions: [PhotoSessionModel] = []
     @State private var loadState: DSViewState? = .loading("Loading photos")
@@ -38,9 +46,11 @@ public struct PhotosTabView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    public init(context: PhotographyContext, patientId: String) {
+    public init(context: PhotographyContext, patientId: String, consultationId: String? = nil, allowsNewSessions: Bool = true) {
         self.context = context
         self.patientId = patientId
+        self.consultationId = consultationId
+        self.allowsNewSessions = allowsNewSessions
     }
 
     public var body: some View {
@@ -80,7 +90,7 @@ public struct PhotosTabView: View {
             activeSession = startedSession
             startedSession = nil
         }) {
-            StartSessionView(context: context, patientId: patientId) { started in
+            StartSessionView(context: context, patientId: patientId, consultationId: consultationId) { started in
                 startedSession = started
                 startingSession = false
             }
@@ -109,12 +119,12 @@ public struct PhotosTabView: View {
             ? AnyLayout(HStackLayout(spacing: DSSpacing.md))
             : AnyLayout(VStackLayout(spacing: DSSpacing.sm))
         return layout {
-            if context.can("photo.capture") {
+            if context.can("photo.capture"), allowsNewSessions {
                 Button("Start photo session", systemImage: "camera") { startingSession = true }
                     .buttonStyle(DSButtonStyle(.primary))
                     .accessibilityIdentifier("photos.startSession")
             }
-            if context.can("photo.permission.read") {
+            if context.can("photo.permission.read"), consultationId == nil {
                 Button("Media permissions", systemImage: "hand.raised") { showingPermissions = true }
                     .buttonStyle(DSButtonStyle(.secondary))
                     .accessibilityIdentifier("photos.permissions")
@@ -129,10 +139,15 @@ public struct PhotosTabView: View {
             Toggle("Show archived photos", isOn: $showArchived)
                 .font(DSFont.subheadline)
                 .accessibilityIdentifier("photos.showArchived")
-            let visible = photos.filter { showArchived || !$0.isArchived }
+            let visible = photos.filter { photo in
+                (showArchived || !photo.isArchived)
+                    && (consultationId == nil || photo.sessionId.map { consultationSessions.contains($0) } == true)
+            }
             if visible.isEmpty {
                 DSStateView(.empty(title: String(localized: "No photos yet"),
-                                   message: String(localized: "This patient has no clinical photos yet.")))
+                                   message: consultationId == nil
+                                       ? String(localized: "This patient has no clinical photos yet.")
+                                       : String(localized: "Photos taken in this consultation appear here.")))
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: DSSpacing.md)], spacing: DSSpacing.md) {
                     ForEach(visible) { photo in
@@ -175,7 +190,9 @@ public struct PhotosTabView: View {
             photos = loaded
             context.savePhotos(loaded, patientId: patientId)
             if context.can("photo.view") {
-                openSessions = try await context.repository.sessions(patientId: patientId).filter(\.isOpen)
+                let sessions = try await context.repository.sessions(patientId: patientId, consultationId: consultationId)
+                openSessions = sessions.filter(\.isOpen)
+                if consultationId != nil { consultationSessions = Set(sessions.map(\.id)) }
             }
             loadState = nil
         } catch {
@@ -262,6 +279,7 @@ struct PhotoTile: View {
 struct StartSessionView: View {
     let context: PhotographyContext
     let patientId: String
+    let consultationId: String?
     let onStart: (ActiveSession) -> Void
     @State private var protocols: [PhotoProtocol] = []
     @State private var state: DSViewState? = .loading("Loading protocols")
@@ -326,8 +344,8 @@ struct StartSessionView: View {
         let sessionId = UUIDv7.make(at: startedAt)
         do throws(APIError) {
             let session = try await context.repository.startSession(
-                patientId: patientId, protocolId: item.id, sessionId: sessionId, startedAt: startedAt,
-                idempotencyKey: newIdempotencyKey()
+                patientId: patientId, protocolId: item.id, consultationId: consultationId, sessionId: sessionId,
+                startedAt: startedAt, idempotencyKey: newIdempotencyKey()
             )
             onStart(ActiveSession(session: session, views: item.views))
         } catch {
@@ -338,7 +356,8 @@ struct StartSessionView: View {
             }
             // Offline: queue the session; it is created first when the device reconnects.
             do {
-                let queuedId = try await context.queue.enqueueSession(patientId: patientId, protocolId: item.id, startedAt: startedAt)
+                let queuedId = try await context.queue.enqueueSession(patientId: patientId, protocolId: item.id,
+                                                                      consultationId: consultationId, startedAt: startedAt)
                 let session = PhotoSessionModel(
                     id: queuedId, patientId: patientId, protocolId: item.id, protocolName: item.name, status: "IN_PROGRESS",
                     startedAt: startedAt,
@@ -346,7 +365,8 @@ struct StartSessionView: View {
                         SessionViewState(viewKey: $0.viewKey, name: $0.name, sortOrder: $0.sortOrder, isRequired: $0.isRequired,
                                          captured: false, photoCount: 0)
                     },
-                    missingRequiredViews: item.views.filter(\.isRequired).map(\.viewKey)
+                    missingRequiredViews: item.views.filter(\.isRequired).map(\.viewKey),
+                    consultationId: consultationId
                 )
                 onStart(ActiveSession(session: session, views: item.views))
             } catch {
