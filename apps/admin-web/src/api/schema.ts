@@ -1320,6 +1320,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/patients/{patientId}/before-after": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The patient's before/after sets, newest first.
+         * @description Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listBeforeAfterSets"];
+        put?: never;
+        /**
+         * Pair two photos of this patient with the same view, the before one earlier. Unknown or other patients' photos answer the same 404.
+         * @description Permission: `photo.view` (organization scope). Audit: BEFORE_AFTER_CREATED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createBeforeAfterSet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/before-after/{setId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One set, with its registration.
+         * @description Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getBeforeAfterSet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename the set, align it by hand, or reset its alignment.
+         * @description Permission: `photo.annotate` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        patch: operations["updateBeforeAfterSet"];
+        trace?: never;
+    };
     "/patients/{patientId}/consultations": {
         parameters: {
             query?: never;
@@ -3059,6 +3107,67 @@ export interface components {
             /** @enum {string} */
             variant?: "THUMBNAIL" | "DISPLAY_PREVIEW";
             occurredAt: components["schemas"]["Timestamp"];
+        };
+        BeforeAfterSet: {
+            id: components["schemas"]["Uuid"];
+            patientId: components["schemas"]["Uuid"];
+            beforePhotoId: components["schemas"]["Uuid"];
+            afterPhotoId: components["schemas"]["Uuid"];
+            consultationId?: components["schemas"]["Uuid"];
+            viewKey?: string;
+            title?: string;
+            registrationMode: components["schemas"]["RegistrationMode"];
+            registrationTransform?: components["schemas"]["RegistrationTransform"];
+            /** @description The latest automatic registration requested for this set. */
+            registrationJob?: {
+                status: components["schemas"]["RegistrationJobStatus"];
+                /**
+                 * @description Why automatic registration found nothing; the set is unchanged.
+                 * @enum {string}
+                 */
+                failure?: "NO_RELIABLE_ALIGNMENT" | "PROCESSING_FAILED";
+            };
+            createdById: components["schemas"]["Uuid"];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+            version: number;
+        };
+        /**
+         * @description NONE: no transform. AUTOMATIC: estimated by the registration job. MANUAL: set by a user.
+         * @enum {string}
+         */
+        RegistrationMode: "NONE" | "AUTOMATIC" | "MANUAL";
+        RegistrationTransform: {
+            scale: number;
+            rotationDeg: number;
+            translateX: number;
+            translateY: number;
+        };
+        /** @enum {string} */
+        RegistrationJobStatus: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+        /** @description Exactly two accepted, unarchived photos of this patient with the same view, the before one captured earlier. */
+        BeforeAfterSetCreate: {
+            beforePhotoId: components["schemas"]["Uuid"];
+            afterPhotoId: components["schemas"]["Uuid"];
+            /**
+             * Format: uuid
+             * @description A consultation of the same patient.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            consultationId?: string;
+            title?: string;
+        };
+        BeforeAfterSetUpdate: {
+            title?: string | null;
+            /** @description Align by hand, or reset to no transform. */
+            registration?: {
+                /** @enum {string} */
+                mode: "MANUAL";
+                transform: components["schemas"]["RegistrationTransform"];
+            } | {
+                /** @enum {string} */
+                mode: "NONE";
+            };
         };
         Consultation: {
             id: components["schemas"]["Uuid"];
@@ -6670,6 +6779,181 @@ export interface operations {
             400: components["responses"]["Error400"];
             401: components["responses"]["Error401"];
             409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listBeforeAfterSets: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Resource identifier (UUID). */
+                consultationId?: components["schemas"]["Uuid"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["BeforeAfterSet"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createBeforeAfterSet: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeforeAfterSetCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["BeforeAfterSet"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            422: components["responses"]["Error422"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getBeforeAfterSet: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                setId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["BeforeAfterSet"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    updateBeforeAfterSet: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                setId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeforeAfterSetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["BeforeAfterSet"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
             503: components["responses"]["Error503"];
         };

@@ -776,4 +776,9 @@ Status values:
   - `PUT …/concerns` replaces the set while the consultation's content is open, refuses a concern of another patient, and bumps the consultation's version when the set changes.
   - Notes: the service checks the consultation, the caller's practice scope, authorship, `If-Match` and the note's status in that order. A note of another author answers `403`; a final one `409 IMMUTABLE_RECORD`; a note written in the wrong consultation state `409 INVALID_STATE_TRANSITION`, with a message saying what to do. A client UUIDv7 already used answers `409 CONFLICT`. Notes are listed oldest first.
   - `CONSULTATION_NOTE_FINALIZED` carries the consultation's ID and whether the note is an addendum.
+- **Decision, before/after sets (M3.5):**
+  - The api loads both photos of the path's patient in one query; any that is missing, of another patient or of another tenant answers the same `404 PHOTO_NOT_FOUND` with the same message [B §34.1 #13, #20]. A photo that is not `ACCEPTED`, or is archived, answers `409 INVALID_STATE_TRANSITION`.
+  - Compatible views compare the photos' view keys and their protocol views' pose targets (subject and target yaw); two photos without pose targets are compatible when their view keys match. The capture order is checked by the api (`422 BEFORE_AFTER_ORDER`) and again by a database trigger.
+  - The registration transform is defined in units of the before image's height with its centre as origin (`RegistrationTransform` in `api-contracts`), so it does not depend on either image's pixel size. Manual alignment accepts a scale of 0.25 to 4, any rotation and a translation of at most two image heights.
+  - Changing a set's title or alignment is not audited (spec §6.3); creating one writes `BEFORE_AFTER_CREATED` with the two photo IDs.
 - **Consequences:** M3.8's summary generator satisfies `CURRENT_SUMMARY`.

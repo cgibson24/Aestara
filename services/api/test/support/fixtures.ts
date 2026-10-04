@@ -230,6 +230,36 @@ export class Fixtures {
     return { protocolId, photoSessionId, photoId, releaseId, permissionId, objectKey };
   }
 
+  /** A later photo of the same view as `beforePhotoId`, and a before/after set of the two. */
+  async beforeAfter(
+    organizationId: string,
+    patientId: string,
+    beforePhotoId: string,
+    createdById: string,
+  ): Promise<string> {
+    const objectId = uuidv7();
+    const afterId = uuidv7();
+    const setId = uuidv7();
+    const q = (sql: string, values: unknown[]) => this.api.db.query(sql, values);
+    await q(
+      `INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", "byteSize", sha256, status, "scanStatus", "verifiedAt")
+       VALUES ($1, $2, 'CLINICAL_ORIGINAL', 'aestara-test-media', $3, 'image/jpeg', 4, $4, 'AVAILABLE', 'CLEAN', now())`,
+      [objectId, organizationId, `CLINICAL_ORIGINAL/${uuidv7()}`, "e".repeat(64)],
+    );
+    await q(
+      `INSERT INTO "PatientPhoto" (id, "organizationId", "patientId", "photoSessionId", "protocolViewId", "viewKey", source, status, "originalObjectId", "capturedByUserId", "capturedAt", "updatedAt")
+       SELECT $1, $2, $3, "photoSessionId", "protocolViewId", "viewKey", 'PROVIDER_CAPTURE', 'ACCEPTED', $4, $5, "capturedAt" + interval '30 days', now()
+         FROM "PatientPhoto" WHERE id = $6`,
+      [afterId, organizationId, patientId, objectId, createdById, beforePhotoId],
+    );
+    await q(
+      `INSERT INTO "BeforeAfterSet" (id, "organizationId", "patientId", "beforePhotoId", "afterPhotoId", "viewKey", "createdById", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, 'FRONT', $6, now())`,
+      [setId, organizationId, patientId, beforePhotoId, afterId, createdById],
+    );
+    return setId;
+  }
+
   /** A draft note in an open consultation, a concern and a history entry of its patient. */
   async clinicalRecords(
     organizationId: string,

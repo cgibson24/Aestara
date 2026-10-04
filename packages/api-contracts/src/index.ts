@@ -1,5 +1,6 @@
 export * from "./audit.ts";
 export * from "./auth.ts";
+export * from "./before-after.ts";
 export * from "./configuration.ts";
 export * from "./consultations.ts";
 export * from "./endpoints.ts";

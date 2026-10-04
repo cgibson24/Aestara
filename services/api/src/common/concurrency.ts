@@ -59,6 +59,7 @@ const LOCKABLE = new Set([
   "ConsultationNote",
   "PatientConcern",
   "PatientMedicalHistory",
+  "BeforeAfterSet",
 ]);
 
 /**

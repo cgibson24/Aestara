@@ -23,6 +23,12 @@ import {
   SwitchOrganizationRequest,
 } from "./auth.ts";
 import {
+  BeforeAfterSet,
+  BeforeAfterSetCreate,
+  BeforeAfterSetListQuery,
+  BeforeAfterSetUpdate,
+} from "./before-after.ts";
+import {
   EffectiveOfflineCachePolicy,
   FeatureFlag,
   FeatureFlagPut,
@@ -224,6 +230,7 @@ const ConsultationParams = z.strictObject({ patientId: Uuid, consultationId: Uui
 const NoteParams = z.strictObject({ patientId: Uuid, consultationId: Uuid, noteId: Uuid });
 const ConcernParams = z.strictObject({ patientId: Uuid, concernId: Uuid });
 const HistoryParams = z.strictObject({ patientId: Uuid, entryId: Uuid });
+const SetParams = z.strictObject({ patientId: Uuid, setId: Uuid });
 
 const perm = (permission: string, ...scopes: PermissionScope[]): EndpointAuth => ({
   kind: "permission",
@@ -1288,6 +1295,64 @@ export const ENDPOINTS = [
     patientData: true,
   },
 
+  // ---- Before / after (spec §6.3 "Before / after"; ADR-0026 K3-11 to K3-13) -------
+  {
+    operationId: "listBeforeAfterSets",
+    method: "GET",
+    path: "/patients/{patientId}/before-after",
+    tag: "Photography",
+    summary: "The patient's before/after sets, newest first.",
+    auth: perm("photo.view"),
+    params: PatientParam,
+    query: BeforeAfterSetListQuery,
+    response: { status: 200, shape: "collection", schema: BeforeAfterSet },
+    notFound: "PATIENT_NOT_FOUND",
+    patientData: true,
+  },
+  {
+    operationId: "createBeforeAfterSet",
+    method: "POST",
+    path: "/patients/{patientId}/before-after",
+    tag: "Photography",
+    summary:
+      "Pair two photos of this patient with the same view, the before one earlier. Unknown or other " +
+      "patients' photos answer the same 404.",
+    auth: perm("photo.view"),
+    params: PatientParam,
+    body: BeforeAfterSetCreate,
+    idempotency: "required",
+    response: { status: 201, shape: "resource", schema: BeforeAfterSet, etag: true },
+    notFound: "PATIENT_NOT_FOUND",
+    audit: ["BEFORE_AFTER_CREATED"],
+    patientData: true,
+    errors: [409, 422],
+  },
+  {
+    operationId: "getBeforeAfterSet",
+    method: "GET",
+    path: "/patients/{patientId}/before-after/{setId}",
+    tag: "Photography",
+    summary: "One set, with its registration.",
+    auth: perm("photo.view"),
+    params: SetParams,
+    response: { status: 200, shape: "resource", schema: BeforeAfterSet, etag: true },
+    notFound: "BEFORE_AFTER_SET_NOT_FOUND",
+    patientData: true,
+  },
+  {
+    operationId: "updateBeforeAfterSet",
+    method: "PATCH",
+    path: "/patients/{patientId}/before-after/{setId}",
+    tag: "Photography",
+    summary: "Rename the set, align it by hand, or reset its alignment.",
+    auth: perm("photo.annotate"),
+    params: SetParams,
+    body: BeforeAfterSetUpdate,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: BeforeAfterSet, etag: true },
+    notFound: "BEFORE_AFTER_SET_NOT_FOUND",
+    patientData: true,
+  },
   // ---- Consultations (spec §6.3 "Consultations", §5.4.1; ADR-0026) ---------------
   {
     operationId: "listConsultations",

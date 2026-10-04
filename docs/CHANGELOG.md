@@ -2,6 +2,11 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Before/after sets (M3.5 backend; ADR-0027)
+
+- **API:** list, create, read and update before/after sets: two accepted, unarchived photos of the patient with the same view key and pose target, the before one earlier (`422 INCOMPATIBLE_VIEWS`, `422 BEFORE_AFTER_ORDER`); one indistinguishable `404` for unknown, other-patient and other-tenant photos; manual alignment and reset with `photo.annotate` and `If-Match`; `BEFORE_AFTER_CREATED`.
+- **Tests:** `before-after.test.ts` (8), covering Bible §34.1 #12–14, #17 (manual half) and #20. The api suite runs 493 tests.
+
 ## 2026-10-04: Concerns, medical history and notes (M3.3 backend; ADR-0027)
 
 - **API:** 12 operations: the patient's concerns and medical history (list, create, correct with `If-Match`), a consultation's concern set (`PUT …/concerns`), and notes (list, draft with an optional client UUIDv7, edit and discard one's own draft, finalize, addenda). `CONSULTATION_NOTE_FINALIZED` is written on finalization; `PATIENT_UPDATED` for concerns and history, without their text.

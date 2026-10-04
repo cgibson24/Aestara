@@ -36,6 +36,7 @@ const PATIENT_SUBRESOURCE_READ: Record<string, readonly string[]> = {
   consultations: ["consultation.create"],
   concerns: ["consultation.create"],
   "medical-history": ["consultation.create"],
+  "before-after": ["photo.view"],
 };
 
 function segment(op: EndpointDefinition): string {
@@ -45,7 +46,7 @@ function segment(op: EndpointDefinition): string {
 export function readPermissionsFor(op: EndpointDefinition): readonly string[] {
   if (
     segment(op) === "patients" &&
-    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId)\}/.test(op.path)
+    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId|setId)\}/.test(op.path)
   ) {
     const sub = op.path.split("/")[3];
     if (sub !== undefined && PATIENT_SUBRESOURCE_READ[sub] !== undefined)
@@ -79,6 +80,12 @@ export async function resourceVisible(
         return (
           (await tx.photoSession.count({
             where: { id: params.sessionId, patientId: params.patientId ?? "" },
+          })) > 0
+        );
+      if (params.setId !== undefined)
+        return (
+          (await tx.beforeAfterSet.count({
+            where: { id: params.setId, patientId: params.patientId ?? "" },
           })) > 0
         );
       if (params.noteId !== undefined)
