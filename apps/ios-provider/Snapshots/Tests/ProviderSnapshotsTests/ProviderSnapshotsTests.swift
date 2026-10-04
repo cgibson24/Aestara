@@ -48,6 +48,7 @@ private func assertLooks(_ view: some View, width: CGFloat = 390, fileID: Static
         assertSnapshot(
             of: view.frame(width: width).fixedSize(horizontal: false, vertical: true)
                 .padding(DSSpacing.lg).background(DSColor.canvas)
+                .tint(DSColor.accent)
                 .environment(\.colorScheme, look.scheme)
                 .environment(\.dynamicTypeSize, look.size),
             as: .image(precision: 0.99, perceptualPrecision: 0.98, layout: .sizeThatFits, traits: look.traits),
@@ -64,7 +65,8 @@ private func assertDevices(_ view: some View, fileID: StaticString = #fileID, fi
     let devices: [(String, CGSize)] = [("iphone", CGSize(width: 390, height: 844)), ("ipad", CGSize(width: 1180, height: 820))]
     for (name, size) in devices {
         assertSnapshot(
-            of: view.padding(DSSpacing.lg).background(DSColor.canvas),
+            // The app's tint, set at its root, so controls show the accent as they do in the app.
+            of: view.padding(DSSpacing.lg).background(DSColor.canvas).tint(DSColor.accent),
             as: .image(precision: 0.99, perceptualPrecision: 0.98, layout: .fixed(width: size.width, height: size.height),
                        traits: traits(.light, .large, scale: 1)),
             named: name, fileID: fileID, file: file, testName: testName, line: line, column: column

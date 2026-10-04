@@ -2,13 +2,14 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
-## 2026-10-04: Annotation and comparison screens keep their state when rebuilt (F-70; ADR-0027)
+## 2026-10-04: Annotation and comparison screens are pushed in the workspace and keep their state (F-70; ADR-0027)
 
 - **Cause found:** the lifecycle trace showed the iPad rebuilding the full-screen annotation screen on every text-size change of the accessibility audit, while the step that presented it stayed. The drawing in progress was lost, and each rebuild fetched the photo's preview again. The iPhone did not rebuild it.
 - **Fix:** the annotation step creates one model per opened photo (its workbench, preview and drawing in progress); the before/after list creates one comparison session per opened set (the set, its previews, the viewing mode and an alignment in progress). A rebuilt screen shows the same state and fetches nothing again.
+- **No full-screen screen over the workspace:** the next run showed the comparison screen rebuilt when the export sheet opened over it, which closed the sheet. Inside the workspace a photo and a before/after set are now pushed onto the workspace's own navigation stack instead; the profile's Before/After tab still opens a set full screen, where nothing full screen lies beneath it.
 - **Accessibility audit of the comparison viewer:** "Reset view" takes a 44-pt row; the link toggle's label and the screen's notice keep their full height at large text sizes; the before photo in side by side is named by its pane's badge, as the after photo is.
-- **UI test:** the workspace is closed from its list of steps on iPhone.
-- **Snapshot references:** the document rows and the accessibility-size timeline rows, recorded after their fixes, are reviewed and committed (30 references in all); the comparison pictures are recorded again (the reset button's height changed).
+- **UI test:** goes back out of a pushed photo, set or step to reach the steps and the workspace's Close button; drags the profile's tab strip from the middle of the screen.
+- **Snapshot references:** the document rows and the accessibility-size timeline rows, recorded after their fixes, are reviewed and committed. The harness now applies the app's tint, set at the app's root, so toggles, sliders and links show the accent as in the app (the first comparison pictures showed the system's green and blue); the pictures with tinted controls (view states, annotation editor, alignment editor, comparison modes) are recorded again.
 
 ## 2026-10-04: Snapshot references and fixes found by them (F-68; ADR-0026 K3-22)
 

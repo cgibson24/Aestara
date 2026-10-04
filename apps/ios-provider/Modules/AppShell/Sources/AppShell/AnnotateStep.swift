@@ -52,7 +52,9 @@ struct AnnotateStep: View {
         }
         .task { await load() }
         .traceLifecycle("AnnotateStep")
-        .fullScreenCover(item: $opened) { opened in
+        // Pushed in the workspace's own stack: on iPad, a full-screen screen presented from the
+        // full-screen workspace is built again whenever its traits change (F-70).
+        .navigationDestination(item: $opened) { opened in
             AnnotatePhotoScreen(work: work, patientId: model.patient.id, opened: opened)
         }
     }
@@ -91,12 +93,11 @@ struct AnnotateStep: View {
 }
 
 /// A photo opened for annotation: its layers, its display preview once loaded, and the
-/// drawing in progress (in the workbench). Owned by the step, not by the full-screen
-/// screen, because the iPad builds a presented screen again when the text size changes,
-/// which would otherwise lose the drawing and fetch the photo again (F-70).
+/// drawing in progress (in the workbench). Owned by the step rather than the photo's screen,
+/// so a screen SwiftUI builds again keeps all of it and fetches nothing again (F-70).
 @MainActor
 @Observable
-final class OpenedPhoto: Identifiable {
+final class OpenedPhoto: Identifiable, Hashable {
     let photo: PhotoItem
     let workbench: AnnotationWorkbench
     var image: UIImage?
@@ -104,47 +105,45 @@ final class OpenedPhoto: Identifiable {
 
     nonisolated var id: String { photo.id }
 
+    nonisolated static func == (lhs: OpenedPhoto, rhs: OpenedPhoto) -> Bool { lhs === rhs }
+
+    nonisolated func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
+
     init(photo: PhotoItem, workbench: AnnotationWorkbench) {
         self.photo = photo
         self.workbench = workbench
     }
 }
 
-/// One photo and its annotation layers, full screen, with the way into an export.
+/// One photo and its annotation layers, with the way into an export.
 struct AnnotatePhotoScreen: View {
     let work: ConsultationWork
     let patientId: String
     let opened: OpenedPhoto
     @State private var exporting: ExportTarget?
-    @Environment(\.dismiss) private var dismiss
 
     private var photo: PhotoItem { opened.photo }
     private var workbench: AnnotationWorkbench { opened.workbench }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let state = opened.state {
-                    DSStateView(state) { Task { await load() } }
-                } else if let image = opened.image {
-                    AnnotationScreen(workbench: workbench, image: image)
-                }
+        Group {
+            if let state = opened.state {
+                DSStateView(state) { Task { await load() } }
+            } else if let image = opened.image {
+                AnnotationScreen(workbench: workbench, image: image)
             }
-            .background(DSColor.canvas)
-            .navigationTitle(photo.viewKey.map(viewTitle) ?? String(localized: "Photo"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .accessibilityIdentifier("annotate.close")
-                }
-                if work.can("photo.export") {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Export", systemImage: "square.and.arrow.up") {
-                            exporting = .photo(photo, layers: workbench.layers.filter { $0.version > 0 })
-                        }
-                        .accessibilityIdentifier("annotate.export")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DSColor.canvas)
+        .navigationTitle(photo.viewKey.map(viewTitle) ?? String(localized: "Photo"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if work.can("photo.export") {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Export", systemImage: "square.and.arrow.up") {
+                        exporting = .photo(photo, layers: workbench.layers.filter { $0.version > 0 })
                     }
+                    .accessibilityIdentifier("annotate.export")
                 }
             }
         }
@@ -195,7 +194,9 @@ struct ComparisonList: View {
             consultationId: consultationId,
             canCreate: work.can("photo.view"),
             canAlign: work.can("photo.annotate"),
-            exportSheet: exportSheet
+            exportSheet: exportSheet,
+            // In the workspace, which is itself full screen, a set is pushed (F-70).
+            opensInStack: consultationId != nil
         )
     }
 

@@ -89,6 +89,7 @@ struct ExportSheet: View {
             }
         }
         .task { await loadGrants() }
+        .traceLifecycle("ExportSheet")
         .sheet(isPresented: $confirming) {
             ConfirmIdentityView(store: work.auth, reason: String(localized: "Exports need you to confirm it's you. Sign in again to continue.")) {
                 confirming = false

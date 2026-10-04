@@ -18,6 +18,11 @@ public struct BeforeAfterList: View {
     let canAlign: Bool
     /// The export sheet of a set, when the role may export.
     let exportSheet: ((BeforeAfterSetItem) -> AnyView)?
+    /// Opens a set in the navigation stack around the list, rather than full screen. A screen
+    /// already shown full screen (the consultation workspace) pushes: on iPad, a full-screen
+    /// screen presented from another one is built again whenever its traits change, as when a
+    /// sheet opens over it or the text size changes (F-70).
+    let opensInStack: Bool
     @State private var sets: [BeforeAfterSetItem] = []
     @State private var thumbnails: [String: Data] = [:]
     @State private var state: DSViewState? = .loading("Loading comparisons")
@@ -28,7 +33,7 @@ public struct BeforeAfterList: View {
     @State private var reloads = 0
 
     public init(repository: BeforeAfterRepository, sources: ComparisonSources, patientId: String, consultationId: String? = nil,
-                canCreate: Bool, canAlign: Bool, exportSheet: ((BeforeAfterSetItem) -> AnyView)?) {
+                canCreate: Bool, canAlign: Bool, exportSheet: ((BeforeAfterSetItem) -> AnyView)?, opensInStack: Bool = false) {
         self.repository = repository
         self.sources = sources
         self.patientId = patientId
@@ -36,6 +41,7 @@ public struct BeforeAfterList: View {
         self.canCreate = canCreate
         self.canAlign = canAlign
         self.exportSheet = exportSheet
+        self.opensInStack = opensInStack
     }
 
     public var body: some View {
@@ -69,19 +75,11 @@ public struct BeforeAfterList: View {
                 creating = false
             }
         }
-        .fullScreenCover(item: $opened, onDismiss: { reloads += 1 }) { session in
-            NavigationStack {
-                BeforeAfterScreen(session: session, canAlign: canAlign, exportSheet: exportSheet)
-                    .navigationTitle(session.set.title ?? String(localized: "Before and after"))
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { opened = nil }
-                                .accessibilityIdentifier("beforeAfter.close")
-                        }
-                    }
-            }
-        }
+        .modifier(SetPresentation(opened: $opened, opensInStack: opensInStack, closed: { reloads += 1 }) { session in
+            BeforeAfterScreen(session: session, canAlign: canAlign, exportSheet: exportSheet)
+                .navigationTitle(session.set.title ?? String(localized: "Before and after"))
+                .navigationBarTitleDisplayMode(.inline)
+        })
     }
 
     private func session(for set: BeforeAfterSetItem) -> ComparisonSession {
@@ -105,6 +103,36 @@ public struct BeforeAfterList: View {
             state = error.status == 0 ? .offline
                 : error.status == 403 ? .permissionDenied
                 : .error(message: error.displayMessage, reference: error.requestId)
+        }
+    }
+}
+
+/// Shows an open set: pushed onto the navigation stack around the list, or full screen with
+/// its own stack and a Close button. Either way the list owns the set's session.
+private struct SetPresentation<Screen: View>: ViewModifier {
+    @Binding var opened: ComparisonSession?
+    let opensInStack: Bool
+    let closed: () -> Void
+    @ViewBuilder let screen: (ComparisonSession) -> Screen
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if opensInStack {
+            content
+                .navigationDestination(item: $opened) { session in screen(session) }
+                .onChange(of: opened == nil) { _, isClosed in if isClosed { closed() } }
+        } else {
+            content
+                .fullScreenCover(item: $opened, onDismiss: closed) { session in
+                    NavigationStack {
+                        screen(session)
+                            .toolbar {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button("Close") { opened = nil }
+                                        .accessibilityIdentifier("beforeAfter.close")
+                                }
+                            }
+                    }
+                }
         }
     }
 }

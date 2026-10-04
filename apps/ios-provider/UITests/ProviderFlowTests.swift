@@ -324,7 +324,6 @@ final class ProviderFlowTests: XCTestCase {
         saveLayer.tap()
         XCTAssertTrue(element(in: app, containing: "Your layer").waitForExistence(timeout: 20),
                       "The layer was not saved. Screen: \(screen(app))")
-        app.buttons["annotate.close"].tap()
 
         // A note, finalized.
         openStep(app, "notes")
@@ -395,7 +394,6 @@ final class ProviderFlowTests: XCTestCase {
         XCTAssertTrue(share.waitForExistence(timeout: 180), "The export never became ready. Screen: \(screen(app))")
         snapshot(app, "20 Export ready")
         app.buttons["export.close"].tap()
-        app.buttons["beforeAfter.close"].tap()
 
         // Review, summary, completion.
         openStep(app, "completion")
@@ -435,36 +433,43 @@ final class ProviderFlowTests: XCTestCase {
         XCTAssertTrue(tab.waitForExistence(timeout: 20), "Tab \(key) is missing. Screen: \(screen(app))")
         let all = ["OVERVIEW", "TIMELINE", "CONSULTATIONS", "PHOTOS", "BEFORE_AFTER", "SIMULATIONS", "TREATMENT_PLANS",
                    "PROCEDURES", "DOCUMENTS", "INSTRUCTIONS", "APPOINTMENTS", "MESSAGES"].map { app.buttons["profile.tab.\($0)"] }
-        for _ in 0..<8 where !window.contains(tab.frame) {
+        for _ in 0..<10 where !window.contains(tab.frame) {
             guard let handle = all.first(where: { window.contains($0.frame) }) else { break }
-            let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            let left = tab.frame.minX > window.maxX
-            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: left ? -150 : 150, dy: 0)))
+            // From the middle of the strip, so the drag never starts or ends off the screen.
+            let left = tab.frame.midX > window.midX
+            let start = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: window.midX + (left ? 80 : -80), dy: handle.frame.midY))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: left ? -160 : 160, dy: 0)))
         }
         XCTAssertTrue(window.contains(tab.frame), "Tab \(key) cannot be reached. Screen: \(screen(app))")
         tab.tap()
     }
 
-    /// A workspace step: on iPad from the steps beside it, on iPhone from the list (back first;
-    /// the profile's bar behind the workspace is not hittable, so its buttons are skipped).
+    /// A workspace step: on iPad from the steps beside it, on iPhone from the list.
     private func openStep(_ app: XCUIApplication, _ step: String) {
         let row = app.buttons["workspace.step.\(step)"]
-        if !(row.exists && row.isHittable),
-           let back = app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex.first(where: \.isHittable) {
-            back.tap()
-        }
+        backToSteps(app, until: row)
         XCTAssertTrue(waitUntil(timeout: 10) { row.exists && row.isHittable }, "Step \(step) is not offered. Screen: \(screen(app))")
         row.tap()
+    }
+
+    /// Goes back, out of a photo or comparison opened from a step and on iPhone out of the step,
+    /// until `target` can be tapped. The profile's bar behind the workspace is not hittable, so
+    /// its back button is never taken.
+    private func backToSteps(_ app: XCUIApplication, until target: XCUIElement) {
+        for _ in 0..<3 where !(target.exists && target.isHittable) {
+            guard let back = app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex
+                .first(where: \.isHittable) else { return }
+            back.tap()
+            _ = waitUntil(timeout: 5) { target.exists && target.isHittable }
+        }
     }
 
     /// Closes the workspace. On iPhone its Close button is on the list of steps, so the open
     /// step goes back first.
     private func closeWorkspace(_ app: XCUIApplication) {
         let close = app.buttons["workspace.close"]
-        if !(close.exists && close.isHittable),
-           let back = app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex.first(where: \.isHittable) {
-            back.tap()
-        }
+        backToSteps(app, until: close)
         XCTAssertTrue(waitUntil(timeout: 10) { close.exists && close.isHittable }, "The workspace cannot be closed. Screen: \(screen(app))")
         close.tap()
     }

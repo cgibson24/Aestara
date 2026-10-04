@@ -11,13 +11,12 @@ import Observation
 import SwiftUI
 import UIKit
 
-/// One set open full screen: the set, its two display previews once loaded, the viewing mode
-/// and an alignment in progress. Owned by the list rather than by the full-screen screen,
-/// because the iPad builds a presented screen again when the text size changes, which would
-/// otherwise lose the alignment in progress and fetch the photos again (F-70).
+/// One open set: the set, its two display previews once loaded, the viewing mode and an
+/// alignment in progress. Owned by the list rather than by the screen, so a screen SwiftUI
+/// builds again keeps all of it and fetches nothing again (F-70).
 @MainActor
 @Observable
-public final class ComparisonSession: Identifiable {
+public final class ComparisonSession: Identifiable, Hashable {
     nonisolated public let id: String
     let repository: BeforeAfterRepository
     let sources: ComparisonSources
@@ -31,6 +30,10 @@ public final class ComparisonSession: Identifiable {
     var autoRegistration = false
     var busy = false
     var message: String?
+
+    public nonisolated static func == (lhs: ComparisonSession, rhs: ComparisonSession) -> Bool { lhs === rhs }
+
+    public nonisolated func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
 
     public init(repository: BeforeAfterRepository, sources: ComparisonSources, patientId: String, set: BeforeAfterSetItem) {
         id = set.id
