@@ -150,8 +150,13 @@ public struct AnnotationScreen: View {
                 beneath: workbench.layers.filter { $0.id != current.layer?.id && !hidden.contains($0.id) }.map(\.drawing),
                 drawing: Binding(get: { editing?.drawing ?? AnnotationDrawing() }, set: { editing?.drawing = $0 })
             )
-            TextField("Layer name (optional)", text: Binding(get: { editing?.label ?? "" }, set: { editing?.label = $0 }))
-                .textFieldStyle(.roundedBorder)
+            // Multi-line, so the name grows with the text size instead of being cut off.
+            TextField("Layer name (optional)", text: Binding(get: { editing?.label ?? "" }, set: { editing?.label = $0 }),
+                      axis: .vertical)
+                .lineLimit(1...3)
+                .padding(DSSpacing.sm)
+                .background(DSColor.surface, in: RoundedRectangle(cornerRadius: DSRadius.sm))
+                .overlay(RoundedRectangle(cornerRadius: DSRadius.sm).stroke(DSColor.controlBorder))
                 .accessibilityIdentifier("annotation.label")
             HStack(spacing: DSSpacing.sm) {
                 Button("Save layer") { Task { await save(current) } }

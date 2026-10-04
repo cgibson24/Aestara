@@ -319,7 +319,9 @@ final class ProviderFlowTests: XCTestCase {
                       "The arrow was not drawn: \(String(describing: canvas.value)). Screen: \(screen(app))")
         snapshot(app, "18 Annotation editor")
         audit(app, screen: "annotation editor")
-        app.buttons["annotation.save"].tap()
+        let saveLayer = app.buttons["annotation.save"]
+        XCTAssertTrue(saveLayer.waitForExistence(timeout: 30), "The editor closed during its audit. Screen: \(screen(app))")
+        saveLayer.tap()
         XCTAssertTrue(element(in: app, containing: "Your layer").waitForExistence(timeout: 20),
                       "The layer was not saved. Screen: \(screen(app))")
         app.buttons["annotate.close"].tap()
@@ -335,9 +337,7 @@ final class ProviderFlowTests: XCTestCase {
         let finalize = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'notes.finalize.'")).firstMatch
         XCTAssertTrue(finalize.waitForExistence(timeout: 20), "The draft was not saved. Screen: \(screen(app))")
         tapRevealed(app, finalize, "Finalize")
-        let confirmFinalize = app.buttons["notes.confirmFinalize"]
-        XCTAssertTrue(confirmFinalize.waitForExistence(timeout: 10), "Finalizing asked nothing. Screen: \(screen(app))")
-        confirmFinalize.tap()
+        dialogButton(app, "notes.confirmFinalize", label: "Finalize", besides: 1).tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'notes.addendum.'")).firstMatch
             .waitForExistence(timeout: 20), "The note was not finalized. Screen: \(screen(app))")
 
@@ -454,6 +454,17 @@ final class ProviderFlowTests: XCTestCase {
         }
         XCTAssertTrue(waitUntil(timeout: 10) { row.exists && row.isHittable }, "Step \(step) is not offered. Screen: \(screen(app))")
         row.tap()
+    }
+
+    /// A confirmation dialog's button: by its identifier, or, where the system's dialog does
+    /// not carry it, the dialog's button with that label (the one after the `besides` buttons
+    /// with the same label on the screen behind it).
+    private func dialogButton(_ app: XCUIApplication, _ identifier: String, label: String, besides: Int) -> XCUIElement {
+        let byIdentifier = app.buttons[identifier]
+        let byLabel = app.buttons.matching(NSPredicate(format: "label == %@", label))
+        XCTAssertTrue(waitUntil(timeout: 10) { byIdentifier.exists || byLabel.count > besides },
+                      "The confirmation did not appear. Screen: \(screen(app))")
+        return byIdentifier.exists ? byIdentifier : byLabel.element(boundBy: byLabel.count - 1)
     }
 
     /// Scrolls the step until the element can be tapped.

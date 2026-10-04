@@ -205,8 +205,11 @@ struct NewComparisonSheet: View {
                                 }
                             }
                             if before != nil, after != nil {
-                                TextField("Title (optional)", text: $title)
-                                    .textFieldStyle(.roundedBorder)
+                                TextField("Title (optional)", text: $title, axis: .vertical)
+                                    .lineLimit(1...3)
+                                    .padding(DSSpacing.sm)
+                                    .background(DSColor.surface, in: RoundedRectangle(cornerRadius: DSRadius.sm))
+                                    .overlay(RoundedRectangle(cornerRadius: DSRadius.sm).stroke(DSColor.controlBorder))
                                     .accessibilityIdentifier("beforeAfter.title")
                             }
                         }

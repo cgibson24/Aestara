@@ -168,7 +168,8 @@ public struct ComparisonViewer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(DSColor.photoStage, in: RoundedRectangle(cornerRadius: DSRadius.md))
                 .clipShape(RoundedRectangle(cornerRadius: DSRadius.md))
-                .accessibilityElement()
+                // A container, so the swipe divider inside stays adjustable.
+                .accessibilityElement(children: .contain)
                 .accessibilityLabel(Text("Before and after comparison, \(mode.title)"))
                 .accessibilityIdentifier("comparison.viewer")
             controls

@@ -707,8 +707,12 @@ jobs:
               while sleep 20; do
                 if xcrun simctl spawn "$udid" log show --last 25s --style compact \
                   --predicate 'eventMessage CONTAINS "process main thread busy"' 2> /dev/null | grep -q "main thread busy"; then
-                  pid=$(pgrep -f "AestaraProvider.app/AestaraProvider" | head -1)
+                  # The simulated app is a host process; match its executable by name first
+                  # (run 37176704495 found no pid by its path).
+                  pid=$(pgrep -x AestaraProvider | head -1)
+                  [ -n "$pid" ] || pid=$(pgrep -f "AestaraProvider" | head -1)
                   echo "main thread busy seen at $(date -u +%T); app pid: ${pid:-none}" > "$RUNNER_TEMP/watch-$name.txt"
+                  ps -axo pid,comm | grep -i aestara >> "$RUNNER_TEMP/watch-$name.txt" 2>&1 || true
                   [ -n "$pid" ] && sudo -n sample "$pid" 5 -file "$RUNNER_TEMP/sample-$name.txt" \
                     >> "$RUNNER_TEMP/watch-$name.txt" 2>&1
                   break

@@ -153,6 +153,8 @@ struct NoteCard: View {
         }
         .padding(DSSpacing.md)
         .background(DSColor.surface, in: RoundedRectangle(cornerRadius: DSRadius.md))
+        // A container: its buttons keep their own identifiers.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("notes.card.\(note.id)")
     }
 }
@@ -190,6 +192,7 @@ struct NoteProblemCard: View {
         }
         .padding(DSSpacing.md)
         .background(DSColor.surface, in: RoundedRectangle(cornerRadius: DSRadius.md))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("notes.problem.\(operation.noteId)")
     }
 

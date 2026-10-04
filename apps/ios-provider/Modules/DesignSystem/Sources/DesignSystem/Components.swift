@@ -189,7 +189,8 @@ public struct DSStateView: View {
     }
 }
 
-/// A status badge.
+/// A status badge. Its text is `caption1`: `caption2` keeps one size from the default text
+/// size down, which the accessibility audit reports as partial Dynamic Type support.
 public struct DSBadge: View {
     let text: String
     let color: Color
@@ -203,7 +204,7 @@ public struct DSBadge: View {
 
     public var body: some View {
         Text(text)
-            .font(DSFont.caption2)
+            .font(DSFont.caption1)
             .foregroundStyle(color)
             .padding(.horizontal, DSSpacing.sm)
             .padding(.vertical, DSSpacing.xxs)

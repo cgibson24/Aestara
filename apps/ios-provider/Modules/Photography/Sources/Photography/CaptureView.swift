@@ -340,7 +340,7 @@ struct CaptureView: View {
             VStack(alignment: .leading, spacing: DSSpacing.xxs) {
                 Text(String(localized: "Position match \(score.formatted(.percent.precision(.fractionLength(0)))): \(PositionMatch.words(score))"))
                     .font(DSFont.subheadline)
-                Text(PositionMatch.label).font(DSFont.caption2).foregroundStyle(DSColor.photoStageText.opacity(0.8))
+                Text(PositionMatch.label).font(DSFont.caption1).foregroundStyle(DSColor.photoStageText.opacity(0.8))
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("capture.positionMatch")
@@ -575,7 +575,7 @@ struct CaptureReviewView: View {
                 if let score = review.score {
                     Text(String(localized: "Position match \(score.formatted(.percent.precision(.fractionLength(0)))): \(PositionMatch.words(score))"))
                         .font(DSFont.subheadline)
-                    Text(PositionMatch.label).font(DSFont.caption2).opacity(0.8)
+                    Text(PositionMatch.label).font(DSFont.caption1).opacity(0.8)
                 }
             }
             .foregroundStyle(DSColor.photoStageText)
