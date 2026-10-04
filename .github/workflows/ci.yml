@@ -699,25 +699,31 @@ jobs:
             )"
             bundle="$RUNNER_TEMP/ui-$name.xcresult"
             status=0
-            # F-70: when the app's main thread stays busy (XCTest logs it), sample the app's
-            # stacks once, to show what keeps it busy. Attaching to another process needs
-            # root on macOS; the runner's sudo needs no password. What the watcher did is
-            # kept, so a missing sample explains itself (run 37167786120 had none).
+            # F-70: each time the app's main thread stays busy (XCTest logs it), sample the
+            # app's stacks, up to four times, to show what keeps it busy. The pid comes from
+            # the log line itself ("AestaraProvider[pid:thread]"): neither pgrep nor the
+            # simulator's launchctl listed the app (runs 37176704495, 37181292519).
+            # Attaching to another process needs root on macOS; the runner's sudo needs no
+            # password. What the watcher did is kept, so a missing sample explains itself.
             (
-              while sleep 20; do
-                if xcrun simctl spawn "$udid" log show --last 25s --style compact \
-                  --predicate 'eventMessage CONTAINS "process main thread busy"' 2> /dev/null | grep -q "main thread busy"; then
-                  # The app's pid from the simulator's launchd, by bundle ID: by path pgrep
-                  # found none (run 37176704495), and by name it matched xcodebuild
-                  # (run 37178901041). Simulated apps are host processes with that pid.
-                  pid=$(xcrun simctl spawn "$udid" launchctl list 2> /dev/null \
-                    | awk '/UIKitApplication:com\.aestara\.provider\[/ && $1 ~ /^[0-9]+$/ { print $1; exit }')
-                  echo "main thread busy seen at $(date -u +%T); app pid: ${pid:-none}" > "$RUNNER_TEMP/watch-$name.txt"
-                  ps -axo pid,comm | grep -i aestara >> "$RUNNER_TEMP/watch-$name.txt" 2>&1 || true
-                  [ -n "$pid" ] && sudo -n sample "$pid" 5 -file "$RUNNER_TEMP/sample-$name.txt" \
-                    >> "$RUNNER_TEMP/watch-$name.txt" 2>&1
-                  break
+              n=0
+              while [ "$n" -lt 4 ] && sleep 15; do
+                line=$(xcrun simctl spawn "$udid" log show --last 20s --style compact \
+                  --predicate 'eventMessage CONTAINS "process main thread busy"' 2> /dev/null \
+                  | grep -m 1 "AestaraProvider\[" || true)
+                [ -n "$line" ] || continue
+                n=$((n + 1))
+                pid=$(printf '%s\n' "$line" | sed -nE 's/.*AestaraProvider\[([0-9]+):.*/\1/p')
+                {
+                  echo "main thread busy seen at $(date -u +%T); app pid: ${pid:-none}"
+                  [ -n "$pid" ] && { ps -p "$pid" -o pid,user,comm || echo "ps does not list pid $pid"; }
+                } >> "$RUNNER_TEMP/watch-$name.txt" 2>&1
+                if [ -n "$pid" ]; then
+                  sudo -n sample "$pid" 3 -file "$RUNNER_TEMP/sample-$name-$n.txt" >> "$RUNNER_TEMP/watch-$name.txt" 2>&1 \
+                    || sudo -n spindump "$pid" 3 -file "$RUNNER_TEMP/sample-$name-$n.txt" >> "$RUNNER_TEMP/watch-$name.txt" 2>&1 \
+                    || echo "no sample taken" >> "$RUNNER_TEMP/watch-$name.txt"
                 fi
+                sleep 30
               done
             ) &
             watcher=$!
@@ -726,6 +732,20 @@ jobs:
               -derivedDataPath "$RUNNER_TEMP/dd" -skipPackagePluginValidation -skipMacroValidation \
               -resultBundlePath "$bundle" -quiet || status=$?
             kill "$watcher" 2> /dev/null || true
+            if [ -s "$RUNNER_TEMP/watch-$name.txt" ]; then
+              echo "::group::Main thread busy: the watcher's notes and samples ($name)"
+              cat "$RUNNER_TEMP/watch-$name.txt"
+              for sample in "$RUNNER_TEMP"/sample-"$name"-*.txt; do
+                [ -s "$sample" ] || continue
+                echo "--- $(basename "$sample")"
+                if grep -q '^Call graph:' "$sample"; then
+                  sed -n '/^Call graph:/,/^Total number in stack/p' "$sample" | head -250
+                else
+                  head -250 "$sample"
+                fi
+              done
+              echo "::endgroup::"
+            fi
             if [ "$status" -ne 0 ]; then
               # Print each failure's message (it carries a summary of the screen).
               xcrun xcresulttool get test-results tests --path "$bundle" --format json | python3 -c '
@@ -745,18 +765,14 @@ jobs:
                 base64 -i "$RUNNER_TEMP/end-$name.jpg" | fold -w 4000
                 echo "END-SCREENSHOT"
               fi
-              if [ -s "$RUNNER_TEMP/sample-$name.txt" ]; then
-                echo "::group::Sample of the app while its main thread was busy ($name)"
-                sed -n '/^Call graph:/,/^Total number in stack/p' "$RUNNER_TEMP/sample-$name.txt" | head -300
-                echo "::endgroup::"
-              elif [ -s "$RUNNER_TEMP/watch-$name.txt" ]; then
-                echo "No sample ($name):"
-                tail -20 "$RUNNER_TEMP/watch-$name.txt"
-              fi
               echo "::group::Device log, last 20 minutes ($name)"
               xcrun simctl spawn "$udid" log show --last 20m --style compact \
                 --predicate '(process == "AestaraProvider" AND subsystem != "com.apple.dt.xctest") OR subsystem == "com.apple.hangtracer" OR eventMessage CONTAINS "Hang detected" OR eventMessage CONTAINS "AttributeGraph" OR (process == "testmanagerd" AND eventMessage CONTAINS[c] "audit")' \
                 2> /dev/null | grep -v '^$' | tail -300 || true
+              echo "::endgroup::"
+              echo "::group::Screens appearing and disappearing, Debug trace ($name)"
+              xcrun simctl spawn "$udid" log show --last 30m --style compact \
+                --predicate 'subsystem == "com.aestara.provider" AND category == "lifecycle"' 2> /dev/null | grep -v '^$' | tail -200 || true
               echo "::endgroup::"
               # The other device still runs, so one run reports both.
               failed="$failed $name"

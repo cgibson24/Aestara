@@ -270,6 +270,7 @@ describe.runIf(databaseAvailable())("before/after sets (Layer 3)", () => {
   it("aligns by hand and resets, with If-Match and photo.annotate [B §34.1 #17]", async () => {
     const before = await photo(org, patient, front, "FRONT", 60);
     const after = await photo(org, patient, front, "FRONT", 1);
+    const originals = [await original(before), await original(after)];
     const set = (
       await call(surgeon, "POST", "/before-after", { beforePhotoId: before, afterPhotoId: after }, idem())
     ).json().data;
@@ -320,7 +321,8 @@ describe.runIf(databaseAvailable())("before/after sets (Layer 3)", () => {
     );
     expect(reset.json().data.registrationMode).toBe("NONE");
     expect(reset.json().data.registrationTransform).toBeUndefined();
-    expect([await original(before), await original(after)].every(Boolean)).toBe(true);
+    // Aligning and resetting change the set only [B §34.1 #14].
+    expect([await original(before), await original(after)]).toEqual(originals);
   });
 
   describe("automatic registration (ADR-0026 K3-13; B §34.1 #17)", () => {

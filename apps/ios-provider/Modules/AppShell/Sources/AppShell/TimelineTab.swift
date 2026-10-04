@@ -76,13 +76,15 @@ struct TimelineTab: View {
 
 struct TimelineRow: View {
     let item: TimelineItem
+    /// The icon's column grows with the text, so a large icon never runs into the title.
+    @ScaledMetric(relativeTo: .body) private var iconWidth = DSSize.iconLg
 
     var body: some View {
         HStack(alignment: .top, spacing: DSSpacing.md) {
             Image(systemName: item.systemImage)
                 .font(DSFont.body)
                 .foregroundStyle(DSColor.accent)
-                .frame(width: DSSize.iconLg)
+                .frame(width: iconWidth)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: DSSpacing.xxs) {
                 Text(item.title).font(DSFont.body).foregroundStyle(DSColor.textPrimary)

@@ -224,7 +224,7 @@ These are the components the Bible requires (§24.2). The prototype builds each 
 | Simulation viewer | Visualization scene | `SimulationView` | AI tag, compare toggle, visual parameters |
 | Modals | Release sheet | `.sheet` | See C11 |
 | Alerts | `Banner` | `DSBanner` | For system status, not errors in forms |
-| Status badges | `Badge` | `DSBadge` | Word plus colour plus optional icon; `caption1` text, because `caption2` keeps one size from the default text size down and the accessibility audit reports it as partial Dynamic Type support |
+| Status badges | `Badge` | `DSBadge` | Word plus colour plus optional icon; `caption1` text, because `caption2` keeps one size from the default text size down and the accessibility audit reports it as partial Dynamic Type support. A long word wraps rather than being cut off; one line keeps the capsule shape, more lines get `radius.lg` corners. Rows of badges stack when they do not fit on one line |
 | Empty / error / loading states | `StateView`, `Skeleton` | `DSStateView` | See §6 |
 
 Additional controls in the prototype: `Segmented` (native radio inputs), `Toggle` (switch role), `Meter` (labelled value, visual only) and `Avatar` (initials, decorative).

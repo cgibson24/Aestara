@@ -143,7 +143,6 @@ struct DocumentRow: View {
     let document: DocumentItem
     let opening: Bool
     let open: () -> Void
-    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Button(action: open) {
@@ -154,16 +153,11 @@ struct DocumentRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: DSSpacing.xxs) {
                     Text(document.title).font(DSFont.headline).foregroundStyle(DSColor.textPrimary)
-                    // Side by side, or stacked at accessibility sizes so nothing is squeezed.
-                    let details = typeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: DSSpacing.xs))
-                        : AnyLayout(HStackLayout(spacing: DSSpacing.sm))
-                    details {
-                        DSBadge(document.typeTitle)
-                        if let latest = document.versions.first {
-                            Text("Version \(latest.versionNumber)")
-                            if latest.state != .available { DSBadge(latest.state.title, color: DSColor.warning, background: DSColor.warningSoft) }
-                        }
+                    // On one line when they fit without wrapping, otherwise stacked, so no badge
+                    // is squeezed into a narrow column or cut off.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: DSSpacing.sm) { details }
+                        VStack(alignment: .leading, spacing: DSSpacing.xs) { details }
                     }
                     .font(DSFont.footnote)
                     .foregroundStyle(DSColor.textSecondary)
@@ -182,6 +176,14 @@ struct DocumentRow: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("documents.row.\(document.id)")
         .accessibilityHint(Text("Opens the document"))
+    }
+
+    @ViewBuilder private var details: some View {
+        DSBadge(document.typeTitle)
+        if let latest = document.versions.first {
+            Text("Version \(latest.versionNumber)")
+            if latest.state != .available { DSBadge(latest.state.title, color: DSColor.warning, background: DSColor.warningSoft) }
+        }
     }
 }
 

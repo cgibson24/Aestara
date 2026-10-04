@@ -55,6 +55,7 @@ struct ConsultationsTab: View {
             }
         }
         .task(id: LoadKey(showArchived: showArchived, reloads: reloads)) { await load() }
+        .traceLifecycle("ConsultationsTab")
         .sheet(isPresented: $creating, onDismiss: {
             guard let consultation = created else { return }
             created = nil

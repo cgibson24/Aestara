@@ -2,6 +2,13 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Snapshot references and fixes found by them (F-68; ADR-0026 K3-22)
+
+- **Snapshot references:** CI recorded the first references on the iPhone simulator and printed them into its log; 34 were reviewed and committed under `apps/ios-provider/Snapshots/Tests/ProviderSnapshotsTests/__Snapshots__/`. The document rows and the accessibility-size timeline rows are recorded again after the fixes below.
+- **Accessibility sizes:** the pictures are measured at their text size (the look sets the environment as well as the traits). Consultation rows stack their status and date; document rows put their details on one line only when they fit, and stack them otherwise; a badge wraps instead of cutting its word off; the timeline's icon column grows with the text.
+- **F-70 diagnosis:** Debug builds record in the device log when the workspace, its steps, the annotation screens and the comparison screen appear and disappear, with a number that changes when SwiftUI rebuilds a screen. CI samples the app up to four times when XCTest reports its main thread busy, taking the app's process number from that log line, and prints the samples whether the test passes or fails.
+- **Tests:** the alignment test compares both originals' object key and SHA-256 before and after aligning and resetting [B §34.1 #14]; the UI test picks the older of the patient's two front photos as the before photo.
+
 ## 2026-10-04: Annotations, comparisons and exports in the provider app (M3.4–M3.7 iOS; ADR-0027)
 
 - **Annotations:** the workspace's Annotate step lists the consultation's accepted photos (offline, the ones saved on the device). A photo opens over its display preview with every layer, each shown or hidden; one's own layers are drawn with SwiftUI `Canvas` and drag gestures (finger or Apple Pencil): freehand, line, arrow, ellipse, rectangle and text, in the token palette and the fixed widths and sizes, with no measurement tools. Layers travel as the contract's JSON. Offline, layers drawn over cached photos wait in the encrypted queue with their client UUIDv7; a `412` keeps both drawings for the author.

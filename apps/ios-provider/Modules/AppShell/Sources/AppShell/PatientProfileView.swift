@@ -109,6 +109,7 @@ struct PatientProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Again for a new model in the same place, as after a new selection of the same patient.
         .task(id: ObjectIdentifier(model)) { await model.loadIfNeeded() }
+        .traceLifecycle("PatientProfileView")
     }
 
     private var title: String {

@@ -59,6 +59,7 @@ public struct BeforeAfterScreen: View {
         }
         .background(DSColor.canvas)
         .task { await load() }
+        .traceLifecycle("BeforeAfterScreen")
         .sheet(item: $exporting) { set in exportSheet?(set) }
         .confirmationDialog("Reset the alignment?", isPresented: $confirmingReset, titleVisibility: .visible) {
             Button("Reset alignment", role: .destructive) { Task { await reset() } }

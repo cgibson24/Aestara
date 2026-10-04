@@ -47,6 +47,7 @@ struct AnnotateStep: View {
             }
         }
         .task { await load() }
+        .traceLifecycle("AnnotateStep")
         .fullScreenCover(item: $opened) { photo in
             AnnotatePhotoScreen(work: work, patientId: model.patient.id, photo: photo)
         }
@@ -131,6 +132,7 @@ struct AnnotatePhotoScreen: View {
             }
         }
         .task { await load() }
+        .traceLifecycle("AnnotatePhotoScreen")
         .sheet(item: $exporting) { target in
             ExportSheet(work: work, patientId: patientId, target: target)
         }

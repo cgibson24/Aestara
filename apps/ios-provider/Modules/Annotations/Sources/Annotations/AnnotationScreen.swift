@@ -39,6 +39,10 @@ public struct AnnotationScreen: View {
             }
         }
         .task { await workbench.load() }
+        .traceLifecycle("AnnotationScreen")
+        .onChange(of: editing != nil) { _, open in
+            if open { DSTrace.note("AnnotationScreen editing on") } else { DSTrace.note("AnnotationScreen editing off") }
+        }
         .confirmationDialog("Delete this layer?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible, presenting: deleting) { layer in
             Button("Delete layer", role: .destructive) {

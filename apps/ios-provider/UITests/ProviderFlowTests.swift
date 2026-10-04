@@ -344,7 +344,8 @@ final class ProviderFlowTests: XCTestCase {
         // A before/after comparison of the two front photos, aligned by hand and exported.
         openStep(app, "beforeAfter")
         tapRevealed(app, app.buttons["beforeAfter.new"], "New comparison")
-        let first = app.buttons["beforeAfter.photo.FRONT"]
+        // The patient has two front photos, oldest first: the first one is the before photo.
+        let first = app.buttons.matching(identifier: "beforeAfter.photo.FRONT").firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 20), "No photos to compare. Screen: \(screen(app))")
         first.tap()
         XCTAssertTrue(element(in: app, containing: "taken later").waitForExistence(timeout: 5), "The before photo was not taken. Screen: \(screen(app))")

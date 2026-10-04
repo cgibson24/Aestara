@@ -109,6 +109,7 @@ struct ConsultationWorkspace: View {
         }
         .tint(DSColor.accent)
         .task { await model.load() }
+        .traceLifecycle("ConsultationWorkspace")
     }
 
     private var closeButton: some ToolbarContent {
@@ -168,6 +169,7 @@ struct StepScreen: View {
         }
         .navigationTitle(step.title)
         .navigationBarTitleDisplayMode(.inline)
+        .traceLifecycle("StepScreen")
     }
 
     @ViewBuilder private var content: some View {

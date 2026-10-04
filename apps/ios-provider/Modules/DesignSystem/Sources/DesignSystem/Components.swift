@@ -202,13 +202,17 @@ public struct DSBadge: View {
         self.background = background
     }
 
+    /// Wraps rather than cutting the word off at large text sizes. One line keeps the capsule's
+    /// look (a corner radius is never more than half the height); more lines get round corners.
     public var body: some View {
         Text(text)
             .font(DSFont.caption1)
             .foregroundStyle(color)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, DSSpacing.sm)
             .padding(.vertical, DSSpacing.xxs)
-            .background(background, in: Capsule())
+            .background(background, in: RoundedRectangle(cornerRadius: DSRadius.lg))
     }
 }
 
