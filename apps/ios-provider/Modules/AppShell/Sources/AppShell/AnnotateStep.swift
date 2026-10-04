@@ -10,6 +10,7 @@ import BeforeAfter
 import CoreNetworking
 import DesignSystem
 import Media
+import Observation
 import Photography
 import SwiftUI
 import UIKit
@@ -20,7 +21,8 @@ struct AnnotateStep: View {
     @State private var thumbnails: [String: Data] = [:]
     @State private var state: DSViewState? = .loading("Loading photos")
     @State private var offline = false
-    @State private var opened: PhotoItem?
+    /// The photo open full screen, with what it has loaded and the drawing in progress.
+    @State private var opened: OpenedPhoto?
 
     private var work: ConsultationWork { model.work }
 
@@ -36,7 +38,9 @@ struct AnnotateStep: View {
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: DSSpacing.md)], spacing: DSSpacing.md) {
                     ForEach(photos) { photo in
-                        Button { opened = photo } label: {
+                        Button {
+                            opened = OpenedPhoto(photo: photo, workbench: work.annotationWorkbench(patientId: model.patient.id, photoId: photo.id))
+                        } label: {
                             PhotoTile(photo: photo, image: thumbnails[photo.id])
                         }
                         .buttonStyle(.plain)
@@ -48,8 +52,8 @@ struct AnnotateStep: View {
         }
         .task { await load() }
         .traceLifecycle("AnnotateStep")
-        .fullScreenCover(item: $opened) { photo in
-            AnnotatePhotoScreen(work: work, patientId: model.patient.id, photo: photo)
+        .fullScreenCover(item: $opened) { opened in
+            AnnotatePhotoScreen(work: work, patientId: model.patient.id, opened: opened)
         }
     }
 
@@ -86,30 +90,43 @@ struct AnnotateStep: View {
     }
 }
 
+/// A photo opened for annotation: its layers, its display preview once loaded, and the
+/// drawing in progress (in the workbench). Owned by the step, not by the full-screen
+/// screen, because the iPad builds a presented screen again when the text size changes,
+/// which would otherwise lose the drawing and fetch the photo again (F-70).
+@MainActor
+@Observable
+final class OpenedPhoto: Identifiable {
+    let photo: PhotoItem
+    let workbench: AnnotationWorkbench
+    var image: UIImage?
+    var state: DSViewState? = .loading("Loading the photo")
+
+    nonisolated var id: String { photo.id }
+
+    init(photo: PhotoItem, workbench: AnnotationWorkbench) {
+        self.photo = photo
+        self.workbench = workbench
+    }
+}
+
 /// One photo and its annotation layers, full screen, with the way into an export.
 struct AnnotatePhotoScreen: View {
     let work: ConsultationWork
     let patientId: String
-    let photo: PhotoItem
-    @State private var workbench: AnnotationWorkbench
-    @State private var image: UIImage?
-    @State private var state: DSViewState? = .loading("Loading the photo")
+    let opened: OpenedPhoto
     @State private var exporting: ExportTarget?
     @Environment(\.dismiss) private var dismiss
 
-    init(work: ConsultationWork, patientId: String, photo: PhotoItem) {
-        self.work = work
-        self.patientId = patientId
-        self.photo = photo
-        _workbench = State(initialValue: work.annotationWorkbench(patientId: patientId, photoId: photo.id))
-    }
+    private var photo: PhotoItem { opened.photo }
+    private var workbench: AnnotationWorkbench { opened.workbench }
 
     var body: some View {
         NavigationStack {
             Group {
-                if let state {
+                if let state = opened.state {
                     DSStateView(state) { Task { await load() } }
-                } else if let image {
+                } else if let image = opened.image {
                     AnnotationScreen(workbench: workbench, image: image)
                 }
             }
@@ -131,7 +148,7 @@ struct AnnotatePhotoScreen: View {
                 }
             }
         }
-        .task { await load() }
+        .task { if opened.image == nil { await load() } }
         .traceLifecycle("AnnotatePhotoScreen")
         .sheet(item: $exporting) { target in
             ExportSheet(work: work, patientId: patientId, target: target)
@@ -141,12 +158,12 @@ struct AnnotatePhotoScreen: View {
     private func load() async {
         let loaded = await work.photography.derivatives(patientId: patientId, photoIds: [photo.id], variant: .displayPreview)
         guard let data = loaded[photo.id], let preview = UIImage(data: data) else {
-            state = .error(message: String(localized: "The photo could not be shown. Offline, only photos saved on this device open."),
-                           reference: nil)
+            opened.state = .error(message: String(localized: "The photo could not be shown. Offline, only photos saved on this device open."),
+                                  reference: nil)
             return
         }
-        image = preview
-        state = nil
+        opened.image = preview
+        opened.state = nil
     }
 }
 

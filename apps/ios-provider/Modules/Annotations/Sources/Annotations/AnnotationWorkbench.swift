@@ -34,6 +34,11 @@ public final class AnnotationWorkbench {
     public private(set) var busy = false
     /// The last change the server refused, in words.
     public var message: String?
+    /// The layer being drawn, and the layers hidden from view. Kept here rather than in the
+    /// screen, so a screen that SwiftUI builds again keeps the drawing in progress: the iPad
+    /// rebuilds a presented screen when the text size changes (F-70).
+    var draft: AnnotationDraft?
+    var hidden: Set<String> = []
 
     public init(repository: AnnotationsRepository, store: AnnotationStore, patientId: String, photoId: String,
                 userId: String, canAnnotate: Bool) {
@@ -48,6 +53,12 @@ public final class AnnotationWorkbench {
     /// One's own layer; a layer drawn offline has no server author yet.
     public func isMine(_ layer: AnnotationLayerItem) -> Bool {
         layer.authorUserId == userId || layer.version == 0
+    }
+
+    /// Loads once; a screen built again shows what is already loaded.
+    public func loadIfNeeded() async {
+        guard !loaded else { return }
+        await load()
     }
 
     public func load() async {
@@ -184,4 +195,11 @@ public final class AnnotationWorkbench {
         await store.discard(operation.id)
         await load()
     }
+}
+
+/// A layer being drawn: a new one, or a change to one's own layer.
+struct AnnotationDraft: Equatable {
+    let layer: AnnotationLayerItem?
+    var drawing: AnnotationDrawing
+    var label: String
 }

@@ -2,6 +2,14 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Annotation and comparison screens keep their state when rebuilt (F-70; ADR-0027)
+
+- **Cause found:** the lifecycle trace showed the iPad rebuilding the full-screen annotation screen on every text-size change of the accessibility audit, while the step that presented it stayed. The drawing in progress was lost, and each rebuild fetched the photo's preview again. The iPhone did not rebuild it.
+- **Fix:** the annotation step creates one model per opened photo (its workbench, preview and drawing in progress); the before/after list creates one comparison session per opened set (the set, its previews, the viewing mode and an alignment in progress). A rebuilt screen shows the same state and fetches nothing again.
+- **Accessibility audit of the comparison viewer:** "Reset view" takes a 44-pt row; the link toggle's label and the screen's notice keep their full height at large text sizes; the before photo in side by side is named by its pane's badge, as the after photo is.
+- **UI test:** the workspace is closed from its list of steps on iPhone.
+- **Snapshot references:** the document rows and the accessibility-size timeline rows, recorded after their fixes, are reviewed and committed (30 references in all); the comparison pictures are recorded again (the reset button's height changed).
+
 ## 2026-10-04: Snapshot references and fixes found by them (F-68; ADR-0026 K3-22)
 
 - **Snapshot references:** CI recorded the first references on the iPhone simulator and printed them into its log; 34 were reviewed and committed under `apps/ios-provider/Snapshots/Tests/ProviderSnapshotsTests/__Snapshots__/`. The document rows and the accessibility-size timeline rows are recorded again after the fixes below.

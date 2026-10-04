@@ -413,7 +413,7 @@ final class ProviderFlowTests: XCTestCase {
         tapRevealed(app, app.buttons["completion.action.complete"], "Complete consultation")
         XCTAssertTrue(waitUntil(timeout: 15) { status.label.contains("Completed") }, "The consultation did not complete. Screen: \(screen(app))")
         snapshot(app, "21 Completed")
-        app.buttons["workspace.close"].tap()
+        closeWorkspace(app)
 
         // The profile shows it.
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'consultations.row.'")).firstMatch
@@ -455,6 +455,18 @@ final class ProviderFlowTests: XCTestCase {
         }
         XCTAssertTrue(waitUntil(timeout: 10) { row.exists && row.isHittable }, "Step \(step) is not offered. Screen: \(screen(app))")
         row.tap()
+    }
+
+    /// Closes the workspace. On iPhone its Close button is on the list of steps, so the open
+    /// step goes back first.
+    private func closeWorkspace(_ app: XCUIApplication) {
+        let close = app.buttons["workspace.close"]
+        if !(close.exists && close.isHittable),
+           let back = app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex.first(where: \.isHittable) {
+            back.tap()
+        }
+        XCTAssertTrue(waitUntil(timeout: 10) { close.exists && close.isHittable }, "The workspace cannot be closed. Screen: \(screen(app))")
+        close.tap()
     }
 
     /// A confirmation dialog's button: by its identifier, or, where the system's dialog does

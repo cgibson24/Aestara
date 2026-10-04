@@ -216,7 +216,8 @@ public struct ComparisonViewer: View {
                     : AnyLayout(VStackLayout(spacing: DSSpacing.xs))
                 layout {
                     pane(label: String(localized: "Before"), viewport: binding(.before)) {
-                        Image(uiImage: before).resizable().scaledToFit()
+                        // Named by the pane's badge, as the after pane's photo is.
+                        Image(uiImage: before).resizable().scaledToFit().accessibilityHidden(true)
                     }
                     pane(label: String(localized: "After"), viewport: binding(.after)) {
                         AlignedPair(before: before, after: after, transform: transform, showBefore: false)
@@ -307,9 +308,11 @@ public struct ComparisonViewer: View {
     @ViewBuilder private var controls: some View {
         switch mode {
         case .sideBySide:
-            Toggle("Zoom both together", isOn: Binding(get: { panes.linked }, set: { panes.link($0) }))
-                .font(DSFont.subheadline)
-                .accessibilityIdentifier("comparison.link")
+            Toggle(isOn: Binding(get: { panes.linked }, set: { panes.link($0) })) {
+                Text("Zoom both together").fixedSize(horizontal: false, vertical: true)
+            }
+            .font(DSFont.subheadline)
+            .accessibilityIdentifier("comparison.link")
         case .swipe:
             EmptyView()
         case .crossFade:
@@ -340,10 +343,15 @@ public struct ComparisonViewer: View {
         case .overlay:
             slider(String(localized: "After photo opacity"), value: $opacity, id: "comparison.opacity")
         }
-        Button("Reset view", systemImage: "arrow.counterclockwise") {
+        Button {
             panes.reset()
+        } label: {
+            // The whole 44-pt row takes the tap, not only the words (DESIGN_SYSTEM.md C1).
+            Label("Reset view", systemImage: "arrow.counterclockwise")
+                .font(DSFont.subheadline)
+                .frame(minHeight: DSSize.touchTarget)
+                .contentShape(Rectangle())
         }
-        .font(DSFont.subheadline)
         .accessibilityIdentifier("comparison.reset")
     }
 

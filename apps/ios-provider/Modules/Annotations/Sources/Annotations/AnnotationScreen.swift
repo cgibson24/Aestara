@@ -11,14 +11,18 @@ import UIKit
 public struct AnnotationScreen: View {
     let workbench: AnnotationWorkbench
     let image: UIImage
-    @State private var hidden: Set<String> = []
-    @State private var editing: EditingLayer?
     @State private var deleting: AnnotationLayerItem?
 
-    struct EditingLayer: Equatable {
-        let layer: AnnotationLayerItem?
-        var drawing: AnnotationDrawing
-        var label: String
+    /// The drawing in progress and the hidden layers live in the workbench, so they survive
+    /// this screen being built again.
+    private var editing: AnnotationDraft? {
+        get { workbench.draft }
+        nonmutating set { workbench.draft = newValue }
+    }
+
+    private var hidden: Set<String> {
+        get { workbench.hidden }
+        nonmutating set { workbench.hidden = newValue }
     }
 
     public init(workbench: AnnotationWorkbench, image: UIImage) {
@@ -38,7 +42,7 @@ public struct AnnotationScreen: View {
                 viewer
             }
         }
-        .task { await workbench.load() }
+        .task { await workbench.loadIfNeeded() }
         .traceLifecycle("AnnotationScreen")
         .onChange(of: editing != nil) { _, open in
             if open { DSTrace.note("AnnotationScreen editing on") } else { DSTrace.note("AnnotationScreen editing off") }
@@ -75,7 +79,7 @@ public struct AnnotationScreen: View {
                     .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
                 if workbench.canAnnotate {
                     Button("New layer", systemImage: "plus") {
-                        editing = EditingLayer(layer: nil, drawing: AnnotationDrawing(), label: "")
+                        editing = AnnotationDraft(layer: nil, drawing: AnnotationDrawing(), label: "")
                     }
                     .buttonStyle(DSButtonStyle(.primary))
                     .disabled(workbench.busy)
@@ -132,7 +136,7 @@ public struct AnnotationScreen: View {
             if mine, workbench.canAnnotate {
                 Button("Edit") {
                     hidden.remove(layer.id)
-                    editing = EditingLayer(layer: layer, drawing: layer.drawing, label: layer.label ?? "")
+                    editing = AnnotationDraft(layer: layer, drawing: layer.drawing, label: layer.label ?? "")
                 }
                 .buttonStyle(DSButtonStyle(.secondary))
                 .frame(maxWidth: 120)
@@ -146,7 +150,7 @@ public struct AnnotationScreen: View {
 
     // MARK: Editing
 
-    private func editor(_ current: EditingLayer) -> some View {
+    private func editor(_ current: AnnotationDraft) -> some View {
         VStack(alignment: .leading, spacing: DSSpacing.md) {
             banners
             AnnotationEditor(
@@ -181,11 +185,11 @@ public struct AnnotationScreen: View {
         .padding(DSSpacing.lg)
     }
 
-    private func trimmedLabel(_ current: EditingLayer) -> String {
+    private func trimmedLabel(_ current: AnnotationDraft) -> String {
         current.label.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func save(_ current: EditingLayer) async {
+    private func save(_ current: AnnotationDraft) async {
         let label = trimmedLabel(current)
         if await workbench.save(current.layer, drawing: current.drawing, label: label.isEmpty ? nil : label) {
             editing = nil

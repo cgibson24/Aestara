@@ -23,7 +23,8 @@ public struct BeforeAfterList: View {
     @State private var state: DSViewState? = .loading("Loading comparisons")
     @State private var creating = false
     @State private var created: BeforeAfterSetItem?
-    @State private var opened: BeforeAfterSetItem?
+    /// The set open full screen, with its photos, mode and any alignment in progress.
+    @State private var opened: ComparisonSession?
     @State private var reloads = 0
 
     public init(repository: BeforeAfterRepository, sources: ComparisonSources, patientId: String, consultationId: String? = nil,
@@ -50,7 +51,7 @@ public struct BeforeAfterList: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: DSSpacing.md)], spacing: DSSpacing.md) {
                     ForEach(sets) { set in
                         SetTile(set: set, before: thumbnails[set.beforePhotoId], after: thumbnails[set.afterPhotoId]) {
-                            opened = set
+                            opened = session(for: set)
                         }
                     }
                 }
@@ -60,7 +61,7 @@ public struct BeforeAfterList: View {
         .sheet(isPresented: $creating, onDismiss: {
             guard let set = created else { return }
             created = nil
-            opened = set
+            opened = session(for: set)
             reloads += 1
         }) {
             NewComparisonSheet(repository: repository, sources: sources, patientId: patientId, consultationId: consultationId) { set in
@@ -68,11 +69,10 @@ public struct BeforeAfterList: View {
                 creating = false
             }
         }
-        .fullScreenCover(item: $opened, onDismiss: { reloads += 1 }) { set in
+        .fullScreenCover(item: $opened, onDismiss: { reloads += 1 }) { session in
             NavigationStack {
-                BeforeAfterScreen(repository: repository, sources: sources, patientId: patientId, set: set,
-                                  canAlign: canAlign, exportSheet: exportSheet)
-                    .navigationTitle(set.title ?? String(localized: "Before and after"))
+                BeforeAfterScreen(session: session, canAlign: canAlign, exportSheet: exportSheet)
+                    .navigationTitle(session.set.title ?? String(localized: "Before and after"))
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
@@ -82,6 +82,10 @@ public struct BeforeAfterList: View {
                     }
             }
         }
+    }
+
+    private func session(for set: BeforeAfterSetItem) -> ComparisonSession {
+        ComparisonSession(repository: repository, sources: sources, patientId: patientId, set: set)
     }
 
     private func load() async {
