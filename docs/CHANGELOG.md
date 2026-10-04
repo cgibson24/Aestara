@@ -2,6 +2,12 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Consultation lifecycle (M3.1; ADR-0027)
+
+- **Database:** the Layer 3 migrations (tables, the constraints fragment verbatim, forced RLS and grants); 45 tables; the database suite runs 157 checks with no drift.
+- **API:** 12 consultation operations under `/patients/{patientId}/consultations` (list, create, read, update, and the eight transitions of spec §5.4.1), with practice scope, `If-Match`, the completion preconditions (`422 COMPLETION_PRECONDITIONS_NOT_MET`) and the audit events `CONSULTATION_CREATED`, `CONSULTATION_STATUS_CHANGED` and `CONSULTATION_COMPLETED`. Three new error codes in the catalog.
+- **Tests:** `consultations.test.ts` (19), and the generated authorization and cross-tenant tests now cover the new operations.
+
 ## 2026-10-04: Layer 3 kickoff confirmed (ADR-0026)
 
 - The owner confirmed every recommendation in `LAYER_3_KICKOFF.md` (K3-01 to K3-24), choosing for F-68 that CI records missing snapshot references into its job log and Claude reviews and commits them. Recorded as **ADR-0026**.

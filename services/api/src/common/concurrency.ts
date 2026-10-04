@@ -55,6 +55,7 @@ const LOCKABLE = new Set([
   "AIJob",
   "PracticeSetting",
   "StorageObject",
+  "Consultation",
 ]);
 
 /**

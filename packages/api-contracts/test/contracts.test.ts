@@ -81,6 +81,9 @@ describe("error code catalog (spec §6.2)", () => {
       415: ["UNSUPPORTED_MEDIA_TYPE"],
       422: [
         "UPLOAD_VERIFICATION_FAILED",
+        "COMPLETION_PRECONDITIONS_NOT_MET",
+        "INCOMPATIBLE_VIEWS",
+        "BEFORE_AFTER_ORDER",
         "REQUIRED_VIEWS_MISSING",
         "INPUT_QUALITY_INSUFFICIENT",
         "UNSUPPORTED_SIMULATION_INPUT",

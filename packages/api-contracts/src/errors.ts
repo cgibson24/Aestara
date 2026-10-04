@@ -41,6 +41,18 @@ export const ERROR_CATALOG = {
   PAYLOAD_TOO_LARGE: { status: 413, when: "Upload exceeds the size limit." },
   UNSUPPORTED_MEDIA_TYPE: { status: 415, when: "File type not allowed." },
   UPLOAD_VERIFICATION_FAILED: { status: 422, when: "Size or checksum mismatch on upload completion." },
+  COMPLETION_PRECONDITIONS_NOT_MET: {
+    status: 422,
+    when: "Completing a consultation with a spec §5.4.1 precondition unmet; details.unmet names each one.",
+  },
+  INCOMPATIBLE_VIEWS: {
+    status: 422,
+    when: "A before/after set from photos of different views (view key and pose target).",
+  },
+  BEFORE_AFTER_ORDER: {
+    status: 422,
+    when: "A before/after set whose before photo was not captured earlier than its after photo.",
+  },
   REQUIRED_VIEWS_MISSING: {
     status: 422,
     when: "Completing a photo session with required views missing; details.viewKeys lists them.",

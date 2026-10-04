@@ -18,6 +18,7 @@ export interface ResourceRefs {
   photoSessionId: string;
   photoId: string;
   releaseId: string;
+  consultationId: string;
 }
 
 let n = 0;
@@ -48,6 +49,7 @@ export function pathFor(e: EndpointDefinition, refs: ResourceRefs): string {
     .replace("{sessionId}", refs.photoSessionId)
     .replace("{photoId}", refs.photoId)
     .replace("{releaseId}", refs.releaseId)
+    .replace("{consultationId}", refs.consultationId)
     .replace("{practiceId}", refs.practiceId)
     .replace("{key}", key)}`;
 }
@@ -120,6 +122,10 @@ export function bodyFor(e: EndpointDefinition, refs: ResourceRefs): Record<strin
         },
       ],
     },
+    createConsultation: { practiceId: refs.practiceId, reason: "Fixture" },
+    updateConsultation: { reason: `Reason ${u}` },
+    cancelConsultation: { reason: "Fixture" },
+    completeConsultation: { releaseDecision: "NOTHING_TO_RELEASE" },
     putFeatureFlag: { enabled: false },
     putPracticeSetting: { value: { maxPatients: 10, maxAgeDays: 3 } },
     createRetentionPolicy: {

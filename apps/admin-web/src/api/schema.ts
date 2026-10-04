@@ -1320,6 +1320,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/patients/{patientId}/consultations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The patient's consultations, newest first. Archived ones only when asked for.
+         * @description Permission: `consultation.create` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listConsultations"];
+        put?: never;
+        /**
+         * Create a DRAFT consultation in a practice within the caller's scope.
+         * @description Permission: `consultation.create` (organization scope). Audit: CONSULTATION_CREATED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createConsultation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One consultation, with the completion preconditions it still fails.
+         * @description Permission: `consultation.create` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getConsultation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the reason, primary provider or location while the content is open (ADR-0026 K3-02).
+         * @description Permission: `consultation.edit` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        patch: operations["updateConsultation"];
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * DRAFT to IN_PROGRESS.
+         * @description Permission: `consultation.edit` (organization scope). Audit: CONSULTATION_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["startConsultation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}/request-information": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * IN_PROGRESS to AWAITING_INFORMATION.
+         * @description Permission: `consultation.edit` (organization scope). Audit: CONSULTATION_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["requestConsultationInformation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * AWAITING_INFORMATION to IN_PROGRESS.
+         * @description Permission: `consultation.edit` (organization scope). Audit: CONSULTATION_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["resumeConsultation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}/submit-for-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * IN_PROGRESS or AWAITING_INFORMATION to READY_FOR_REVIEW; no note may be a draft.
+         * @description Permission: `consultation.edit` (organization scope). Audit: CONSULTATION_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["submitConsultationForReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}/return-to-progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * READY_FOR_REVIEW to IN_PROGRESS, to change the reviewed content.
+         * @description Permission: `consultation.edit` (organization scope). Audit: CONSULTATION_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["returnConsultationToProgress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a consultation that is not final, with a reason (ADR-0026 K3-05).
+         * @description Permission: `consultation.edit` (organization scope). Audit: CONSULTATION_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["cancelConsultation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * READY_FOR_REVIEW to COMPLETED once every precondition holds; 422 names the unmet ones.
+         * @description Permission: `consultation.complete` (organization scope). Audit: CONSULTATION_COMPLETED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["completeConsultation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/consultations/{consultationId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a completed or cancelled consultation. Nothing is deleted.
+         * @description Permission: `consultation.complete` (organization scope). Audit: CONSULTATION_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["archiveConsultation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit/events": {
         parameters: {
             query?: never;
@@ -2676,6 +2884,82 @@ export interface components {
             variant?: "THUMBNAIL" | "DISPLAY_PREVIEW";
             occurredAt: components["schemas"]["Timestamp"];
         };
+        Consultation: {
+            id: components["schemas"]["Uuid"];
+            patientId: components["schemas"]["Uuid"];
+            practiceId: components["schemas"]["Uuid"];
+            locationId?: components["schemas"]["Uuid"];
+            primaryProviderUserId?: components["schemas"]["Uuid"];
+            status: components["schemas"]["ConsultationStatus"];
+            reason?: string;
+            /** @description The patient concerns this consultation addresses. */
+            concernIds: components["schemas"]["Uuid"][];
+            startedAt?: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description When the consultation last went to review.
+             * @example 2026-09-25T14:03:11.412Z
+             */
+            readyForReviewAt?: string;
+            completedAt?: components["schemas"]["Timestamp"];
+            completedById?: components["schemas"]["Uuid"];
+            releaseDecision?: components["schemas"]["ConsultationReleaseDecision"];
+            cancelledAt?: components["schemas"]["Timestamp"];
+            cancelledById?: components["schemas"]["Uuid"];
+            cancellationReason?: string;
+            archivedAt?: components["schemas"]["Timestamp"];
+            /** @description What /complete would still refuse; empty once the consultation is final. */
+            unmetCompletionPreconditions: components["schemas"]["CompletionPrecondition"][];
+            createdById: components["schemas"]["Uuid"];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+            version: number;
+        };
+        /**
+         * @description Bible §5.2 states; spec §5.4.1 transitions.
+         * @enum {string}
+         */
+        ConsultationStatus: "DRAFT" | "IN_PROGRESS" | "AWAITING_INFORMATION" | "READY_FOR_REVIEW" | "COMPLETED" | "CANCELLED" | "ARCHIVED";
+        /**
+         * @description What the consultation released to the patient before completion (ADR-0026 K3-04). Layer 3 records only NOTHING_TO_RELEASE.
+         * @enum {string}
+         */
+        ConsultationReleaseDecision: "NOTHING_TO_RELEASE" | "MATERIALS_RELEASED";
+        /**
+         * @description REASON_OR_CONCERN: record a reason or at least one concern. NO_DRAFT_NOTES: finalize or discard every draft note. CURRENT_SUMMARY: generate the summary after the consultation last went to review.
+         * @enum {string}
+         */
+        CompletionPrecondition: "REASON_OR_CONCERN" | "NO_DRAFT_NOTES" | "CURRENT_SUMMARY";
+        ConsultationCreate: {
+            practiceId: components["schemas"]["Uuid"];
+            locationId?: components["schemas"]["Uuid"];
+            /**
+             * Format: uuid
+             * @description A provider of this organization.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            primaryProviderUserId?: string;
+            reason?: string;
+        };
+        /** @description The practice never changes; null clears a field. */
+        ConsultationUpdate: {
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: uuid */
+            primaryProviderUserId?: string | null;
+            reason?: string | null;
+        };
+        ConsultationCancel: {
+            /** @description Why the consultation is cancelled. Stored, never logged. */
+            reason: string;
+        };
+        ConsultationComplete: {
+            /**
+             * @description The provider confirms nothing is released to the patient: nothing reaches a patient before Layer 5 (ADR-0026 K3-04).
+             * @enum {string}
+             */
+            releaseDecision: "NOTHING_TO_RELEASE";
+        };
         AuditEvent: {
             id: components["schemas"]["Uuid"];
             occurredAt: components["schemas"]["Timestamp"];
@@ -2700,7 +2984,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        AuditAction: "LOGIN_SUCCESS" | "LOGIN_FAILURE" | "LOGOUT" | "PATIENT_CREATED" | "PATIENT_VIEWED" | "PATIENT_UPDATED" | "PATIENT_ARCHIVED" | "PHOTO_CAPTURED" | "PHOTO_VIEWED" | "PHOTO_EXPORTED" | "PHOTO_PERMISSION_CHANGED" | "CONSULTATION_CREATED" | "CONSULTATION_COMPLETED" | "SIMULATION_GENERATED" | "SIMULATION_VIEWED" | "SIMULATION_APPROVED" | "SIMULATION_REJECTED" | "SIMULATION_REGENERATED" | "SIMULATION_RELEASED" | "CONSENT_ASSIGNED" | "CONSENT_VIEWED" | "CONSENT_SIGNED" | "CONSENT_COMPLETED" | "CONSENT_VOIDED" | "MESSAGE_SENT" | "ATTACHMENT_DOWNLOADED" | "USER_CREATED" | "USER_UPDATED" | "USER_DISABLED" | "ROLE_ASSIGNED" | "INTEGRATION_SYNC_STARTED" | "INTEGRATION_SYNC_SUCCEEDED" | "INTEGRATION_SYNC_FAILED" | "DATA_EXPORT_REQUESTED" | "DATA_EXPORT_COMPLETED" | "SECURITY_SESSION_REVOKED" | "SIMULATION_CREATED" | "SIMULATION_STATUS_CHANGED" | "CONSENT_STATUS_CHANGED" | "DOCUMENT_VIEWED" | "ACCESS_DENIED" | "ROLE_REVOKED" | "PATIENT_ACCOUNT_LINKED" | "CONSULTATION_STATUS_CHANGED" | "PHOTO_ANNOTATED" | "PHOTO_INTAKE_REVIEWED" | "PHOTO_REJECTED" | "PHOTO_ARCHIVED" | "BEFORE_AFTER_CREATED" | "MEDIA_RELEASED" | "MEDIA_RELEASE_REVOKED" | "SIMILAR_CASES_SHOWN" | "AI_MODEL_ROLLOUT_CHANGED" | "TREATMENT_PLAN_STATUS_CHANGED" | "CONSENT_TEMPLATE_PUBLISHED" | "DOCUMENT_RELEASED" | "CONTENT_ASSIGNED" | "INSTRUCTION_ASSIGNED" | "INSTRUCTION_ACKNOWLEDGED" | "APPOINTMENT_STATUS_CHANGED" | "TELEHEALTH_STATUS_CHANGED" | "INTEGRATION_CONFIG_CHANGED" | "DATA_EXPORT_DOWNLOADED" | "CONFIGURATION_CHANGED" | "SECURITY_CREDENTIAL_CHANGED" | "ORGANIZATION_SWITCHED";
+        AuditAction: "LOGIN_SUCCESS" | "LOGIN_FAILURE" | "LOGOUT" | "PATIENT_CREATED" | "PATIENT_VIEWED" | "PATIENT_UPDATED" | "PATIENT_ARCHIVED" | "PHOTO_CAPTURED" | "PHOTO_VIEWED" | "PHOTO_EXPORTED" | "PHOTO_PERMISSION_CHANGED" | "CONSULTATION_CREATED" | "CONSULTATION_COMPLETED" | "SIMULATION_GENERATED" | "SIMULATION_VIEWED" | "SIMULATION_APPROVED" | "SIMULATION_REJECTED" | "SIMULATION_REGENERATED" | "SIMULATION_RELEASED" | "CONSENT_ASSIGNED" | "CONSENT_VIEWED" | "CONSENT_SIGNED" | "CONSENT_COMPLETED" | "CONSENT_VOIDED" | "MESSAGE_SENT" | "ATTACHMENT_DOWNLOADED" | "USER_CREATED" | "USER_UPDATED" | "USER_DISABLED" | "ROLE_ASSIGNED" | "INTEGRATION_SYNC_STARTED" | "INTEGRATION_SYNC_SUCCEEDED" | "INTEGRATION_SYNC_FAILED" | "DATA_EXPORT_REQUESTED" | "DATA_EXPORT_COMPLETED" | "SECURITY_SESSION_REVOKED" | "SIMULATION_CREATED" | "SIMULATION_STATUS_CHANGED" | "CONSENT_STATUS_CHANGED" | "DOCUMENT_VIEWED" | "ACCESS_DENIED" | "ROLE_REVOKED" | "PATIENT_ACCOUNT_LINKED" | "CONSULTATION_STATUS_CHANGED" | "PHOTO_ANNOTATED" | "PHOTO_INTAKE_REVIEWED" | "PHOTO_REJECTED" | "PHOTO_ARCHIVED" | "BEFORE_AFTER_CREATED" | "MEDIA_RELEASED" | "MEDIA_RELEASE_REVOKED" | "SIMILAR_CASES_SHOWN" | "AI_MODEL_ROLLOUT_CHANGED" | "TREATMENT_PLAN_STATUS_CHANGED" | "CONSENT_TEMPLATE_PUBLISHED" | "DOCUMENT_RELEASED" | "CONTENT_ASSIGNED" | "INSTRUCTION_ASSIGNED" | "INSTRUCTION_ACKNOWLEDGED" | "APPOINTMENT_STATUS_CHANGED" | "TELEHEALTH_STATUS_CHANGED" | "INTEGRATION_CONFIG_CHANGED" | "DATA_EXPORT_DOWNLOADED" | "CONFIGURATION_CHANGED" | "SECURITY_CREDENTIAL_CHANGED" | "ORGANIZATION_SWITCHED" | "CONSULTATION_NOTE_FINALIZED" | "DOCUMENT_ADDED";
         OrganizationSetting: {
             key: components["schemas"]["OrganizationSettingKey"];
             /** @description Shape depends on the key; see the setting schemas. */
@@ -2878,7 +3162,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description Error envelope. Codes: UPLOAD_VERIFICATION_FAILED, REQUIRED_VIEWS_MISSING, INPUT_QUALITY_INSUFFICIENT, UNSUPPORTED_SIMULATION_INPUT. */
+        /** @description Error envelope. Codes: UPLOAD_VERIFICATION_FAILED, COMPLETION_PRECONDITIONS_NOT_MET, INCOMPATIBLE_VIEWS, BEFORE_AFTER_ORDER, REQUIRED_VIEWS_MISSING, INPUT_QUALITY_INSUFFICIENT, UNSUPPORTED_SIMULATION_INPUT. */
         Error422: {
             headers: {
                 "X-Request-Id": components["headers"]["X-Request-Id"];
@@ -6110,6 +6394,536 @@ export interface operations {
             400: components["responses"]["Error400"];
             401: components["responses"]["Error401"];
             409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listConsultations: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Bible §5.2 states; spec §5.4.1 transitions. */
+                status?: components["schemas"]["ConsultationStatus"];
+                /** @description Archived consultations are hidden unless asked for (ADR-0026 K3-02). */
+                includeArchived?: "true" | "false";
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createConsultation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsultationCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getConsultation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    updateConsultation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsultationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    startConsultation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    requestConsultationInformation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    resumeConsultation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    submitConsultationForReview: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    returnConsultationToProgress: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    cancelConsultation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsultationCancel"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    completeConsultation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsultationComplete"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            422: components["responses"]["Error422"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    archiveConsultation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Consultation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
             503: components["responses"]["Error503"];
         };

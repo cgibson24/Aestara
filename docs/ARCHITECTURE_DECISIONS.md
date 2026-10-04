@@ -38,6 +38,7 @@ Status values:
 | [0024](#adr-0024) | Layer 2 backend implementation decisions | Adopted (delegated) | 2026-10-01 |
 | [0025](#adr-0025) | Layer 2 provider app implementation decisions | Adopted (delegated) | 2026-10-01 |
 | [0026](#adr-0026) | Layer 3 kickoff decisions | Accepted | 2026-10-04 |
+| [0027](#adr-0027) | Layer 3 backend implementation decisions | Adopted (delegated) | 2026-10-04 |
 
 ---
 
@@ -752,3 +753,21 @@ Status values:
   - **Spec §6.7, §7.3, §8, §10.2:** the registration and export job contracts, the two audit actions, offline consultation work, UD-15, UD-28 and UD-33 confirmed.
   - **Schema:** `Consultation` gains `releaseDecision`, `releaseDecidedAt` and `releaseDecidedById` (enum `ConsultationReleaseDecision`); `ConsultationNote` gains `correctsNoteId` with a same-consultation foreign key; `AuditAction` gains `CONSULTATION_NOTE_FINALIZED` and `DOCUMENT_ADDED`. **`constraints.sql`:** the Layer 3 fragment gains the consultation machine and frozen states, the note and addendum rules, the frozen concern links and the before/after order rule.
 - **Consequences:** the Layer 3 tables of spec §5.8 are created by the Layer 3 migrations. The image-processing service gains OpenCV and the registration consumer. Terraform's presigning role and malware scan gain the `DOCUMENT/` prefix. The iOS `DocumentsConsent` module starts in Layer 3 with documents. The concern-area list and the summary's contents are reviewed by a clinical lead before first clinical use.
+
+## ADR-0027
+
+**Layer 3 backend implementation decisions**
+
+- **Status:** Adopted (delegated), 2026-10-04. Implementation choices inside ADR-0026, recorded as each Layer 3 micro-prompt lands.
+- **Context:** ADR-0026 fixes what Layer 3 does; the api, the worker and the database still need concrete shapes for it.
+- **Decision, database (M3.1):**
+  - Three migrations, as in Layer 2: `20261004100000_layer3_tables` (generated from the promoted schema), `20261004100100_layer3_constraints` (the LAYER 3 fragment of `constraints.sql`, verbatim) and `20261004100200_layer3_security`.
+  - Every Layer 3 table is under forced Row-Level Security. `aestara_app` may delete only a draft note (the trigger refuses a FINAL one) and an open consultation's concern links. No new database role: the worker applies registration results as `aestara_app` in the organization's tenant.
+  - Ownership: `Consultation` is practice-owned with an optional location; a LOCATION grant covers only the consultations that name its location (spec §4.6). Its notes and concern links follow it, and the service scopes their writes by its practice. Concerns, medical history, annotations, before/after sets and documents are organization-owned patient data.
+- **Decision, consultations API (M3.1):**
+  - One transition table in the service mirrors the database's: action, allowed states, target state and permission. Each transition checks, in order, the consultation (404), the caller's practice scope (403), `If-Match` (412) and the state (409), then the preconditions, then writes the change and its audit event in the same transaction.
+  - Every consultation carries `unmetCompletionPreconditions`, computed on read, so the workspace can say what is left before `/complete` refuses. `/complete` answers `422 COMPLETION_PRECONDITIONS_NOT_MET` with the same codes in `details.unmet`.
+  - `/submit-for-review` with a draft note answers `409 INVALID_STATE_TRANSITION` with `details.unmet` `["NO_DRAFT_NOTES"]`: notes are frozen under review (ADR-0026 K3-02).
+  - A summary counts as current when one of the consultation's `CONSULTATION_SUMMARY` document versions was created at or after `readyForReviewAt`.
+  - Audit metadata holds the states moved between and, on completion, the release decision; never the reason, the cancellation reason or any other text.
+- **Consequences:** M3.3 fills `concernIds` through `PUT …/concerns` and the notes endpoints; M3.8's summary generator satisfies `CURRENT_SUMMARY`.

@@ -230,6 +230,28 @@ export class Fixtures {
     return { protocolId, photoSessionId, photoId, releaseId, permissionId, objectKey };
   }
 
+  /** A consultation of a patient, in DRAFT or moved along the spec §5.4.1 machine. */
+  async consultation(
+    organizationId: string,
+    patientId: string,
+    practiceId: string,
+    createdById: string,
+    status: "DRAFT" | "IN_PROGRESS" = "DRAFT",
+  ): Promise<string> {
+    const id = uuidv7();
+    await this.api.db.query(
+      `INSERT INTO "Consultation" (id, "organizationId", "patientId", "practiceId", reason, "createdById", "updatedAt")
+       VALUES ($1, $2, $3, $4, 'Fixture reason', $5, now())`,
+      [id, organizationId, patientId, practiceId, createdById],
+    );
+    if (status === "IN_PROGRESS")
+      await this.api.db.query(
+        `UPDATE "Consultation" SET status = 'IN_PROGRESS', "startedAt" = now() WHERE id = $1`,
+        [id],
+      );
+    return id;
+  }
+
   /** A member of an organization holding one role, signed in to the provider app (with MFA when needed). */
   async staff(
     organizationId: string,
