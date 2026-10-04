@@ -9,7 +9,7 @@ All material changes to the architecture, contracts and repository. Newest first
 - **Exports:** from a photo (optionally with one layer) or a set, for one purpose; purposes the patient has not granted are marked. The export is followed until ready, failed or revoked, then shared from a temporary file deleted when the share sheet closes.
 - **Step-up:** `403 REAUTHENTICATION_REQUIRED` opens "Confirm it's you": the password and, when the account has one, the authenticator code sign the same user in again in the same organization; the old session is logged out and nothing on the device is cleared.
 - **Sign-out:** unsent note drafts and annotation layers are counted together as drafts.
-- **Modules:** `Annotations` (models, repository, offline store, renderer, editor, screen), `BeforeAfter` (models, repository, viewer, alignment, list) and the export models in `Media`. Module tests: `ConsultationDomain` (7), `Annotations` (11, including the trip through the generated types) and `BeforeAfter` (5), run by CI.
+- **Modules:** `Annotations` (models, repository, offline store, renderer, editor, screen), `BeforeAfter` (models, repository, viewer, alignment, list) and the export models in `Media`. Module tests: `ConsultationDomain` (7), `Annotations` (11, including the trip through the generated types) and `BeforeAfter` (6), run by CI.
 
 ## 2026-10-04: The consultation workspace in the provider app (M3.2, M3.3, M3.8 iOS; ADR-0026 K3-21, K3-23; ADR-0027)
 

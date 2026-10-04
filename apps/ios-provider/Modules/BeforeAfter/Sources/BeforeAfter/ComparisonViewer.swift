@@ -18,6 +18,43 @@ struct Viewport: Equatable {
     static let maxZoom: CGFloat = 6
 }
 
+/// The zoom and pan of the side-by-side panes (ADR-0026 K3-12): one viewport for both while
+/// linked, the default; each its own once unlinked. Linking again gives the after pane the
+/// before pane's view. The single-pane modes use the before pane's.
+struct PaneViewports: Equatable {
+    enum Pane { case before, after }
+
+    private(set) var linked = true
+    private(set) var before = Viewport()
+    private(set) var after = Viewport()
+
+    func viewport(_ pane: Pane) -> Viewport {
+        linked || pane == .before ? before : after
+    }
+
+    mutating func set(_ viewport: Viewport, for pane: Pane) {
+        if linked {
+            before = viewport
+            after = viewport
+        } else if pane == .before {
+            before = viewport
+        } else {
+            after = viewport
+        }
+    }
+
+    mutating func link(_ on: Bool) {
+        linked = on
+        if on { after = before }
+    }
+
+    /// Back to the fitted view.
+    mutating func reset() {
+        before = Viewport()
+        after = Viewport()
+    }
+}
+
 /// Where the before image sits when fitted into `container`.
 func fittedFrame(_ image: CGSize, in container: CGSize) -> CGRect {
     guard image.width > 0, image.height > 0, container.width > 0, container.height > 0 else { return .zero }
@@ -105,9 +142,7 @@ public struct ComparisonViewer: View {
     let after: UIImage
     let transform: SimilarityTransform
     @Binding var mode: ComparisonMode
-    @State private var linked = true
-    @State private var viewport = Viewport()
-    @State private var afterViewport = Viewport()
+    @State private var panes = PaneViewports()
     @State private var divider: CGFloat = 0.5
     @State private var fade: Double = 0.5
     @State private var opacity: Double = 0.5
@@ -179,10 +214,10 @@ public struct ComparisonViewer: View {
                     ? AnyLayout(HStackLayout(spacing: DSSpacing.xs))
                     : AnyLayout(VStackLayout(spacing: DSSpacing.xs))
                 layout {
-                    pane(label: String(localized: "Before"), viewport: $viewport) {
+                    pane(label: String(localized: "Before"), viewport: binding(.before)) {
                         Image(uiImage: before).resizable().scaledToFit()
                     }
-                    pane(label: String(localized: "After"), viewport: linked ? $viewport : $afterViewport) {
+                    pane(label: String(localized: "After"), viewport: binding(.after)) {
                         AlignedPair(before: before, after: after, transform: transform, showBefore: false)
                     }
                 }
@@ -192,11 +227,12 @@ public struct ComparisonViewer: View {
                 let frame = fittedFrame(before.size, in: geometry.size)
                 let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
                 // The divider follows the zoomed and panned photo: scale about the centre, then pan.
+                let viewport = panes.viewport(.before)
                 let screenX = center.x + (frame.minX + frame.width * divider - center.x) * viewport.zoom + viewport.pan.width
                 let screenY = center.y + (frame.midY - center.y) * viewport.zoom + viewport.pan.height
                 ZStack(alignment: .topLeading) {
                     AlignedPair(before: before, after: after, transform: transform, reveal: divider)
-                        .modifier(ZoomPan(viewport: $viewport))
+                        .modifier(ZoomPan(viewport: binding(.before)))
                     Rectangle()
                         .fill(DSColor.photoStageText)
                         .frame(width: DSSpacing.xxs, height: frame.height * viewport.zoom)
@@ -229,18 +265,22 @@ public struct ComparisonViewer: View {
             }
         case .crossFade:
             AlignedPair(before: before, after: after, transform: transform, afterOpacity: fade)
-                .modifier(ZoomPan(viewport: $viewport))
+                .modifier(ZoomPan(viewport: binding(.before)))
         case .blink:
             AlignedPair(before: before, after: after, transform: transform, afterOpacity: showingAfter ? 1 : 0)
-                .modifier(ZoomPan(viewport: $viewport))
+                .modifier(ZoomPan(viewport: binding(.before)))
                 .overlay(alignment: .topLeading) {
                     DSBadge(showingAfter ? String(localized: "After") : String(localized: "Before"))
                         .padding(DSSpacing.sm)
                 }
         case .overlay:
             AlignedPair(before: before, after: after, transform: transform, afterOpacity: opacity)
-                .modifier(ZoomPan(viewport: $viewport))
+                .modifier(ZoomPan(viewport: binding(.before)))
         }
+    }
+
+    private func binding(_ pane: PaneViewports.Pane) -> Binding<Viewport> {
+        Binding(get: { panes.viewport(pane) }, set: { panes.set($0, for: pane) })
     }
 
     private var labels: some View {
@@ -266,9 +306,8 @@ public struct ComparisonViewer: View {
     @ViewBuilder private var controls: some View {
         switch mode {
         case .sideBySide:
-            Toggle("Zoom both together", isOn: $linked)
+            Toggle("Zoom both together", isOn: Binding(get: { panes.linked }, set: { panes.link($0) }))
                 .font(DSFont.subheadline)
-                .onChange(of: linked) { _, on in if on { afterViewport = viewport } }
                 .accessibilityIdentifier("comparison.link")
         case .swipe:
             EmptyView()
@@ -301,8 +340,7 @@ public struct ComparisonViewer: View {
             slider(String(localized: "After photo opacity"), value: $opacity, id: "comparison.opacity")
         }
         Button("Reset view", systemImage: "arrow.counterclockwise") {
-            viewport = Viewport()
-            afterViewport = Viewport()
+            panes.reset()
         }
         .font(DSFont.subheadline)
         .accessibilityIdentifier("comparison.reset")

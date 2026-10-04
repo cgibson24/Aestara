@@ -35,3 +35,19 @@ import Testing
     #expect(frame == CGRect(x: 50, y: 0, width: 300, height: 400))
     #expect(fittedFrame(.zero, in: CGSize(width: 10, height: 10)) == .zero)
 }
+
+@Test func zoomsAndPansBothPanesTogetherUntilUnlinked() {
+    var panes = PaneViewports()
+    let zoomed = Viewport(zoom: 2, pan: CGSize(width: 10, height: -5))
+    panes.set(zoomed, for: .after)
+    #expect(panes.viewport(.before) == zoomed)
+    #expect(panes.viewport(.after) == zoomed)
+    panes.link(false)
+    panes.set(Viewport(zoom: 3, pan: .zero), for: .after)
+    #expect(panes.viewport(.before) == zoomed)
+    #expect(panes.viewport(.after).zoom == 3)
+    panes.link(true)
+    #expect(panes.viewport(.after) == zoomed)
+    panes.reset()
+    #expect(panes.viewport(.before) == Viewport())
+}
