@@ -127,7 +127,11 @@ export async function provisionLocalAws(endpoint: string, prefix: string): Promi
         EventBusName: eventBusName,
         EventPattern: JSON.stringify({
           source: ["aestara.api"],
-          "detail-type": ["image.derivative.requested", "image.registration.requested"],
+          "detail-type": [
+            "image.derivative.requested",
+            "image.registration.requested",
+            "image.export.requested",
+          ],
         }),
       }),
     );

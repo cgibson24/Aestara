@@ -1271,7 +1271,7 @@ export interface paths {
         put?: never;
         /**
          * Release a photo for one purpose, pinning the permission version it relies on.
-         * @description Permission: `photo.export` (organization scope). Audit: MEDIA_RELEASED. Denials are audited as ACCESS_DENIED.
+         * @description Permission: `photo.export` and `photo.view` (organization scope). Audit: MEDIA_RELEASED. Denials are audited as ACCESS_DENIED.
          */
         post: operations["createMediaRelease"];
         delete?: never;
@@ -1291,7 +1291,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke a release. It stays on record with its pins.
-         * @description Permission: `photo.export` (organization scope). Audit: MEDIA_RELEASE_REVOKED. Denials are audited as ACCESS_DENIED.
+         * @description Permission: `photo.export` and `photo.view` (organization scope). Audit: MEDIA_RELEASE_REVOKED. Denials are audited as ACCESS_DENIED.
          */
         post: operations["revokeMediaRelease"];
         delete?: never;
@@ -1430,6 +1430,86 @@ export interface paths {
          * @description Permission: `photo.annotate` (organization scope). Denials are audited as ACCESS_DENIED.
          */
         post: operations["requestBeforeAfterRegistration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/{photoId}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export an accepted photo for one purpose, optionally with one annotation layer drawn in. Needs the patient's current grant for the purpose; renders asynchronously.
+         * @description Permission: `photo.export` and `photo.view` (organization scope). Needs a recent MFA (step-up). Audit: PHOTO_EXPORTED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createPhotoExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/before-after/{setId}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export the set side by side, the after photo placed by the set's alignment. Needs the current grant for the purpose on both photos; renders asynchronously.
+         * @description Permission: `photo.export` and `photo.view` (organization scope). Needs a recent MFA (step-up). Audit: PHOTO_EXPORTED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createBeforeAfterExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/exports/{exportId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An export's status: pending, ready, failed or revoked.
+         * @description Permission: `photo.export` and `photo.view` (organization scope). Needs a recent MFA (step-up). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/exports/{exportId}/access-urls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A signed GET for a ready export, valid 10 minutes, while its release is active and the grant still holds. One PHOTO_VIEWED per photo shown.
+         * @description Permission: `photo.export` and `photo.view` (organization scope). Needs a recent MFA (step-up). Audit: PHOTO_VIEWED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createExportAccessUrl"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3330,6 +3410,62 @@ export interface components {
                 /** @enum {string} */
                 mode: "NONE";
             };
+        };
+        MediaExport: {
+            id: components["schemas"]["Uuid"];
+            purpose: components["schemas"]["ExportPurpose"];
+            kind: components["schemas"]["ExportKind"];
+            status: components["schemas"]["ExportStatus"];
+            /** @description The photo, or the set's before and after photos. */
+            photoIds: components["schemas"]["Uuid"][];
+            beforeAfterSetId?: components["schemas"]["Uuid"];
+            annotationId?: components["schemas"]["Uuid"];
+            mediaReleaseId: components["schemas"]["Uuid"];
+            requestedByUserId: components["schemas"]["Uuid"];
+            requestedAt: components["schemas"]["Timestamp"];
+            widthPx?: number;
+            heightPx?: number;
+            failure?: components["schemas"]["ExportFailure"];
+            revokedAt?: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description Each purpose needs the patient's current grant of the same media-permission category.
+         * @enum {string}
+         */
+        ExportPurpose: "CLINICAL_USE" | "EDUCATION" | "WEBSITE" | "SOCIAL_MEDIA" | "PAID_ADVERTISING" | "RESEARCH";
+        /**
+         * @description What the image is: a before/after composite, a photo with one annotation layer drawn in, or a plain photo (MARKETING_DERIVATIVE for website, social media and paid advertising).
+         * @enum {string}
+         */
+        ExportKind: "EXPORT_DERIVATIVE" | "MARKETING_DERIVATIVE" | "ANNOTATED_DERIVATIVE" | "BEFORE_AFTER_DERIVATIVE";
+        /**
+         * @description REVOKED once the release is revoked, whatever the render did.
+         * @enum {string}
+         */
+        ExportStatus: "PENDING" | "READY" | "FAILED" | "REVOKED";
+        /**
+         * @description SOURCE_CHANGED: the annotation layer changed or was deleted before the render; export again. RENDER_FAILED: the image could not be rendered; no file was produced.
+         * @enum {string}
+         */
+        ExportFailure: "SOURCE_CHANGED" | "RENDER_FAILED";
+        PhotoExportCreate: {
+            purpose: components["schemas"]["ExportPurpose"];
+            /**
+             * Format: uuid
+             * @description One of the photo's annotation layers, drawn in.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            annotationId?: string;
+        };
+        BeforeAfterExportCreate: {
+            purpose: components["schemas"]["ExportPurpose"];
+        };
+        /** @description A signed GET, valid 10 minutes; private, no-store. */
+        ExportAccessUrl: {
+            exportId: components["schemas"]["Uuid"];
+            /** Format: uri */
+            url: string;
+            expiresAt: components["schemas"]["Timestamp"];
         };
         Consultation: {
             id: components["schemas"]["Uuid"];
@@ -7325,6 +7461,171 @@ export interface operations {
                 content: {
                     "application/json": {
                         data: components["schemas"]["BeforeAfterSet"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createPhotoExport: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoExportCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            202: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MediaExport"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            429: components["responses"]["Error429"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createBeforeAfterExport: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                setId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeforeAfterExportCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            202: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MediaExport"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            429: components["responses"]["Error429"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getExport: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                exportId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MediaExport"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createExportAccessUrl: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                exportId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ExportAccessUrl"];
                     };
                 };
             };

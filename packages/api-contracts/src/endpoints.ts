@@ -61,6 +61,7 @@ import {
   PatientConcernListQuery,
   PatientConcernUpdate,
 } from "./consultations.ts";
+import { BeforeAfterExportCreate, ExportAccessUrl, MediaExport, PhotoExportCreate } from "./exports.ts";
 import {
   AdminBootstrapResult,
   FirstAdmin,
@@ -165,11 +166,13 @@ export type EndpointAuth =
    * A permission, evaluated per request from the caller's grants (never from the
    * token). `orPermissions` lists alternatives that also admit the caller; the
    * handler then applies the rule that needs one of them specifically.
+   * `alsoRequires` lists permissions the caller must hold as well.
    */
   | {
       readonly kind: "permission";
       readonly permission: string;
       readonly orPermissions?: readonly string[];
+      readonly alsoRequires?: readonly string[];
       readonly scopes: readonly PermissionScope[];
     };
 
@@ -233,12 +236,30 @@ const ConcernParams = z.strictObject({ patientId: Uuid, concernId: Uuid });
 const HistoryParams = z.strictObject({ patientId: Uuid, entryId: Uuid });
 const SetParams = z.strictObject({ patientId: Uuid, setId: Uuid });
 const AnnotationParams = z.strictObject({ patientId: Uuid, photoId: Uuid, annotationId: Uuid });
+const ExportParams = z.strictObject({ patientId: Uuid, exportId: Uuid });
 
 const perm = (permission: string, ...scopes: PermissionScope[]): EndpointAuth => ({
   kind: "permission",
   permission,
   scopes: scopes.length > 0 ? scopes : ["organization"],
 });
+/**
+ * Exports and releases also need photo.view: MARKETING holds photo.export for
+ * released assets only and sees no patient (spec §4.5 note ¹; ADR-0027, F-71).
+ */
+const EXPORTER: EndpointAuth = {
+  kind: "permission",
+  permission: "photo.export",
+  alsoRequires: ["photo.view"],
+  scopes: ["organization"],
+};
+const RELEASER: EndpointAuth = {
+  kind: "permission",
+  permission: "photo.export",
+  orPermissions: ["consultation.complete"],
+  alsoRequires: ["photo.view"],
+  scopes: ["organization"],
+};
 const permAny = (permission: string, ...orPermissions: string[]): EndpointAuth => ({
   kind: "permission",
   permission,
@@ -1258,7 +1279,7 @@ export const ENDPOINTS = [
     path: "/patients/{patientId}/media-releases",
     tag: "Photography",
     summary: "Release a photo for one purpose, pinning the permission version it relies on.",
-    auth: permAny("photo.export", "consultation.complete"),
+    auth: RELEASER,
     params: PatientParam,
     body: MediaReleaseCreate,
     idempotency: "required",
@@ -1274,7 +1295,7 @@ export const ENDPOINTS = [
     path: "/patients/{patientId}/media-releases/{releaseId}/revoke",
     tag: "Photography",
     summary: "Revoke a release. It stays on record with its pins.",
-    auth: permAny("photo.export", "consultation.complete"),
+    auth: RELEASER,
     params: ReleaseParams,
     body: MediaReleaseRevoke,
     response: { status: 200, shape: "resource", schema: MediaRelease },
@@ -1431,6 +1452,75 @@ export const ENDPOINTS = [
     response: { status: 200, shape: "resource", schema: BeforeAfterSet, etag: true },
     notFound: "BEFORE_AFTER_SET_NOT_FOUND",
     patientData: true,
+  },
+  // ---- Exports (spec §6.3; ADR-0026 K3-14, K3-15; ADR-0027) ------------------------
+  {
+    operationId: "createPhotoExport",
+    method: "POST",
+    path: "/patients/{patientId}/photos/{photoId}/exports",
+    tag: "Photography",
+    summary:
+      "Export an accepted photo for one purpose, optionally with one annotation layer drawn in. Needs " +
+      "the patient's current grant for the purpose; renders asynchronously.",
+    auth: EXPORTER,
+    stepUp: true,
+    params: PhotoParams,
+    body: PhotoExportCreate,
+    idempotency: "required",
+    response: { status: 202, shape: "resource", schema: MediaExport },
+    notFound: "PHOTO_NOT_FOUND",
+    audit: ["PHOTO_EXPORTED"],
+    patientData: true,
+    errors: [409, 429],
+  },
+  {
+    operationId: "createBeforeAfterExport",
+    method: "POST",
+    path: "/patients/{patientId}/before-after/{setId}/exports",
+    tag: "Photography",
+    summary:
+      "Export the set side by side, the after photo placed by the set's alignment. Needs the current " +
+      "grant for the purpose on both photos; renders asynchronously.",
+    auth: EXPORTER,
+    stepUp: true,
+    params: SetParams,
+    body: BeforeAfterExportCreate,
+    idempotency: "required",
+    response: { status: 202, shape: "resource", schema: MediaExport },
+    notFound: "BEFORE_AFTER_SET_NOT_FOUND",
+    audit: ["PHOTO_EXPORTED"],
+    patientData: true,
+    errors: [409, 429],
+  },
+  {
+    operationId: "getExport",
+    method: "GET",
+    path: "/patients/{patientId}/exports/{exportId}",
+    tag: "Photography",
+    summary: "An export's status: pending, ready, failed or revoked.",
+    auth: EXPORTER,
+    stepUp: true,
+    params: ExportParams,
+    response: { status: 200, shape: "resource", schema: MediaExport },
+    notFound: "EXPORT_NOT_FOUND",
+    patientData: true,
+  },
+  {
+    operationId: "createExportAccessUrl",
+    method: "POST",
+    path: "/patients/{patientId}/exports/{exportId}/access-urls",
+    tag: "Photography",
+    summary:
+      "A signed GET for a ready export, valid 10 minutes, while its release is active and the grant " +
+      "still holds. One PHOTO_VIEWED per photo shown.",
+    auth: EXPORTER,
+    stepUp: true,
+    params: ExportParams,
+    response: { status: 201, shape: "resource", schema: ExportAccessUrl },
+    notFound: "EXPORT_NOT_FOUND",
+    audit: ["PHOTO_VIEWED"],
+    patientData: true,
+    errors: [409, 503],
   },
   // ---- Consultations (spec §6.3 "Consultations", §5.4.1; ADR-0026) ---------------
   {

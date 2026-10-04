@@ -1,8 +1,8 @@
 """The ways a job can fail, as reported to the api worker.
 
 A retryable failure gets a new attempt with fresh URLs (after 1, 5 and 30
-minutes, ADR-0023 K2-06); any other fails the job at once. Derivative and
-registration jobs share the codes. Codes are at most
+minutes, ADR-0023 K2-06); any other fails the job at once. Derivative,
+registration and export jobs share the codes. Codes are at most
 60 characters (AIJob.errorCode) and never carry content from the job.
 """
 

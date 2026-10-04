@@ -230,6 +230,62 @@ export class Fixtures {
     return { protocolId, photoSessionId, photoId, releaseId, permissionId, objectKey };
   }
 
+  /**
+   * A ready CLINICAL_USE export of a photo, as the worker leaves it: a verified
+   * output object, a succeeded job and a release pinning a patient-wide grant.
+   */
+  async export(organizationId: string, patientId: string, photoId: string, userId: string): Promise<string> {
+    const exportId = uuidv7();
+    const objectId = uuidv7();
+    const jobId = uuidv7();
+    const releaseId = uuidv7();
+    const permissionId = uuidv7();
+    const q = (sql: string, values: unknown[]) => this.api.db.query(sql, values);
+    await q(
+      `INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", "byteSize", sha256, status, "scanStatus", "verifiedAt")
+       VALUES ($1, $2, 'CLINICAL_DERIVATIVE', 'aestara-test-media', $3, 'image/jpeg', 4, $4, 'AVAILABLE', 'NOT_REQUIRED', now())`,
+      [objectId, organizationId, `CLINICAL_DERIVATIVE/${uuidv7()}`, "c".repeat(64)],
+    );
+    await q(
+      `INSERT INTO "AIJob" (id, "organizationId", "patientId", "jobType", status, "idempotencyKey", "requestedById", attempt, "inputSummary", "resultSummary", "startedAt", "finishedAt", "updatedAt")
+       VALUES ($1, $2, $3, 'IMAGE_DERIVATIVE', 'SUCCEEDED', $4, $5, 1, $6, '{"widthPx": 400, "heightPx": 300}', now(), now(), now())`,
+      [
+        jobId,
+        organizationId,
+        patientId,
+        `export:${exportId}`,
+        userId,
+        JSON.stringify({
+          exportId,
+          releaseId,
+          objectId,
+          layout: "SINGLE",
+          photoIds: [photoId],
+          transform: null,
+        }),
+      ],
+    );
+    await q(
+      `INSERT INTO "PhotoDerivative" (id, "organizationId", "patientId", "sourcePhotoId", kind, "storageObjectId", "generationMetadata", "generatedByJobId", "createdById")
+       VALUES ($1, $2, $3, $4, 'EXPORT_DERIVATIVE', $5, '{"layout": "SINGLE", "maxEdgePx": 4096}', $6, $7)`,
+      [exportId, organizationId, patientId, photoId, objectId, jobId, userId],
+    );
+    await q(
+      `INSERT INTO "PhotoPermission" (id, "organizationId", "patientId", category, scope, state, "versionNumber", "effectiveAt", evidence)
+       VALUES ($1, $2, $3, 'CLINICAL_USE', 'PATIENT_WIDE', 'GRANTED', 1, now(), 'STAFF_ATTESTATION')`,
+      [permissionId, organizationId, patientId],
+    );
+    await q(
+      `WITH r AS (
+         INSERT INTO "MediaRelease" (id, "organizationId", "patientId", purpose, "derivativeId", "releasedById")
+         VALUES ($1, $2, $3, 'CLINICAL_USE', $4, $5) RETURNING id)
+       INSERT INTO "MediaReleasePermission" ("organizationId", "patientId", "mediaReleaseId", "permissionId")
+       SELECT $2, $3, r.id, $6 FROM r`,
+      [releaseId, organizationId, patientId, exportId, userId, permissionId],
+    );
+    return exportId;
+  }
+
   /** An empty annotation layer on a photo, by its author. */
   async annotation(
     organizationId: string,

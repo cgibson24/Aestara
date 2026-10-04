@@ -357,6 +357,9 @@ importers:
       '@aestara/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@aestara/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@aestara/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types

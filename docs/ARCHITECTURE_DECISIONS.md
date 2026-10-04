@@ -792,4 +792,27 @@ Status values:
   - Stroke widths and text sizes are fractions of the photo's height (`ANNOTATION_STROKE_WIDTHS`, `ANNOTATION_TEXT_SIZES` in `api-contracts`), so a layer draws the same on a thumbnail, a preview and an export.
   - Shapes are `FREEHAND` (2 to 2,000 points), `LINE`, `ARROW`, `ELLIPSE`, `RECTANGLE` and `TEXT`, in coordinates from 0 to 1 on the upright photo; the contract has no shape that measures. A layer is listed oldest first, at most 100 per photo.
   - `PHOTO_ANNOTATED` records the photo, the kind of change and the number of shapes; never a label or a text shape.
+- **Decision, exports (M3.7):**
+  - Routes: `POST /patients/{patientId}/photos/{photoId}/exports` and `POST /patients/{patientId}/before-after/{setId}/exports` start an export (`202`, `Idempotency-Key` required). `GET /patients/{patientId}/exports/{exportId}` reads its status, and `POST …/exports/{exportId}/access-urls` downloads it. An export's ID is its derivative's. All four need `photo.export`, `photo.view` and step-up. An export is seen with `photo.view`, like a media release: a caller with `photo.view` but without `photo.export` gets `403` for an existing one, and a caller without `photo.view` gets the `404` of a resource it cannot see.
+  - Each user may start 30 exports in any 10 minutes per api process (a sliding window); beyond that, `429 RATE_LIMITED` with `Retry-After` (spec §6.1 rate limits).
+  - The request transaction is as in K3-15:
+    - The output object is registered as `CLINICAL_DERIVATIVE` in the clinical-media bucket. The exports bucket holds Layer 4 data exports only.
+    - The derivative records the layout, the 4096 px limit, the version of the annotation layer and the set's transform at the time of the request. The render uses exactly these, so a later re-alignment does not change an export already asked for.
+    - A composite names the before photo as its source (the frame the after photo is placed into) and the set.
+    - The release pins every distinct permission version that governs a photo it shows.
+    - `PHOTO_EXPORTED` is written for each photo, with the purpose, the export, the release and the derivative kind. No `MEDIA_RELEASED`: the release belongs to the export (spec §6.3).
+  - The job is an `IMAGE_DERIVATIVE` job keyed `export:{exportId}`, queued as `image.export.requested` and sent to image-processing with `"task": "EXPORT"` on the same queues as derivatives. The derivative worker handles only jobs keyed `derivatives:`.
+  - At dispatch the worker re-checks the release, the photos and the annotation layer. A layer changed or deleted since the request fails the export with `SOURCE_CHANGED`, rather than drawing something other than what was asked. A revoked release cancels the job. Colours resolve from the design tokens, and widths and sizes from the contract's constants. The label text is the only free text an image job carries; image-processing draws it and never logs it or reports it back.
+  - Every attempt writes the export's one object. The `PUT` is write-once and rendering is deterministic, so an attempt that follows a lost result meets the same bytes. The object becomes `AVAILABLE` only after the worker checks its size, SHA-256 and JPEG signature. A failed export's object is `REJECTED` and never served; in almost every failure nothing was written at all.
+  - Status: `PENDING` while queued or running, `READY`, `FAILED` (`SOURCE_CHANGED` or `RENDER_FAILED`), and `REVOKED` once the release is revoked, whatever the job did.
+  - Download:
+    - It re-checks the current grant of every photo shown. A revoked release or an ended grant answers `403 MEDIA_PERMISSION_NOT_GRANTED`; an export that is not ready or has failed answers `409`.
+    - The URL is valid 10 minutes, with a file name that carries no PHI.
+    - It writes `PHOTO_VIEWED` for each photo, with the variant `EXPORT`.
+  - A permission change now also re-checks releases whose subject is a derivative, against every photo the derivative shows.
+  - The registry gains `alsoRequires` (permissions a caller must hold as well as the admitting one). Exports and the Layer 2 release routes (`createMediaRelease`, `revokeMediaRelease`) also require `photo.view`. MARKETING holds `photo.export` for released assets only and sees no patient (spec §4.5 note ¹), but those routes checked `photo.export` alone, so it could create a release (F-71). It now gets the `404` of a patient it cannot see, audited as `ACCESS_DENIED`.
+  - The render:
+    - A pair is shown at the smaller photo's height, reduced until it fits 4096 px side by side, with the after photo placed by the transform inside a frame the size of the before photo, on a neutral dark grey.
+    - No photo is enlarged.
+    - Labels are drawn in Inter, bundled with image-processing with its own fontconfig file, so they render the same in every environment.
 - **Consequences:** M3.8's summary generator satisfies `CURRENT_SUMMARY`.

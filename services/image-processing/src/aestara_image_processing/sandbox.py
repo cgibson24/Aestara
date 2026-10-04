@@ -87,6 +87,27 @@ def _run_child(target: Any, args: tuple[Any, ...], timeout: float, timeout_code:
     return message[1]
 
 
+def _export_child(conn: Connection, job: dict[str, Any]) -> None:
+    if LIMIT_MEMORY:
+        resource.setrlimit(resource.RLIMIT_DATA, (MEMORY_LIMIT_BYTES, MEMORY_LIMIT_BYTES))
+    from . import export, imaging  # libvips and OpenCV are loaded in the child only
+
+    imaging.harden()
+    try:
+        rendered = export.render(job)
+        conn.send(("ok", (rendered.kind, rendered.data, rendered.width, rendered.height)))
+    except JobFailure as failure:
+        conn.send(("failed", failure.code))
+    finally:
+        conn.close()
+
+
+def export_isolated(job: dict[str, Any], timeout: float) -> Rendered:
+    """Renders an export in a child process; `job` holds the source bytes, not URLs."""
+    kind, data, width, height = _run_child(_export_child, (job,), timeout, "RENDER_TIMEOUT")
+    return Rendered(kind=kind, data=data, width=width, height=height)
+
+
 def register_isolated(
     before: bytes, before_type: str, after: bytes, after_type: str, timeout: float
 ) -> Transform:

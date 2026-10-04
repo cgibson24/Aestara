@@ -223,9 +223,12 @@ describe.runIf(databaseAvailable())("media permissions and releases (Layer 2)", 
   });
 
   it("needs consultation.complete for PATIENT_APP and photo.export otherwise", async () => {
-    const marketer = await release(marketing, "PATIENT_APP", photo.photoId);
-    expect(marketer.statusCode).toBe(403);
-    expect(marketer.json().error.code).toBe("PERMISSION_DENIED");
+    // MARKETING holds photo.export for released assets only and sees no patient (F-71).
+    for (const purpose of ["PATIENT_APP", "WEBSITE"]) {
+      const marketer = await release(marketing, purpose, photo.photoId);
+      expect(marketer.statusCode).toBe(404);
+      expect(marketer.json().error.code).toBe("PATIENT_NOT_FOUND");
+    }
     const ok = await release(surgeon, "PATIENT_APP", photo.photoId);
     expect(ok.statusCode, ok.body).toBe(201);
     const revoke = await call(surgeon, "POST", `/media-releases/${ok.json().data.id}/revoke`, {

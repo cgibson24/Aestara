@@ -14,6 +14,7 @@ import { CONFIG, type WorkerConfig } from "../config.ts";
 import { Database } from "../db/database.ts";
 import { PermissionLedger } from "../photos/permission-ledger.ts";
 import { DerivativeJobs } from "./derivatives.ts";
+import { ExportJobs } from "./exports.ts";
 import { WORKER_LOGGER } from "./logger.ts";
 import { RegistrationJobs } from "./registrations.ts";
 import { AUDIT_ARCHIVE_PREFIX } from "./relay.ts";
@@ -38,6 +39,7 @@ export class ScheduledJobs {
     private readonly ledger: PermissionLedger,
     private readonly derivatives: DerivativeJobs,
     private readonly registrations: RegistrationJobs,
+    private readonly exports: ExportJobs,
     @Inject(CONFIG) private readonly config: Pick<WorkerConfig, "AUDIT_ARCHIVE_BUCKET">,
     @Inject(WORKER_LOGGER) private readonly logger: Logger,
   ) {}
@@ -54,6 +56,7 @@ export class ScheduledJobs {
     for (const organizationId of await this.workerDb.activeOrganizations()) {
       total += await this.derivatives.sweepStuck(organizationId, now);
       total += await this.registrations.sweepStuck(organizationId, now);
+      total += await this.exports.sweepStuck(organizationId, now);
     }
     return total;
   }

@@ -4,7 +4,12 @@
 // or is out of scope. Lookups run inside the request transaction, under the
 // tenant policy.
 import type { EndpointDefinition } from "@aestara/api-contracts";
-import { isFeatureFlagKey, isOrganizationSettingKey, isPracticeSettingKey } from "@aestara/api-contracts";
+import {
+  EXPORT_KINDS,
+  isFeatureFlagKey,
+  isOrganizationSettingKey,
+  isPracticeSettingKey,
+} from "@aestara/api-contracts";
 import type { Catalog } from "../auth/catalog.ts";
 import type { Tx } from "../db/database.ts";
 import type { AuthContext } from "./context.ts";
@@ -37,6 +42,7 @@ const PATIENT_SUBRESOURCE_READ: Record<string, readonly string[]> = {
   concerns: ["consultation.create"],
   "medical-history": ["consultation.create"],
   "before-after": ["photo.view"],
+  exports: ["photo.view"],
 };
 
 function segment(op: EndpointDefinition): string {
@@ -46,7 +52,7 @@ function segment(op: EndpointDefinition): string {
 export function readPermissionsFor(op: EndpointDefinition): readonly string[] {
   if (
     segment(op) === "patients" &&
-    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId|setId)\}/.test(op.path)
+    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId|setId|exportId)\}/.test(op.path)
   ) {
     const sub = op.path.split("/")[3];
     if (sub !== undefined && PATIENT_SUBRESOURCE_READ[sub] !== undefined)
@@ -74,6 +80,16 @@ export async function resourceVisible(
               photoId: params.photoId ?? "",
               patientId: params.patientId ?? "",
               deletedAt: null,
+            },
+          })) > 0
+        );
+      if (params.exportId !== undefined)
+        return (
+          (await tx.photoDerivative.count({
+            where: {
+              id: params.exportId,
+              patientId: params.patientId ?? "",
+              kind: { in: [...EXPORT_KINDS] },
             },
           })) > 0
         );

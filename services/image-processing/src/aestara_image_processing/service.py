@@ -18,12 +18,15 @@ from typing import Any
 from . import sandbox, transfer
 from .config import JOB_SECONDS, Config
 from .contract import (
+    ExportJob,
     InvalidJob,
     Job,
     RegistrationJob,
     Rendered,
     Source,
     Transform,
+    export_failed,
+    export_succeeded,
     failed,
     generator,
     parse_message,
@@ -38,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 Renderer = Callable[[bytes, str, list[tuple[str, int]], float], list[Rendered]]
 Registrar = Callable[[bytes, str, bytes, str, float], Transform]
+Exporter = Callable[[dict[str, Any], float], Rendered]
 
 
 class JobRunner:
@@ -46,10 +50,12 @@ class JobRunner:
         config: Config,
         renderer: Renderer = sandbox.render_isolated,
         registrar: Registrar = sandbox.register_isolated,
+        exporter: Exporter = sandbox.export_isolated,
     ) -> None:
         self._origin = config.object_origin
         self._render = renderer
         self._register = registrar
+        self._export = exporter
         self._generator = generator()
 
     def run(self, body: str) -> dict[str, Any] | None:
@@ -69,10 +75,17 @@ class JobRunner:
             )
             if invalid.job_id is None or invalid.attempt is None:
                 return None
-            report = registration_failed if invalid.registration else failed
+            report = (
+                registration_failed if invalid.registration else export_failed if invalid.export else failed
+            )
             return report(invalid.job_id, invalid.attempt, JobFailure("INVALID_JOB"), self._generator)
         result: dict[str, Any]
-        if isinstance(job, RegistrationJob):
+        if isinstance(job, ExportJob):
+            try:
+                result = export_succeeded(job, self._export_job(job, started + JOB_SECONDS), self._generator)
+            except JobFailure as failure:
+                result = export_failed(job.job_id, job.attempt, failure, self._generator)
+        elif isinstance(job, RegistrationJob):
             try:
                 transform = self._registration(job, started + JOB_SECONDS)
                 result = registration_succeeded(job, transform, self._generator)
@@ -111,6 +124,23 @@ class JobRunner:
         return self._register(
             before, job.before.content_type, after, job.after.content_type, deadline - time.monotonic()
         )
+
+    def _export_job(self, job: ExportJob, deadline: float) -> Rendered:
+        if job.expires_at <= datetime.now(UTC):
+            raise JobFailure("JOB_EXPIRED")
+        sources = [(self._read(source, deadline), source.content_type) for source in job.sources]
+        rendered = self._export(
+            {
+                "layout": job.layout,
+                "sources": sources,
+                "max_edge": job.output.max_edge_px,
+                "shapes": list(job.shapes),
+                "transform": job.transform,
+            },
+            deadline - time.monotonic(),
+        )
+        transfer.put(job.output.url, rendered.data, job.output.headers, deadline)
+        return rendered
 
     def _process(self, job: Job, deadline: float) -> list[Rendered]:
         if job.expires_at <= datetime.now(UTC):

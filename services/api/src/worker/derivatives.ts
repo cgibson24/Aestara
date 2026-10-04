@@ -23,6 +23,8 @@ import { WORKER_LOGGER } from "./logger.ts";
 import { WorkerDb } from "./worker-db.ts";
 
 export const DERIVATIVE_KINDS = ["THUMBNAIL", "DISPLAY_PREVIEW"] as const;
+/** This worker's jobs; exports are IMAGE_DERIVATIVE jobs too, keyed `export:` (exports.ts). */
+const DERIVATIVE_JOB_PREFIX = "derivatives:";
 type Kind = (typeof DERIVATIVE_KINDS)[number];
 
 /** Retries after a transient failure: 1, 5 and 30 minutes, then the job fails (K2-06). */
@@ -93,8 +95,9 @@ export class DerivativeJobs {
     const prepared = await this.db.tenant(organizationId, async (tx) => {
       await lockRow(tx, "AIJob", jobId);
       const job = await tx.aIJob.findUnique({ where: { id: jobId } });
+      if (job === null || !job.idempotencyKey.startsWith(DERIVATIVE_JOB_PREFIX)) return undefined;
       // A repeated event, or one overtaken by a later attempt: nothing to do.
-      if (job === null || job.status !== "QUEUED" || job.attempt !== attempt - 1) return undefined;
+      if (job.status !== "QUEUED" || job.attempt !== attempt - 1) return undefined;
       const input = job.inputSummary as JobInput;
       const photo = await tx.patientPhoto.findUnique({
         where: { id: input.photoId },
@@ -202,7 +205,8 @@ export class DerivativeJobs {
     await this.db.tenant(organizationId, async (tx) => {
       await lockRow(tx, "AIJob", result.jobId);
       const job = await tx.aIJob.findUnique({ where: { id: result.jobId } });
-      if (job === null || job.status !== "RUNNING" || job.attempt !== result.attempt) return;
+      if (job === null || !job.idempotencyKey.startsWith(DERIVATIVE_JOB_PREFIX)) return;
+      if (job.status !== "RUNNING" || job.attempt !== result.attempt) return;
       const input = job.inputSummary as JobInput;
       if (result.status === "FAILED") {
         await this.failAttempt(
@@ -355,6 +359,7 @@ export class DerivativeJobs {
       const stuck = await tx.aIJob.findMany({
         where: {
           jobType: "IMAGE_DERIVATIVE",
+          idempotencyKey: { startsWith: DERIVATIVE_JOB_PREFIX },
           status: "RUNNING",
           startedAt: { lt: new Date(now.getTime() - STUCK_AFTER_MS) },
         },

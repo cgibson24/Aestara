@@ -6,7 +6,12 @@ this service answers `image.derivative.completed` or `image.derivative.failed`
 in the shape of ImageJobResult there. A message with `"task": "REGISTRATION"`
 asks for the alignment of two display previews instead
 (services/api/src/worker/registrations.ts, RegistrationJobMessage) and is
-answered with `image.registration.completed` or `.failed`. None carries PHI.
+answered with `image.registration.completed` or `.failed`. A message with
+`"task": "EXPORT"` asks for a purpose-specific export render
+(services/api/src/worker/exports.ts, ExportJobMessage), answered with
+`image.export.completed` or `.failed`. No message names a patient. The one
+free text any job carries is an export's annotation labels: they are drawn,
+never logged and never reported back.
 """
 
 import hashlib
@@ -72,6 +77,18 @@ class Transform:
 
 
 @dataclass(frozen=True)
+class ExportJob:
+    job_id: str
+    attempt: int
+    layout: str
+    sources: tuple["Source", ...]
+    output: OutputSpec
+    shapes: tuple[dict[str, Any], ...]
+    transform: dict[str, float] | None
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
 class Source:
     url: str
     content_type: str
@@ -102,6 +119,7 @@ class InvalidJob(ValueError):
         self.job_id = job_id
         self.attempt = attempt
         self.registration = registration
+        self.export = False
 
 
 def _is_int(value: object) -> TypeIs[int]:
@@ -119,7 +137,7 @@ def _allowed_url(url: object, origin: str | None) -> bool:
     return parts.scheme == "https" and host.endswith(".amazonaws.com")
 
 
-def parse_message(body: str, origin: str | None) -> Job | RegistrationJob:
+def parse_message(body: str, origin: str | None) -> Job | RegistrationJob | ExportJob:
     """Validates a job message of either kind. `origin` is the emulator's origin locally, None in AWS."""
     try:
         raw = json.loads(body)
@@ -129,6 +147,8 @@ def parse_message(body: str, origin: str | None) -> Job | RegistrationJob:
         raise InvalidJob("not an object")
     if raw.get("task") == "REGISTRATION":
         return _parse_registration(raw, origin)
+    if raw.get("task") == "EXPORT":
+        return _parse_export(raw, origin)
     return _parse_derivative(raw, origin)
 
 
@@ -136,7 +156,7 @@ def parse_job(body: str, origin: str | None) -> Job:
     """Validates a derivative job message."""
     job = parse_message(body, origin)
     if not isinstance(job, Job):
-        raise InvalidJob("task", job.job_id, job.attempt, registration=True)
+        raise InvalidJob("task", job.job_id, job.attempt, registration=isinstance(job, RegistrationJob))
     return job
 
 
@@ -191,6 +211,123 @@ def _parse_registration(raw: dict[str, Any], origin: str | None) -> Registration
     before = _source(raw.get("before"), origin, "before", invalid)
     after = _source(raw.get("after"), origin, "after", invalid)
     return RegistrationJob(job_id, attempt, before, after, _expiry(raw, invalid))
+
+
+_HEX_COLOUR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_SHAPE_TYPES: Final = ("FREEHAND", "LINE", "ARROW", "ELLIPSE", "RECTANGLE", "TEXT")
+MAX_SHAPES: Final = 500
+MAX_EXPORT_EDGE: Final = 4096
+
+
+def _fraction(value: object, low: float = 0.0, high: float = 1.0) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and low <= value <= high
+
+
+def _point(value: object) -> bool:
+    return isinstance(value, list) and len(value) == 2 and all(_fraction(v) for v in value)
+
+
+def _shape_valid(shape: object) -> bool:
+    """A resolved annotation shape: colours as hex, widths and sizes as fractions of the height."""
+    if not isinstance(shape, dict) or shape.get("type") not in _SHAPE_TYPES:
+        return False
+    if not isinstance(shape.get("color"), str) or _HEX_COLOUR.match(shape["color"]) is None:
+        return False
+    kind = shape["type"]
+    if kind == "TEXT":
+        text = shape.get("text")
+        return (
+            isinstance(text, str) and 1 <= len(text) <= 200 and _point(shape.get("position"))
+            and _fraction(shape.get("size"), 0.001, 0.1)
+        )  # fmt: skip
+    if not _fraction(shape.get("stroke"), 0.0001, 0.05):
+        return False
+    if kind == "FREEHAND":
+        points = shape.get("points")
+        return isinstance(points, list) and 2 <= len(points) <= 2000 and all(_point(p) for p in points)
+    if kind in ("LINE", "ARROW"):
+        return _point(shape.get("from")) and _point(shape.get("to"))
+    if kind == "ELLIPSE":
+        return (
+            _point(shape.get("center"))
+            and _fraction(shape.get("radiusX"))
+            and _fraction(shape.get("radiusY"))
+        )
+    size = shape.get("size")
+    return (
+        _point(shape.get("origin"))
+        and isinstance(size, list)
+        and len(size) == 2
+        and all(_fraction(v) for v in size)
+    )
+
+
+def _transform(value: object) -> dict[str, float] | None:
+    if value is None:
+        return None
+    limits = {
+        "scale": (0.25, 4.0),
+        "rotationDeg": (-180.0, 180.0),
+        "translateX": (-2.0, 2.0),
+        "translateY": (-2.0, 2.0),
+    }
+    if not isinstance(value, dict) or set(value) != set(limits):
+        raise ValueError
+    for key, (low, high) in limits.items():
+        if not _fraction(value[key], low, high):
+            raise ValueError
+    return {key: float(value[key]) for key in limits}
+
+
+def _parse_export(raw: dict[str, Any], origin: str | None) -> ExportJob:
+    job_id, attempt = _job_identity(raw)
+
+    def invalid(reason: str) -> InvalidJob:
+        failure = InvalidJob(reason, job_id, attempt)
+        failure.export = True
+        return failure
+
+    layout = raw.get("layout")
+    if layout not in ("SINGLE", "SIDE_BY_SIDE"):
+        raise invalid("layout")
+    sources_raw = raw.get("sources")
+    expected = 1 if layout == "SINGLE" else 2
+    if not isinstance(sources_raw, list) or len(sources_raw) != expected:
+        raise invalid("sources")
+    sources = tuple(_source(item, origin, "sources", invalid) for item in sources_raw)
+    output = raw.get("output")
+    if not isinstance(output, dict) or not _allowed_url(output.get("url"), origin):
+        raise invalid("output.url")
+    edge = output.get("maxEdgePx")
+    if not _is_int(edge) or not MIN_EDGE_PX <= edge <= MAX_EXPORT_EDGE:
+        raise invalid("output.maxEdgePx")
+    headers = output.get("headers", {})
+    if not isinstance(headers, dict) or not all(
+        isinstance(k, str) and _HEADER_NAME.match(k) and isinstance(v, str) and len(v) <= 1024
+        for k, v in headers.items()
+    ):
+        raise invalid("output.headers")
+    shapes = raw.get("shapes", [])
+    if layout != "SINGLE" and shapes:
+        raise invalid("shapes")
+    if not isinstance(shapes, list) or len(shapes) > MAX_SHAPES or not all(_shape_valid(s) for s in shapes):
+        raise invalid("shapes")
+    try:
+        transform = _transform(raw.get("transform"))
+    except ValueError:
+        raise invalid("transform") from None
+    if layout == "SINGLE" and transform is not None:
+        raise invalid("transform")
+    return ExportJob(
+        job_id=job_id,
+        attempt=attempt,
+        layout=layout,
+        sources=sources,
+        output=OutputSpec("EXPORT", output["url"], dict(headers), edge),
+        shapes=tuple(shapes),
+        transform=transform,
+        expires_at=_expiry(raw, invalid),
+    )
 
 
 def _parse_derivative(raw: dict[str, Any], origin: str | None) -> Job:
@@ -314,6 +451,37 @@ def registration_failed(
     return {
         "type": "image.registration.failed",
         "task": "REGISTRATION",
+        "jobId": job_id,
+        "attempt": attempt,
+        "status": "FAILED",
+        "errorCode": failure.code,
+        "retryable": failure.retryable,
+        "generator": gen,
+    }
+
+
+def export_succeeded(job: ExportJob, rendered: Rendered, gen: dict[str, str]) -> dict[str, Any]:
+    return {
+        "type": "image.export.completed",
+        "task": "EXPORT",
+        "jobId": job.job_id,
+        "attempt": job.attempt,
+        "status": "SUCCEEDED",
+        "output": {
+            "sha256": hashlib.sha256(rendered.data).hexdigest(),
+            "byteSize": len(rendered.data),
+            "widthPx": rendered.width,
+            "heightPx": rendered.height,
+        },
+        "retryable": False,
+        "generator": gen,
+    }
+
+
+def export_failed(job_id: str, attempt: int, failure: JobFailure, gen: dict[str, str]) -> dict[str, Any]:
+    return {
+        "type": "image.export.failed",
+        "task": "EXPORT",
         "jobId": job_id,
         "attempt": attempt,
         "status": "FAILED",

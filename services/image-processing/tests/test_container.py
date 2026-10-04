@@ -1,6 +1,7 @@
 """The container image as deployed: non-root, read-only root filesystem, no capabilities (ADR-0023 K2-01).
 
-It renders a derivative job and runs a registration job (ADR-0026 K3-13).
+It renders a derivative job, runs a registration job (ADR-0026 K3-13) and renders an
+annotated export with a text label, which needs the bundled font (K3-15).
 
 Runs when IMAGE_UNDER_TEST names a built image (CI builds one); it needs Docker.
 """
@@ -12,6 +13,7 @@ import uuid
 
 import pytest
 from support import PLANTED_TEXT, Emulator, jpeg_with_metadata, markers
+from test_export import export_job
 from test_registration import jpeg, moved, registration_job, texture
 
 IMAGE = os.environ.get("IMAGE_UNDER_TEST")
@@ -61,6 +63,18 @@ def test_the_image_renders_a_job_as_a_locked_down_container(emulator: Emulator) 
         assert [(r["type"], r["status"]) for r in registered] == [
             ("image.registration.completed", "SUCCEEDED")
         ]
+        label = {"type": "TEXT", "position": [0.1, 0.1], "text": "Brow", "color": "#E5484D", "size": 0.045}
+        export, export_key = export_job(emulator, [jpeg(texture())], shapes=[label])
+        emulator.send(export)
+        exported = []
+        for _ in range(60):
+            exported = emulator.results()
+            if exported:
+                break
+            time.sleep(1)
+        assert [(r["type"], r["status"]) for r in exported] == [("image.export.completed", "SUCCEEDED")]
+        written = emulator.read(export_key)
+        assert not [m for m in markers(written) if 0xE0 <= m <= 0xEF or m == 0xFE]
         for spec in job["outputs"]:
             written = emulator.read(spec["key"])
             assert PLANTED_TEXT not in written

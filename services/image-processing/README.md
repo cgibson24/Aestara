@@ -1,6 +1,6 @@
 # image-processing
 
-Renders each accepted photo's `THUMBNAIL` (long edge 400 px) and `DISPLAY_PREVIEW` (long edge 2048 px) as JPEG, in sRGB, with the orientation applied and all metadata removed. It also aligns before/after pairs: it estimates the transform that places an after photo over its before photo. Python 3.13 with pyvips (libvips 8.18 from the `pyvips-binary` wheel) and, for registration, OpenCV (`opencv-python-headless` 4.14, Apache-2.0), managed with uv. Decisions: ADR-0023 K2-01 and K2-06, ADR-0024, ADR-0026 K3-13.
+Renders each accepted photo's `THUMBNAIL` (long edge 400 px) and `DISPLAY_PREVIEW` (long edge 2048 px) as JPEG, in sRGB, with the orientation applied and all metadata removed. It also aligns before/after pairs (it estimates the transform that places an after photo over its before photo) and renders purpose-specific exports. Python 3.13 with pyvips (libvips 8.18 from the `pyvips-binary` wheel) and, for registration and exports, OpenCV (`opencv-python-headless` 4.14, Apache-2.0), managed with uv. Decisions: ADR-0023 K2-01 and K2-06, ADR-0024, ADR-0026 K3-13 to K3-15, ADR-0027.
 
 ## What it does
 
@@ -19,13 +19,21 @@ A registration job (`"task": "REGISTRATION"`, sent by `services/api/src/worker/r
 3. Refuses the fit as `NO_RELIABLE_ALIGNMENT` with fewer than 12 agreeing matches, under a quarter of matches agreeing, a scale outside 0.5–2, a turn beyond 20° or a shift beyond two image heights.
 4. Sends `image.registration.completed` (the transform, in units of the before image's height from its centre, and the number of agreeing matches) or `image.registration.failed`. Nothing is written.
 
-The whole job has 60 seconds. The service has **no database access** and sees **no PHI**: the URLs and the object keys inside them are opaque. It never changes an original.
+An export job (`"task": "EXPORT"`, sent by `services/api/src/worker/exports.ts`) holds presigned `GET`s for one original (`SINGLE`) or the before and after originals of a set (`SIDE_BY_SIDE`), one write-once `PUT` and the drawing instructions. The service downloads and checks the originals like a derivative job, then, in a fresh child process:
+
+1. Decodes each original with libvips, applies its orientation and converts it to sRGB.
+2. `SINGLE`: reduces the photo to at most `maxEdgePx` (4096) on its long edge, never enlarging it, and draws the annotation shapes in. The worker resolves each shape beforehand: colours as hex values from the design tokens, stroke widths and text sizes as fractions of the photo's height. Text is drawn with the bundled Inter font (`fonts/`, SIL Open Font License 1.1) and is never read as markup; Inter covers Latin, Greek and Cyrillic, and a character it lacks draws as a missing-glyph box.
+3. `SIDE_BY_SIDE`: brings both photos to the same height and places the after photo by the set's transform inside a frame the size of the before photo, on a neutral dark grey where it does not reach. The pair fits `maxEdgePx` side by side.
+4. Encodes one JPEG without any metadata, writes it through its `PUT` and sends `image.export.completed` (size, SHA-256 and pixel size) or `image.export.failed`. The render adds no text, dates, names or logos of its own; rendering is deterministic, so a repeated delivery meets the write-once object with the same bytes.
+
+The whole job has 60 seconds. The service has **no database access** and receives **no patient identifiers**: the URLs and the object keys inside them are opaque. The only free text it receives, an export's annotation labels, is drawn and never logged or reported back. It never changes an original.
 
 | Module | Role |
 |---|---|
 | `contract.py` | Job validation and result shapes (spec §6.7) |
 | `imaging.py` | libvips hardening, rendering, the metadata check |
 | `registration.py` | Before/after registration: decoding to grey, AKAZE features, RANSAC similarity fit |
+| `export.py` | Export renders: one photo with an annotation layer, or a before/after pair side by side |
 | `sandbox.py` | The child process: time limit, memory limit, kill |
 | `transfer.py` | Presigned `GET`/`PUT`: no redirects, size limits, deadlines |
 | `service.py` | One job, from message to result |
@@ -42,7 +50,7 @@ A retried code gets a new attempt with fresh URLs, after 1, 5 and 30 minutes. An
 | `JOB_TIMEOUT` | yes | The 60 seconds ran out during a transfer |
 | `SOURCE_UNREADABLE` | yes | The original could not be fetched |
 | `RENDER_TIMEOUT` | yes | Rendering ran out of time; the child process was killed |
-| `RENDER_CRASHED` | yes | The child process ended without an answer (for example, the memory limit) |
+| `RENDER_CRASHED` | yes | The child process ended without an answer (for example, the memory limit), or a label could not be drawn |
 | `OUTPUT_UPLOAD_FAILED` | yes | An output could not be written |
 | `INVALID_JOB` | no | The message does not match the contract, or a URL is outside the object store |
 | `SOURCE_TOO_LARGE` | no | The original is larger than declared, or over 50 MiB |
@@ -88,7 +96,9 @@ The tests use synthetic images only. They cover the following:
 - mislabelled, corrupt and truncated files;
 - loader blocking (GIF, TIFF, WebP and SVG refused) and deterministic output;
 - the sandbox's time limit;
-- the consumer against emulated S3 and SQS: write-once outputs, integrity failures, expiry, foreign URLs, and logs that carry no URL.
+- the consumer against emulated S3 and SQS: write-once outputs, integrity failures, expiry, foreign URLs, and logs that carry no URL;
+- registration: known transforms recovered, independence from the preview sizes, and refusals for featureless, unrelated or over-turned pairs;
+- exports: upright, stripped output within the size limit, every annotation shape at its place, labels drawn as written, a pair placed by its transform, contract refusals, and a repeated delivery meeting its write-once output.
 
 The api suite also runs this service for real (`services/api/test/derivatives-e2e.test.ts`, with `TEST_IMAGE_PROCESSING=1`).
 
@@ -99,4 +109,4 @@ docker build -t aestara-image-processing services/image-processing
 IMAGE_UNDER_TEST=aestara-image-processing uv run pytest tests/test_container.py
 ```
 
-The image is `python:3.13-slim`, pinned by digest, with Debian's security updates applied at build time and pip removed, plus the locked virtual environment. It runs as UID 10001 and works with a read-only root filesystem: mount a tmpfs at `/tmp`, which holds the heartbeat and the child-process server's socket. The health check is `python -m aestara_image_processing --healthcheck`, which fails when the consumer loop has not reported for 90 seconds. Allow at least 120 seconds to stop, so a running job can finish. CI builds the image, runs it locked down (no capabilities, no new privileges) and scans it with Trivy.
+The image is `python:3.13-slim`, pinned by digest, with Debian's security updates applied at build time and pip removed, plus the locked virtual environment. It runs as UID 10001 and works with a read-only root filesystem: mount a tmpfs at `/tmp`, which holds the heartbeat, the child-process server's socket and the font cache. The health check is `python -m aestara_image_processing --healthcheck`, which fails when the consumer loop has not reported for 90 seconds. Allow at least 120 seconds to stop, so a running job can finish. CI builds the image, runs it locked down (no capabilities, no new privileges) through a derivative, a registration and an annotated export with a label, and scans it with Trivy.

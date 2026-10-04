@@ -2,8 +2,8 @@
 # (spec §2.1 "Queues & events", §3.3, §6.7; ADR-0023 K2-04, K2-06, K2-07).
 #
 #   event bus (custom)  the worker relays committed outbox rows here (source aestara.api)
-#   worker-events       image.derivative.requested and image.registration.requested,
-#                       routed from the bus, read by the worker
+#   worker-events       image.derivative.requested, image.registration.requested and
+#                       image.export.requested, routed from the bus, read by the worker
 #   image-jobs          the worker's jobs for image-processing
 #   image-results       image-processing's results, read by the worker
 #   scan-results        GuardDuty Malware Protection results from the default bus
@@ -25,7 +25,7 @@ locals {
   }
 
   # The api events the worker consumes, by detail type.
-  worker_event_types = ["image.derivative.requested", "image.registration.requested"]
+  worker_event_types = ["image.derivative.requested", "image.registration.requested", "image.export.requested"]
 }
 
 resource "aws_cloudwatch_event_bus" "this" {

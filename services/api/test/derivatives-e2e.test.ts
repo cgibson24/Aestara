@@ -1,14 +1,15 @@
-// Derivatives and registration with the real image-processing service
-// (ADR-0023 K2-01, K2-06; ADR-0026 K3-13; Bible §29 "a standard photo session
-// works end to end"). photos.test.ts and before-after.test.ts play
-// image-processing themselves; here the Python service runs as its own process
-// against the same emulated S3 and SQS, so every hop is real: upload, scan,
-// relay, dispatch, rendering, verification, signed viewing and alignment.
+// Derivatives, registration and exports with the real image-processing
+// service (ADR-0023 K2-01, K2-06; ADR-0026 K3-13, K3-15; Bible §29 "a standard
+// photo session works end to end"). photos.test.ts, before-after.test.ts and
+// exports.test.ts play image-processing themselves; here the Python service
+// runs as its own process against the same emulated S3 and SQS, so every hop
+// is real: upload, scan, relay, dispatch, rendering, verification, signed
+// viewing, alignment and export.
 // Runs when TEST_IMAGE_PROCESSING=1 (CI sets it; it needs uv and
 // services/image-processing synced), alongside the database tests.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
@@ -65,245 +66,399 @@ function texturedJpeg(turn: number): Buffer {
   );
 }
 
-describe.runIf(enabled)("derivatives and registration through the real image-processing service", () => {
-  let api: TestApi;
-  let worker: Worker;
-  let service: ChildProcess;
-  let org: string;
-  let patient: string;
-  let photographer: StaffMember;
-  let faceProtocol: string;
-
-  const call = (method: string, url: string, payload?: unknown, headers: Record<string, string> = {}) =>
-    api.request({
-      method: method as "GET",
-      url: `/api/v1${url}`,
-      headers: { ...bearer(photographer), ...headers },
-      ...(payload !== undefined ? { payload: payload as object } : {}),
-    });
-
-  beforeAll(async () => {
-    api = await startApi();
-    worker = await startWorker(api);
-    const fx = new Fixtures(api);
-    org = await fx.organization();
-    patient = await fx.patient(org);
-    photographer = await fx.staff(org, "PHOTOGRAPHER");
-    await api.db.query("SELECT app_seed_standard_protocols($1::uuid)", [org]);
-    const protocols = await call("GET", "/photography-protocols");
-    faceProtocol = protocols.json().data.find((p: { name: string }) => p.name === "Face").id;
-    service = spawn(
-      "uv",
-      ["run", "--frozen", "--no-dev", "--project", SERVICE_DIR, "python", "-m", "aestara_image_processing"],
-      {
-        env: {
-          PATH: process.env.PATH ?? "",
-          HOME: process.env.HOME ?? "",
-          APP_ENV: "test",
-          AWS_ENDPOINT_URL: api.aws.endpoint,
-          IMAGE_JOBS_QUEUE_URL: api.aws.queues.imageJobs,
-          IMAGE_RESULTS_QUEUE_URL: api.aws.queues.imageResults,
-          HEARTBEAT_FILE: join(mkdtempSync(join(tmpdir(), "aestara-ip-")), "heartbeat"),
-          LOG_LEVEL: "warning",
-        },
-        stdio: ["ignore", "ignore", "inherit"],
-        // Its own process group, so the consumer and its sandbox children stop together.
-        detached: true,
-      },
-    );
+/**
+ * Reads a rendered JPEG with libvips: its size, its metadata fields, the RGB at
+ * pixel points, and for a side-by-side pair the mean difference between the two
+ * halves' centres, next to the same measure for two reference images.
+ */
+function inspect(
+  image: Buffer,
+  points: [number, number][] = [],
+  references: [Buffer, Buffer] | undefined = undefined,
+): {
+  width: number;
+  height: number;
+  fields: string[];
+  pixels: number[][];
+  halves?: number;
+  baseline?: number;
+} {
+  const dir = mkdtempSync(join(tmpdir(), "aestara-export-"));
+  const files = [image, ...(references ?? [])].map((bytes, i) => {
+    const file = join(dir, `${i}.jpg`);
+    writeFileSync(file, bytes);
+    return file;
   });
-  afterAll(async () => {
-    if (service?.pid !== undefined && service.exitCode === null) {
-      const exited = new Promise((done) => service.once("exit", done));
-      process.kill(-service.pid, "SIGKILL");
-      await exited;
-    }
-    await worker?.stop();
-    await api?.close();
-  });
+  const script = [
+    "import sys, json, pyvips, numpy as np",
+    "def arr(path):",
+    "    img = pyvips.Image.new_from_file(path)",
+    "    return img, np.ndarray(buffer=img.write_to_memory(), dtype=np.uint8, shape=(img.height, img.width, img.bands))",
+    "def centre(a):",
+    "    h, w = a.shape[:2]",
+    "    return a[h // 6 : 5 * h // 6, w // 6 : 5 * w // 6, :3].astype(np.float32)",
+    "img, a = arr(sys.argv[1])",
+    "out = {'width': img.width, 'height': img.height, 'fields': img.get_fields()}",
+    "out['pixels'] = [a[y, x, :3].tolist() for x, y in json.loads(sys.argv[2])]",
+    "if len(sys.argv) > 3:",
+    "    half = img.width // 2",
+    "    out['halves'] = float(np.abs(centre(a[:, :half]) - centre(a[:, half:])).mean())",
+    "    _, b = arr(sys.argv[3])",
+    "    _, c = arr(sys.argv[4])",
+    "    out['baseline'] = float(np.abs(centre(b) - centre(c)).mean())",
+    "print(json.dumps(out))",
+  ].join("\n");
+  const out = execFileSync(
+    "uv",
+    [
+      "run",
+      "--frozen",
+      "--no-dev",
+      "--project",
+      SERVICE_DIR,
+      "python",
+      "-c",
+      script,
+      files[0] ?? "",
+      JSON.stringify(points),
+      ...files.slice(1),
+    ],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+  return JSON.parse(out.toString());
+}
 
-  it("renders upright, metadata-free derivatives that the api verifies and serves", async () => {
-    const original = sourceJpeg();
-    const session = await call(
-      "POST",
-      `/patients/${patient}/photo-sessions`,
-      { protocolId: faceProtocol },
-      { "idempotency-key": crypto.randomUUID() },
-    );
-    const intent = await call(
-      "POST",
-      `/patients/${patient}/photos/uploads`,
-      {
-        photoSessionId: session.json().data.id,
-        viewKey: "FRONT",
-        contentType: "image/jpeg",
-        byteSize: original.length,
-        sha256: createHash("sha256").update(original).digest("hex"),
-        capturedAt: new Date().toISOString(),
-      },
-      { "idempotency-key": crypto.randomUUID() },
-    );
-    expect(intent.statusCode, intent.body).toBe(201);
-    const { photoId, upload } = intent.json().data;
-    expect((await fetch(upload.url, { method: "PUT", headers: upload.headers, body: original })).status).toBe(
-      200,
-    );
-    const completed = await call(
-      "POST",
-      `/patients/${patient}/photos/${photoId}/complete-upload`,
-      undefined,
-      {
-        "idempotency-key": crypto.randomUUID(),
-      },
-    );
-    expect(completed.statusCode, completed.body).toBe(200);
+describe.runIf(enabled)(
+  "derivatives, registration and exports through the real image-processing service",
+  () => {
+    let api: TestApi;
+    let worker: Worker;
+    let service: ChildProcess;
+    let org: string;
+    let patient: string;
+    let photographer: StaffMember;
+    let faceProtocol: string;
+    // The aligned pair, exported by the last test.
+    let pair: { before: string; after: string; setId: string; surgeon: StaffMember } | undefined;
 
-    // Scan, accept, relay and dispatch; then the service renders and the worker records.
-    await worker.consumer("scan-requests").pollOnce(1);
-    await worker.consumer("scan-results").pollOnce(1);
-    await worker.context.get(OutboxRelay).relayOnce();
-    await worker.consumer("worker-events").pollOnce(1);
-    let photo:
-      | { derivatives: { kind: string; status: string; widthPx?: number; heightPx?: number }[] }
-      | undefined;
-    for (let i = 0; i < 60; i++) {
-      await worker.consumer("image-results").pollOnce(1);
-      photo = (await call("GET", `/patients/${patient}/photos/${photoId}`)).json().data;
-      if (photo?.derivatives.every((d) => d.status !== "PENDING")) break;
-    }
-    expect(photo?.derivatives).toEqual([
-      { kind: "THUMBNAIL", status: "AVAILABLE", widthPx: 300, heightPx: 400 },
-      { kind: "DISPLAY_PREVIEW", status: "AVAILABLE", widthPx: 1536, heightPx: 2048 },
-    ]);
-
-    const job = await api.db.query(
-      `SELECT status, "resultSummary" FROM "AIJob" WHERE "jobType" = 'IMAGE_DERIVATIVE' AND "inputSummary"->>'photoId' = $1`,
-      [photoId],
-    );
-    expect(job.rows[0].status).toBe("SUCCEEDED");
-    const meta = await api.db.query(
-      `SELECT d."generationMetadata" AS meta FROM "PhotoDerivative" d WHERE d."sourcePhotoId" = $1 AND d.kind = 'THUMBNAIL'`,
-      [photoId],
-    );
-    expect(meta.rows[0].meta).toMatchObject({
-      generator: "aestara-image-processing",
-      metadataStripped: true,
-    });
-    expect(meta.rows[0].meta.generatorVersion).toMatch(/\+libvips\./);
-
-    const url = await call("POST", `/patients/${patient}/photos/${photoId}/access-urls`, {
-      variant: "THUMBNAIL",
-    });
-    expect(url.statusCode, url.body).toBe(201);
-    const thumbnail = Buffer.from(await (await fetch(url.json().data.url)).arrayBuffer());
-    expect(thumbnail.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
-    expect(thumbnail.includes(Buffer.from("Exif\0\0"))).toBe(false);
-
-    // The original is unchanged (read from the bucket: ORIGINAL bytes need photo.export).
-    const key = await api.db.query(
-      `SELECT s."objectKey" FROM "PatientPhoto" p JOIN "StorageObject" s ON s.id = p."originalObjectId" WHERE p.id = $1`,
-      [photoId],
-    );
-    const stored = await worker.context
-      .get(AwsClients)
-      .s3.send(new GetObjectCommand({ Bucket: api.aws.mediaBucket, Key: key.rows[0].objectKey }));
-    expect(Buffer.from((await stored.Body?.transformToByteArray()) ?? []).equals(original)).toBe(true);
-  }, 120_000);
-
-  it("aligns a before/after pair from the rendered previews", async () => {
-    const fx = new Fixtures(api);
-    const surgeon = await fx.staff(org, "SURGEON_PHYSICIAN");
-    const as = (who: StaffMember, method: string, url: string, payload?: unknown, headers = {}) =>
+    const call = (method: string, url: string, payload?: unknown, headers: Record<string, string> = {}) =>
       api.request({
         method: method as "GET",
         url: `/api/v1${url}`,
-        headers: { ...bearer(who), ...headers },
+        headers: { ...bearer(photographer), ...headers },
         ...(payload !== undefined ? { payload: payload as object } : {}),
       });
-    const idem = () => ({ "idempotency-key": crypto.randomUUID() });
-    async function photoOf(bytes: Buffer, capturedAt: Date): Promise<string> {
-      // Each photo in its own session, started when it was taken.
-      const session = await as(
-        photographer,
+
+    beforeAll(async () => {
+      api = await startApi();
+      worker = await startWorker(api);
+      const fx = new Fixtures(api);
+      org = await fx.organization();
+      patient = await fx.patient(org);
+      photographer = await fx.staff(org, "PHOTOGRAPHER");
+      await api.db.query("SELECT app_seed_standard_protocols($1::uuid)", [org]);
+      const protocols = await call("GET", "/photography-protocols");
+      faceProtocol = protocols.json().data.find((p: { name: string }) => p.name === "Face").id;
+      service = spawn(
+        "uv",
+        ["run", "--frozen", "--no-dev", "--project", SERVICE_DIR, "python", "-m", "aestara_image_processing"],
+        {
+          env: {
+            PATH: process.env.PATH ?? "",
+            HOME: process.env.HOME ?? "",
+            APP_ENV: "test",
+            AWS_ENDPOINT_URL: api.aws.endpoint,
+            IMAGE_JOBS_QUEUE_URL: api.aws.queues.imageJobs,
+            IMAGE_RESULTS_QUEUE_URL: api.aws.queues.imageResults,
+            HEARTBEAT_FILE: join(mkdtempSync(join(tmpdir(), "aestara-ip-")), "heartbeat"),
+            LOG_LEVEL: "warning",
+          },
+          stdio: ["ignore", "ignore", "inherit"],
+          // Its own process group, so the consumer and its sandbox children stop together.
+          detached: true,
+        },
+      );
+    });
+    afterAll(async () => {
+      if (service?.pid !== undefined && service.exitCode === null) {
+        const exited = new Promise((done) => service.once("exit", done));
+        process.kill(-service.pid, "SIGKILL");
+        await exited;
+      }
+      await worker?.stop();
+      await api?.close();
+    });
+
+    it("renders upright, metadata-free derivatives that the api verifies and serves", async () => {
+      const original = sourceJpeg();
+      const session = await call(
         "POST",
         `/patients/${patient}/photo-sessions`,
-        { protocolId: faceProtocol, startedAt: capturedAt.toISOString() },
-        idem(),
+        { protocolId: faceProtocol },
+        { "idempotency-key": crypto.randomUUID() },
       );
-      const intent = await as(
-        photographer,
+      const intent = await call(
         "POST",
         `/patients/${patient}/photos/uploads`,
         {
           photoSessionId: session.json().data.id,
           viewKey: "FRONT",
           contentType: "image/jpeg",
-          byteSize: bytes.length,
-          sha256: createHash("sha256").update(bytes).digest("hex"),
-          capturedAt: capturedAt.toISOString(),
+          byteSize: original.length,
+          sha256: createHash("sha256").update(original).digest("hex"),
+          capturedAt: new Date().toISOString(),
         },
-        idem(),
+        { "idempotency-key": crypto.randomUUID() },
       );
+      expect(intent.statusCode, intent.body).toBe(201);
       const { photoId, upload } = intent.json().data;
-      await fetch(upload.url, { method: "PUT", headers: upload.headers, body: bytes });
-      await as(
-        photographer,
+      expect(
+        (await fetch(upload.url, { method: "PUT", headers: upload.headers, body: original })).status,
+      ).toBe(200);
+      const completed = await call(
         "POST",
         `/patients/${patient}/photos/${photoId}/complete-upload`,
         undefined,
-        idem(),
+        {
+          "idempotency-key": crypto.randomUUID(),
+        },
       );
-      return photoId;
-    }
+      expect(completed.statusCode, completed.body).toBe(200);
 
-    const before = await photoOf(texturedJpeg(0), new Date(Date.now() - 86_400_000));
-    const after = await photoOf(texturedJpeg(5), new Date());
-    for (let i = 0; i < 4; i++) {
+      // Scan, accept, relay and dispatch; then the service renders and the worker records.
       await worker.consumer("scan-requests").pollOnce(1);
       await worker.consumer("scan-results").pollOnce(1);
-    }
-    await worker.context.get(OutboxRelay).relayOnce();
-    await worker.consumer("worker-events").pollOnce(1);
-    await worker.consumer("worker-events").pollOnce(1);
-    for (let i = 0; i < 60; i++) {
-      await worker.consumer("image-results").pollOnce(1);
-      const ready = await api.db.query(
-        `SELECT count(*)::int AS n FROM "PhotoDerivative" WHERE "sourcePhotoId" = ANY($1) AND kind = 'DISPLAY_PREVIEW'`,
-        [[before, after]],
-      );
-      if (ready.rows[0].n === 2) break;
-    }
+      await worker.context.get(OutboxRelay).relayOnce();
+      await worker.consumer("worker-events").pollOnce(1);
+      let photo:
+        | { derivatives: { kind: string; status: string; widthPx?: number; heightPx?: number }[] }
+        | undefined;
+      for (let i = 0; i < 60; i++) {
+        await worker.consumer("image-results").pollOnce(1);
+        photo = (await call("GET", `/patients/${patient}/photos/${photoId}`)).json().data;
+        if (photo?.derivatives.every((d) => d.status !== "PENDING")) break;
+      }
+      expect(photo?.derivatives).toEqual([
+        { kind: "THUMBNAIL", status: "AVAILABLE", widthPx: 300, heightPx: 400 },
+        { kind: "DISPLAY_PREVIEW", status: "AVAILABLE", widthPx: 1536, heightPx: 2048 },
+      ]);
 
-    const set = await as(
-      surgeon,
-      "POST",
-      `/patients/${patient}/before-after`,
-      { beforePhotoId: before, afterPhotoId: after },
-      idem(),
-    );
-    expect(set.statusCode, set.body).toBe(201);
-    const setId = set.json().data.id;
-    const queued = await as(
-      surgeon,
-      "POST",
-      `/patients/${patient}/before-after/${setId}/auto-registration`,
-      undefined,
-      idem(),
-    );
-    expect(queued.statusCode, queued.body).toBe(202);
-    await worker.context.get(OutboxRelay).relayOnce();
-    await worker.consumer("worker-events").pollOnce(1);
-    let aligned:
-      | { registrationMode: string; registrationTransform?: { rotationDeg: number; scale: number } }
-      | undefined;
-    for (let i = 0; i < 60; i++) {
-      await worker.consumer("image-results").pollOnce(1);
-      aligned = (await as(surgeon, "GET", `/patients/${patient}/before-after/${setId}`)).json().data;
-      if (aligned?.registrationMode === "AUTOMATIC") break;
-    }
-    expect(aligned?.registrationMode).toBe("AUTOMATIC");
-    // The after photo was turned 5° clockwise, so aligning it turns it back.
-    expect(aligned?.registrationTransform?.rotationDeg).toBeCloseTo(-5, 0);
-    expect(aligned?.registrationTransform?.scale).toBeCloseTo(1, 1);
-  }, 180_000);
-});
+      const job = await api.db.query(
+        `SELECT status, "resultSummary" FROM "AIJob" WHERE "jobType" = 'IMAGE_DERIVATIVE' AND "inputSummary"->>'photoId' = $1`,
+        [photoId],
+      );
+      expect(job.rows[0].status).toBe("SUCCEEDED");
+      const meta = await api.db.query(
+        `SELECT d."generationMetadata" AS meta FROM "PhotoDerivative" d WHERE d."sourcePhotoId" = $1 AND d.kind = 'THUMBNAIL'`,
+        [photoId],
+      );
+      expect(meta.rows[0].meta).toMatchObject({
+        generator: "aestara-image-processing",
+        metadataStripped: true,
+      });
+      expect(meta.rows[0].meta.generatorVersion).toMatch(/\+libvips\./);
+
+      const url = await call("POST", `/patients/${patient}/photos/${photoId}/access-urls`, {
+        variant: "THUMBNAIL",
+      });
+      expect(url.statusCode, url.body).toBe(201);
+      const thumbnail = Buffer.from(await (await fetch(url.json().data.url)).arrayBuffer());
+      expect(thumbnail.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+      expect(thumbnail.includes(Buffer.from("Exif\0\0"))).toBe(false);
+
+      // The original is unchanged (read from the bucket: ORIGINAL bytes need photo.export).
+      const key = await api.db.query(
+        `SELECT s."objectKey" FROM "PatientPhoto" p JOIN "StorageObject" s ON s.id = p."originalObjectId" WHERE p.id = $1`,
+        [photoId],
+      );
+      const stored = await worker.context
+        .get(AwsClients)
+        .s3.send(new GetObjectCommand({ Bucket: api.aws.mediaBucket, Key: key.rows[0].objectKey }));
+      expect(Buffer.from((await stored.Body?.transformToByteArray()) ?? []).equals(original)).toBe(true);
+    }, 120_000);
+
+    it("aligns a before/after pair from the rendered previews", async () => {
+      const fx = new Fixtures(api);
+      const surgeon = await fx.staff(org, "SURGEON_PHYSICIAN");
+      const as = (who: StaffMember, method: string, url: string, payload?: unknown, headers = {}) =>
+        api.request({
+          method: method as "GET",
+          url: `/api/v1${url}`,
+          headers: { ...bearer(who), ...headers },
+          ...(payload !== undefined ? { payload: payload as object } : {}),
+        });
+      const idem = () => ({ "idempotency-key": crypto.randomUUID() });
+      async function photoOf(bytes: Buffer, capturedAt: Date): Promise<string> {
+        // Each photo in its own session, started when it was taken.
+        const session = await as(
+          photographer,
+          "POST",
+          `/patients/${patient}/photo-sessions`,
+          { protocolId: faceProtocol, startedAt: capturedAt.toISOString() },
+          idem(),
+        );
+        const intent = await as(
+          photographer,
+          "POST",
+          `/patients/${patient}/photos/uploads`,
+          {
+            photoSessionId: session.json().data.id,
+            viewKey: "FRONT",
+            contentType: "image/jpeg",
+            byteSize: bytes.length,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+            capturedAt: capturedAt.toISOString(),
+          },
+          idem(),
+        );
+        const { photoId, upload } = intent.json().data;
+        await fetch(upload.url, { method: "PUT", headers: upload.headers, body: bytes });
+        await as(
+          photographer,
+          "POST",
+          `/patients/${patient}/photos/${photoId}/complete-upload`,
+          undefined,
+          idem(),
+        );
+        return photoId;
+      }
+
+      const before = await photoOf(texturedJpeg(0), new Date(Date.now() - 86_400_000));
+      const after = await photoOf(texturedJpeg(5), new Date());
+      for (let i = 0; i < 4; i++) {
+        await worker.consumer("scan-requests").pollOnce(1);
+        await worker.consumer("scan-results").pollOnce(1);
+      }
+      await worker.context.get(OutboxRelay).relayOnce();
+      await worker.consumer("worker-events").pollOnce(1);
+      await worker.consumer("worker-events").pollOnce(1);
+      for (let i = 0; i < 60; i++) {
+        await worker.consumer("image-results").pollOnce(1);
+        const ready = await api.db.query(
+          `SELECT count(*)::int AS n FROM "PhotoDerivative" WHERE "sourcePhotoId" = ANY($1) AND kind = 'DISPLAY_PREVIEW'`,
+          [[before, after]],
+        );
+        if (ready.rows[0].n === 2) break;
+      }
+
+      const set = await as(
+        surgeon,
+        "POST",
+        `/patients/${patient}/before-after`,
+        { beforePhotoId: before, afterPhotoId: after },
+        idem(),
+      );
+      expect(set.statusCode, set.body).toBe(201);
+      const setId = set.json().data.id;
+      const queued = await as(
+        surgeon,
+        "POST",
+        `/patients/${patient}/before-after/${setId}/auto-registration`,
+        undefined,
+        idem(),
+      );
+      expect(queued.statusCode, queued.body).toBe(202);
+      await worker.context.get(OutboxRelay).relayOnce();
+      await worker.consumer("worker-events").pollOnce(1);
+      let aligned:
+        | { registrationMode: string; registrationTransform?: { rotationDeg: number; scale: number } }
+        | undefined;
+      for (let i = 0; i < 60; i++) {
+        await worker.consumer("image-results").pollOnce(1);
+        aligned = (await as(surgeon, "GET", `/patients/${patient}/before-after/${setId}`)).json().data;
+        if (aligned?.registrationMode === "AUTOMATIC") break;
+      }
+      expect(aligned?.registrationMode).toBe("AUTOMATIC");
+      // The after photo was turned 5° clockwise, so aligning it turns it back.
+      expect(aligned?.registrationTransform?.rotationDeg).toBeCloseTo(-5, 0);
+      expect(aligned?.registrationTransform?.scale).toBeCloseTo(1, 1);
+      pair = { before, after, setId, surgeon };
+    }, 180_000);
+
+    it("exports an annotated photo and the aligned pair: upright, stripped, drawn and placed", async () => {
+      expect(pair).toBeDefined();
+      const { before, setId, surgeon } = pair as NonNullable<typeof pair>;
+      const as = (method: string, url: string, payload?: unknown, headers = {}) =>
+        api.request({
+          method: method as "GET",
+          url: `/api/v1/patients/${patient}${url}`,
+          headers: { ...bearer(surgeon), ...headers },
+          ...(payload !== undefined ? { payload: payload as object } : {}),
+        });
+      const idem = () => ({ "idempotency-key": crypto.randomUUID() });
+      for (const state of ["REQUESTED", "GRANTED"])
+        expect(
+          (
+            await as(
+              "POST",
+              "/photo-permissions",
+              {
+                category: "CLINICAL_USE",
+                state,
+                ...(state === "GRANTED" ? { evidence: "STAFF_ATTESTATION" } : {}),
+              },
+              idem(),
+            )
+          ).statusCode,
+        ).toBe(201);
+      const layer = {
+        schemaVersion: 1,
+        shapes: [
+          { type: "RECTANGLE", origin: [0.25, 0.25], size: [0.5, 0.5], color: "RED", stroke: "THICK" },
+          { type: "TEXT", position: [0.05, 0.05], text: "Brow & lid", color: "WHITE", size: "LARGE" },
+        ],
+      };
+      const annotation = await as("POST", `/photos/${before}/annotations`, { layer }, idem());
+      expect(annotation.statusCode, annotation.body).toBe(201);
+      const single = await as(
+        "POST",
+        `/photos/${before}/exports`,
+        { purpose: "CLINICAL_USE", annotationId: annotation.json().data.id },
+        idem(),
+      );
+      expect(single.statusCode, single.body).toBe(202);
+      const composite = await as(
+        "POST",
+        `/before-after/${setId}/exports`,
+        { purpose: "CLINICAL_USE" },
+        idem(),
+      );
+      expect(composite.statusCode, composite.body).toBe(202);
+
+      await worker.context.get(OutboxRelay).relayOnce();
+      await worker.consumer("worker-events").pollOnce(1);
+      await worker.consumer("worker-events").pollOnce(1);
+      const ids = [single.json().data.id, composite.json().data.id];
+      let statuses: string[] = [];
+      for (let i = 0; i < 60; i++) {
+        await worker.consumer("image-results").pollOnce(1);
+        statuses = await Promise.all(
+          ids.map(async (id) => (await as("GET", `/exports/${id}`)).json().data.status as string),
+        );
+        if (statuses.every((s) => s !== "PENDING")) break;
+      }
+      expect(statuses).toEqual(["READY", "READY"]);
+      const download = async (id: string) => {
+        const url = await as("POST", `/exports/${id}/access-urls`);
+        expect(url.statusCode, url.body).toBe(201);
+        return Buffer.from(await (await fetch(url.json().data.url)).arrayBuffer());
+      };
+      const metadata = ["exif-data", "xmp-data", "iptc-data", "icc-profile-data"];
+
+      // The annotated photo: the before photo's size, the rectangle's left edge in the token red.
+      const drawn = inspect(await download(ids[0] ?? ""), [[300, 800]]);
+      expect([drawn.width, drawn.height]).toEqual([1200, 1600]);
+      expect(drawn.fields.filter((f) => metadata.includes(f))).toEqual([]);
+      const [r, g, b] = drawn.pixels[0] ?? [];
+      expect(r).toBeGreaterThan(180);
+      expect(g).toBeLessThan(120);
+      expect(b).toBeLessThan(130);
+
+      // The pair: side by side at the same height, the after photo turned back over the before one.
+      const placed = inspect(await download(ids[1] ?? ""), [], [texturedJpeg(0), texturedJpeg(5)]);
+      expect([placed.width, placed.height]).toEqual([2400, 1600]);
+      expect(placed.fields.filter((f) => metadata.includes(f))).toEqual([]);
+      expect(placed.halves).toBeLessThan(0.5 * (placed.baseline ?? 0));
+    }, 180_000);
+  },
+);

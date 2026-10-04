@@ -1,7 +1,8 @@
 // The worker process (spec §3.1 "worker"; ADR-0023 K2-06, K2-07; ADR-0026
-// K3-13): the api's codebase in a separate deployable. It relays the outbox,
-// dispatches image jobs (derivatives and registrations) and records their results, applies malware scan results, and runs the
-// scheduled jobs. It holds no signing keys and no platform credentials.
+// K3-13, K3-15): the api's codebase in a separate deployable. It relays the
+// outbox, dispatches image jobs (derivatives, registrations and exports) and
+// records their results, applies malware scan results, and runs the scheduled
+// jobs. It holds no signing keys and no platform credentials.
 import "reflect-metadata";
 import type { INestApplicationContext } from "@nestjs/common";
 import { type DynamicModule, Module } from "@nestjs/common";
@@ -17,6 +18,7 @@ import { Outbox } from "../outbox/outbox.ts";
 import { PhotoIntake } from "../photos/intake.ts";
 import { PermissionLedger } from "../photos/permission-ledger.ts";
 import { DerivativeJobs } from "./derivatives.ts";
+import { ExportJobs } from "./exports.ts";
 import { ScheduledJobs } from "./jobs.ts";
 import { WORKER_LOGGER } from "./logger.ts";
 import { RegistrationJobs } from "./registrations.ts";
@@ -44,6 +46,7 @@ class WorkerModule {
         OutboxRelay,
         DerivativeJobs,
         RegistrationJobs,
+        ExportJobs,
         ScanResults,
         ...(config.MALWARE_SCANNER === "local" ? [LocalScanner] : []),
         ScheduledJobs,
@@ -67,6 +70,7 @@ export class Worker {
     const aws = context.get(AwsClients);
     const derivatives = context.get(DerivativeJobs);
     const registrations = context.get(RegistrationJobs);
+    const exports = context.get(ExportJobs);
     const scans = context.get(ScanResults);
     const consumer = (url: string, name: string, handler: (body: unknown) => Promise<void>) =>
       new QueueConsumer(aws.sqs, url, name, handler, logger);
@@ -82,12 +86,14 @@ export class Worker {
         if (event["detail-type"] === "image.derivative.requested") await derivatives.dispatch(jobId, attempt);
         if (event["detail-type"] === "image.registration.requested")
           await registrations.dispatch(jobId, attempt);
+        if (event["detail-type"] === "image.export.requested") await exports.dispatch(jobId, attempt);
       }),
-      consumer(config.IMAGE_RESULTS_QUEUE_URL, "image-results", (body) =>
-        (body as { task?: string } | null)?.task === "REGISTRATION"
-          ? registrations.complete(body)
-          : derivatives.complete(body),
-      ),
+      consumer(config.IMAGE_RESULTS_QUEUE_URL, "image-results", (body) => {
+        const task = (body as { task?: string } | null)?.task;
+        if (task === "REGISTRATION") return registrations.complete(body);
+        if (task === "EXPORT") return exports.complete(body);
+        return derivatives.complete(body);
+      }),
       consumer(config.SCAN_RESULTS_QUEUE_URL, "scan-results", (body) => scans.handle(body)),
     );
     if (config.MALWARE_SCANNER === "local" && config.SCAN_REQUESTS_QUEUE_URL !== undefined) {

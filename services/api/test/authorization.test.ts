@@ -70,6 +70,7 @@ async function world(
   const clinical = await fx.clinicalRecords(organizationId, patientId, consultationId, admin.userId);
   const setId = await fx.beforeAfter(organizationId, patientId, photography.photoId, admin.userId);
   const annotationId = await fx.annotation(organizationId, patientId, photography.photoId, admin.userId);
+  const exportId = await fx.export(organizationId, patientId, photography.photoId, admin.userId);
   return {
     admin,
     member,
@@ -92,6 +93,7 @@ async function world(
       ...clinical,
       setId,
       annotationId,
+      exportId,
     },
   };
 }
@@ -143,12 +145,16 @@ describe.runIf(databaseAvailable())("authorization generated from the endpoint r
   });
 
   describe("by a member without the permission", () => {
-    // A member whose role holds none of the permissions that admit the operation.
+    // A member whose role does not hold what the operation needs: none of the
+    // permissions that admit it, or not all of the ones it also requires.
     const lacking = (e: EndpointDefinition): StaffMember => {
       const admitting =
         e.auth.kind === "permission" ? [e.auth.permission, ...(e.auth.orPermissions ?? [])] : [];
-      const holds = (role: keyof typeof ROLE_PERMISSIONS) =>
-        admitting.some((p) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(p));
+      const required = e.auth.kind === "permission" ? (e.auth.alsoRequires ?? []) : [];
+      const holds = (role: keyof typeof ROLE_PERMISSIONS) => {
+        const has = (p: string) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(p);
+        return admitting.some(has) && required.every(has);
+      };
       if (!holds("MARKETING")) return marketing;
       if (!holds("FRONT_DESK")) return frontDesk;
       throw new Error(`No fixture member lacks the permissions of ${e.operationId}`);

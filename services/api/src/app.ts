@@ -42,6 +42,8 @@ import { AnnotationsController } from "./photos/annotations.controller.ts";
 import { AnnotationsService } from "./photos/annotations.service.ts";
 import { BeforeAfterController } from "./photos/before-after.controller.ts";
 import { BeforeAfterService } from "./photos/before-after.service.ts";
+import { ExportsController } from "./photos/exports.controller.ts";
+import { ExportsService } from "./photos/exports.service.ts";
 import { PhotoIntake } from "./photos/intake.ts";
 import { PermissionLedger } from "./photos/permission-ledger.ts";
 import { PermissionsService } from "./photos/permissions.service.ts";
@@ -71,6 +73,7 @@ class AppModule {
         SettingsController,
         PhotographyController,
         BeforeAfterController,
+        ExportsController,
         AnnotationsController,
         ConsultationsController,
         ConfigurationController,
@@ -99,6 +102,7 @@ class AppModule {
         PermissionLedger,
         PermissionsService,
         BeforeAfterService,
+        ExportsService,
         AnnotationsService,
         ConsultationsService,
         NotesService,

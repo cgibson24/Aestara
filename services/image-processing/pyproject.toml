@@ -1,7 +1,7 @@
 [project]
 name = "aestara-image-processing"
 version = "0.2.0"
-description = "Derivative rendering (thumbnails and display previews) for the Aesthetic Platform (ADR-0023 K2-01, K2-06)"
+description = "Image jobs for the Aesthetic Platform: derivatives, before/after registration and export renders (ADR-0023 K2-01; ADR-0026 K3-13, K3-15)"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 license = "LicenseRef-Proprietary"

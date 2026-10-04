@@ -81,7 +81,7 @@ export class PermissionLedger {
 
   /**
    * After a change that may end grants: revokes every active release of the
-   * category whose governing permission is no longer granted, and emits
+   * category for which a photo it shows is no longer granted, and emits
    * photo_permission.revoked for the downstream compliance workflow [B §7.3].
    */
   async withdraw(
@@ -91,17 +91,46 @@ export class PermissionLedger {
     category: Category,
     change: PermissionRow,
   ): Promise<void> {
+    const photo = { select: { id: true, photoSessionId: true } } as const;
     const releases = await tx.mediaRelease.findMany({
-      where: { patientId, purpose: category, revokedAt: null, photoId: { not: null } },
-      include: { photo: { select: { id: true, photoSessionId: true } } },
+      where: {
+        patientId,
+        purpose: category,
+        revokedAt: null,
+        OR: [{ photoId: { not: null } }, { derivativeId: { not: null } }],
+      },
+      include: {
+        photo,
+        // An export shows its source photo, and a composite both photos of its set (ADR-0027).
+        derivative: {
+          select: {
+            sourcePhoto: photo,
+            beforeAfterSet: { select: { beforePhoto: photo, afterPhoto: photo } },
+          },
+        },
+      },
     });
     const now = new Date();
     const rows = await this.current(tx, patientId, category);
     const revoked: string[] = [];
     const events: AuditInput[] = [];
     for (const release of releases) {
-      if (release.photo === null) continue;
-      if (stateAt(governing(rows, release.photo), now) === "GRANTED") continue;
+      const shown =
+        release.photo !== null
+          ? [release.photo]
+          : release.derivative !== null
+            ? [
+                release.derivative.sourcePhoto,
+                ...(release.derivative.beforeAfterSet !== null
+                  ? [
+                      release.derivative.beforeAfterSet.beforePhoto,
+                      release.derivative.beforeAfterSet.afterPhoto,
+                    ]
+                  : []),
+              ]
+            : [];
+      if (shown.length === 0) continue;
+      if (shown.every((p) => stateAt(governing(rows, p), now) === "GRANTED")) continue;
       await tx.mediaRelease.update({
         where: { id: release.id },
         data: {

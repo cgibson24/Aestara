@@ -6,6 +6,7 @@ export * from "./configuration.ts";
 export * from "./consultations.ts";
 export * from "./endpoints.ts";
 export * from "./errors.ts";
+export * from "./exports.ts";
 export * from "./headers.ts";
 export { buildRegistry, generateOpenApiDocument, renderOpenApiDocument, sharedSchemas } from "./openapi.ts";
 export * from "./organizations.ts";

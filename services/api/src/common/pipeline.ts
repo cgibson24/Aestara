@@ -258,12 +258,16 @@ export class OperationPipeline implements NestInterceptor {
   }
 }
 
-/** The operation's permission, or one of its listed alternatives (EndpointAuth.orPermissions). */
+/**
+ * The operation's permission, or one of its listed alternatives
+ * (EndpointAuth.orPermissions), and every permission it also requires.
+ */
 export function holdsOperationPermission(op: EndpointDefinition, auth: AuthContext): boolean {
   if (op.auth.kind !== "permission") return true;
   return (
-    auth.permissions.has(op.auth.permission) ||
-    (op.auth.orPermissions ?? []).some((permission) => auth.permissions.has(permission))
+    (auth.permissions.has(op.auth.permission) ||
+      (op.auth.orPermissions ?? []).some((permission) => auth.permissions.has(permission))) &&
+    (op.auth.alsoRequires ?? []).every((permission) => auth.permissions.has(permission))
   );
 }
 

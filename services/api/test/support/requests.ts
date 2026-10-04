@@ -24,6 +24,7 @@ export interface ResourceRefs {
   entryId: string;
   setId: string;
   annotationId: string;
+  exportId: string;
 }
 
 let n = 0;
@@ -60,6 +61,7 @@ export function pathFor(e: EndpointDefinition, refs: ResourceRefs): string {
     .replace("{entryId}", refs.entryId)
     .replace("{setId}", refs.setId)
     .replace("{annotationId}", refs.annotationId)
+    .replace("{exportId}", refs.exportId)
     .replace("{practiceId}", refs.practiceId)
     .replace("{key}", key)}`;
 }
@@ -144,6 +146,8 @@ export function bodyFor(e: EndpointDefinition, refs: ResourceRefs): Record<strin
     updateBeforeAfterSet: { title: `Set ${u}` },
     createPhotoAnnotation: { layer: { schemaVersion: 1, shapes: [] } },
     updatePhotoAnnotation: { label: `Layer ${u}` },
+    createPhotoExport: { purpose: "CLINICAL_USE" },
+    createBeforeAfterExport: { purpose: "CLINICAL_USE" },
     updatePatientConcern: { description: `Fixture concern ${u}` },
     createMedicalHistoryEntry: { category: "ALLERGY", description: "Fixture allergy" },
     updateMedicalHistoryEntry: { description: `Fixture entry ${u}` },

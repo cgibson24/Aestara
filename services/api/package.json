@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Staff and admin API (NestJS on Fastify): authentication, tenancy, authorization, organizations, users, patients, audit (spec §3, §4, §6).",
+  "description": "Staff and admin API (NestJS on Fastify): authentication, tenancy, authorization, organizations, users, patients, audit (spec \u00a73, \u00a74, \u00a76).",
   "scripts": {
     "build": "node scripts/build.ts",
     "start": "node dist/main.js",
@@ -13,6 +13,7 @@
   "dependencies": {
     "@aestara/api-contracts": "workspace:*",
     "@aestara/database": "workspace:*",
+    "@aestara/design-tokens": "workspace:*",
     "@aestara/shared-types": "workspace:*",
     "@asteasolutions/zod-to-openapi": "9.1.0",
     "@aws-sdk/client-eventbridge": "3.1143.0",

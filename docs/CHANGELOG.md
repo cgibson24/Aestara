@@ -2,6 +2,20 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Purpose-specific exports (M3.7 backend; ADR-0027)
+
+- **API:** `POST …/photos/{photoId}/exports` (optionally with one annotation layer) and `POST …/before-after/{setId}/exports` (`202`); `GET /patients/{patientId}/exports/{exportId}` (pending, ready, failed or revoked); `POST …/exports/{exportId}/access-urls` (10 minutes). All four need `photo.export`, `photo.view` and step-up. The request checks the current grant on every photo shown (`403 MEDIA_PERMISSION_NOT_GRANTED`), then in one transaction registers the output object, creates the derivative and its release pinning every permission version relied on, queues the render and writes `PHOTO_EXPORTED` per photo. Downloads re-check the grants and write `PHOTO_VIEWED`. 30 requests per user in 10 minutes.
+- **Authorization (F-71):** the registry gains `alsoRequires`. The Layer 2 release routes now also require `photo.view`, so MARKETING, which holds `photo.export` for released assets only, can no longer create or revoke a release.
+- **Revocation:** a permission change also revokes releases whose subject is a derivative, checking every photo it shows (both photos of a composite).
+- **Worker:** `image.export.requested` dispatches export jobs (`IMAGE_DERIVATIVE`, keyed `export:`): it re-checks the release, the photos and the annotation layer (`SOURCE_CHANGED` if the layer changed), resolves colours from the design tokens, and verifies the written output before making it available. Retries and the stuck-job sweep work as for derivatives. The derivative worker now handles only jobs keyed `derivatives:`. The api depends on `@aestara/design-tokens`.
+- **image-processing:** `export.py` renders a single photo with its annotation layer, or a before/after pair side by side by its transform. Output is upright sRGB JPEG with no metadata, at most 4096 px, never enlarged. Labels are drawn in the bundled Inter (SIL OFL 1.1), with the package's own fontconfig file, and are never read as markup.
+- **Routing:** `image.export.requested` in the outbox types, the local emulator's worker rule and Terraform's `worker_event_types`.
+- **Tests:**
+  - `exports.test.ts` (9), covering Bible §34.1 #18, #19 and #21 and §7.1/§7.3.
+  - The real-service export test in `derivatives-e2e.test.ts`.
+  - 33 pytest export tests, and an export with a label in the container test.
+  - The generated authorization and cross-tenant tests cover the new operations. The api suite runs 548 tests.
+
 ## 2026-10-04: Photo annotations (M3.4 backend; ADR-0027)
 
 - **Design tokens:** a fixed `annotation` palette of six colours, the same in both appearances (`DSAnnotationColor` on iOS, `--annotation-*` in CSS).

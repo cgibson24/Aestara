@@ -148,7 +148,7 @@ function registerEndpoint(registry: OpenAPIRegistry, e: EndpointDefinition): voi
   const auth = e.auth;
   const notes = [
     auth.kind === "permission"
-      ? `Permission: \`${auth.permission}\` (${auth.scopes.join(" or ")} scope).`
+      ? `Permission: \`${auth.permission}\`${(auth.alsoRequires ?? []).map((p) => ` and \`${p}\``).join("")} (${auth.scopes.join(" or ")} scope).`
       : auth.kind === "token"
         ? `Authorized by the ${auth.token} token.`
         : auth.kind === "session"

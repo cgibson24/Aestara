@@ -14,6 +14,8 @@ export const OUTBOX_EVENT_TYPES = {
   "image.derivative.requested": "AIJob",
   /** A before/after registration job is due (ADR-0026 K3-13). Consumed by the worker's dispatcher. */
   "image.registration.requested": "AIJob",
+  /** An export render is due (ADR-0026 K3-15). Consumed by the worker's dispatcher. */
+  "image.export.requested": "AIJob",
   /** A grant ended; the payload lists the releases revoked with it [B §7.3] (K2-15). */
   "photo_permission.revoked": "PhotoPermission",
 } as const;
