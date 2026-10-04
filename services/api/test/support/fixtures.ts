@@ -230,6 +230,22 @@ export class Fixtures {
     return { protocolId, photoSessionId, photoId, releaseId, permissionId, objectKey };
   }
 
+  /** An empty annotation layer on a photo, by its author. */
+  async annotation(
+    organizationId: string,
+    patientId: string,
+    photoId: string,
+    authorUserId: string,
+  ): Promise<string> {
+    const id = uuidv7();
+    await this.api.db.query(
+      `INSERT INTO "PhotoAnnotation" (id, "organizationId", "patientId", "photoId", "authorUserId", layer, "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, '{"schemaVersion": 1, "shapes": []}', now())`,
+      [id, organizationId, patientId, photoId, authorUserId],
+    );
+    return id;
+  }
+
   /** A later photo of the same view as `beforePhotoId`, and a before/after set of the two. */
   async beforeAfter(
     organizationId: string,

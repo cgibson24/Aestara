@@ -3984,6 +3984,391 @@
         ],
         "additionalProperties": false
       },
+      "PhotoAnnotation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "photoId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "authorUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "layer": {
+            "$ref": "#/components/schemas/AnnotationLayer"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "photoId",
+          "authorUserId",
+          "layer",
+          "createdAt",
+          "updatedAt",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "AnnotationLayer": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "shapes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationShape"
+            },
+            "maxItems": 500
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "shapes"
+        ],
+        "additionalProperties": false,
+        "description": "Version 1: shapes in coordinates normalized to the upright photo. No measurements."
+      },
+      "AnnotationShape": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "FREEHAND"
+                ]
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnnotationPoint"
+                },
+                "minItems": 2,
+                "maxItems": 2000
+              },
+              "color": {
+                "$ref": "#/components/schemas/AnnotationColor"
+              },
+              "stroke": {
+                "$ref": "#/components/schemas/AnnotationStroke"
+              }
+            },
+            "required": [
+              "type",
+              "points",
+              "color",
+              "stroke"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "LINE"
+                ]
+              },
+              "from": {
+                "$ref": "#/components/schemas/AnnotationPoint"
+              },
+              "to": {
+                "$ref": "#/components/schemas/AnnotationPoint"
+              },
+              "color": {
+                "$ref": "#/components/schemas/AnnotationColor"
+              },
+              "stroke": {
+                "$ref": "#/components/schemas/AnnotationStroke"
+              }
+            },
+            "required": [
+              "type",
+              "from",
+              "to",
+              "color",
+              "stroke"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ARROW"
+                ]
+              },
+              "from": {
+                "$ref": "#/components/schemas/AnnotationPoint"
+              },
+              "to": {
+                "$ref": "#/components/schemas/AnnotationPoint"
+              },
+              "color": {
+                "$ref": "#/components/schemas/AnnotationColor"
+              },
+              "stroke": {
+                "$ref": "#/components/schemas/AnnotationStroke"
+              }
+            },
+            "required": [
+              "type",
+              "from",
+              "to",
+              "color",
+              "stroke"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ELLIPSE"
+                ]
+              },
+              "center": {
+                "$ref": "#/components/schemas/AnnotationPoint"
+              },
+              "radiusX": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "radiusY": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "color": {
+                "$ref": "#/components/schemas/AnnotationColor"
+              },
+              "stroke": {
+                "$ref": "#/components/schemas/AnnotationStroke"
+              }
+            },
+            "required": [
+              "type",
+              "center",
+              "radiusX",
+              "radiusY",
+              "color",
+              "stroke"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "RECTANGLE"
+                ]
+              },
+              "origin": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                ],
+                "description": "Top-left corner."
+              },
+              "size": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                ]
+              },
+              "color": {
+                "$ref": "#/components/schemas/AnnotationColor"
+              },
+              "stroke": {
+                "$ref": "#/components/schemas/AnnotationStroke"
+              }
+            },
+            "required": [
+              "type",
+              "origin",
+              "size",
+              "color",
+              "stroke"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "TEXT"
+                ]
+              },
+              "position": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                ],
+                "description": "Top-left of the text."
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "color": {
+                "$ref": "#/components/schemas/AnnotationColor"
+              },
+              "size": {
+                "$ref": "#/components/schemas/AnnotationTextSize"
+              }
+            },
+            "required": [
+              "type",
+              "position",
+              "text",
+              "color",
+              "size"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "AnnotationPoint": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        ]
+      },
+      "AnnotationColor": {
+        "type": "string",
+        "enum": [
+          "RED",
+          "YELLOW",
+          "GREEN",
+          "BLUE",
+          "WHITE",
+          "BLACK"
+        ]
+      },
+      "AnnotationStroke": {
+        "type": "string",
+        "enum": [
+          "THIN",
+          "MEDIUM",
+          "THICK"
+        ]
+      },
+      "AnnotationTextSize": {
+        "type": "string",
+        "enum": [
+          "SMALL",
+          "MEDIUM",
+          "LARGE"
+        ]
+      },
+      "PhotoAnnotationCreate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Client-generated UUIDv7 for a layer drawn offline."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "layer": {
+            "$ref": "#/components/schemas/AnnotationLayer"
+          }
+        },
+        "required": [
+          "layer"
+        ],
+        "additionalProperties": false
+      },
+      "PhotoAnnotationUpdate": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "layer": {
+            "$ref": "#/components/schemas/AnnotationLayer"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Only the author changes a layer."
+      },
       "BeforeAfterSet": {
         "type": "object",
         "properties": {
@@ -11787,6 +12172,389 @@
           },
           "409": {
             "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/{photoId}/annotations": {
+      "get": {
+        "operationId": "listPhotoAnnotations",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "The photo's annotation layers, oldest first. Deleted layers are not listed.",
+        "description": "Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PhotoAnnotation"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPhotoAnnotation",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Add an annotation layer to an accepted, unarchived photo. A client UUIDv7 is accepted for layers drawn offline.",
+        "description": "Permission: `photo.annotate` (organization scope). Audit: PHOTO_ANNOTATED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoAnnotationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotoAnnotation"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/photos/{photoId}/annotations/{annotationId}": {
+      "patch": {
+        "operationId": "updatePhotoAnnotation",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Change one's own annotation layer.",
+        "description": "Permission: `photo.annotate` (organization scope). Audit: PHOTO_ANNOTATED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "annotationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoAnnotationUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PhotoAnnotation"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePhotoAnnotation",
+        "tags": [
+          "Photography"
+        ],
+        "summary": "Delete one's own annotation layer. The row is kept, marked deleted.",
+        "description": "Permission: `photo.annotate` (organization scope). Audit: PHOTO_ANNOTATED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "photoId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "annotationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
           },
           "500": {
             "$ref": "#/components/responses/Error500"

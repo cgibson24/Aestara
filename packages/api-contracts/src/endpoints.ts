@@ -3,6 +3,7 @@
 // (permission, envelope, idempotency, If-Match) and the generated cross-tenant
 // tests (spec §6.8). Paths are relative to /api/v1 and use OpenAPI `{param}`.
 
+import { PhotoAnnotation, PhotoAnnotationCreate, PhotoAnnotationUpdate } from "./annotations.ts";
 import { AuditEvent, AuditEventQuery } from "./audit.ts";
 import {
   AccessTokenResult,
@@ -231,6 +232,7 @@ const NoteParams = z.strictObject({ patientId: Uuid, consultationId: Uuid, noteI
 const ConcernParams = z.strictObject({ patientId: Uuid, concernId: Uuid });
 const HistoryParams = z.strictObject({ patientId: Uuid, entryId: Uuid });
 const SetParams = z.strictObject({ patientId: Uuid, setId: Uuid });
+const AnnotationParams = z.strictObject({ patientId: Uuid, photoId: Uuid, annotationId: Uuid });
 
 const perm = (permission: string, ...scopes: PermissionScope[]): EndpointAuth => ({
   kind: "permission",
@@ -1295,6 +1297,67 @@ export const ENDPOINTS = [
     patientData: true,
   },
 
+  // ---- Annotations (spec §6.3 "Photography"; ADR-0026 K3-10) ---------------------
+  {
+    operationId: "listPhotoAnnotations",
+    method: "GET",
+    path: "/patients/{patientId}/photos/{photoId}/annotations",
+    tag: "Photography",
+    summary: "The photo's annotation layers, oldest first. Deleted layers are not listed.",
+    auth: perm("photo.view"),
+    params: PhotoParams,
+    response: { status: 200, shape: "collection", schema: PhotoAnnotation },
+    notFound: "PHOTO_NOT_FOUND",
+    patientData: true,
+  },
+  {
+    operationId: "createPhotoAnnotation",
+    method: "POST",
+    path: "/patients/{patientId}/photos/{photoId}/annotations",
+    tag: "Photography",
+    summary:
+      "Add an annotation layer to an accepted, unarchived photo. A client UUIDv7 is accepted for layers drawn offline.",
+    auth: perm("photo.annotate"),
+    params: PhotoParams,
+    body: PhotoAnnotationCreate,
+    idempotency: "required",
+    response: { status: 201, shape: "resource", schema: PhotoAnnotation, etag: true },
+    notFound: "PHOTO_NOT_FOUND",
+    audit: ["PHOTO_ANNOTATED"],
+    patientData: true,
+    errors: [409],
+  },
+  {
+    operationId: "updatePhotoAnnotation",
+    method: "PATCH",
+    path: "/patients/{patientId}/photos/{photoId}/annotations/{annotationId}",
+    tag: "Photography",
+    summary: "Change one's own annotation layer.",
+    auth: perm("photo.annotate"),
+    params: AnnotationParams,
+    body: PhotoAnnotationUpdate,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: PhotoAnnotation, etag: true },
+    notFound: "PHOTO_ANNOTATION_NOT_FOUND",
+    audit: ["PHOTO_ANNOTATED"],
+    patientData: true,
+    errors: [409],
+  },
+  {
+    operationId: "deletePhotoAnnotation",
+    method: "DELETE",
+    path: "/patients/{patientId}/photos/{photoId}/annotations/{annotationId}",
+    tag: "Photography",
+    summary: "Delete one's own annotation layer. The row is kept, marked deleted.",
+    auth: perm("photo.annotate"),
+    params: AnnotationParams,
+    ifMatch: "required",
+    response: { status: 204, shape: "none" },
+    notFound: "PHOTO_ANNOTATION_NOT_FOUND",
+    audit: ["PHOTO_ANNOTATED"],
+    patientData: true,
+    errors: [409],
+  },
   // ---- Before / after (spec §6.3 "Before / after"; ADR-0026 K3-11 to K3-13) -------
   {
     operationId: "listBeforeAfterSets",

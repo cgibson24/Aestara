@@ -35,6 +35,16 @@ public enum DSColor {
     public static let scrim = Color(light: 0x0C0D0F8C, dark: 0x00000099)
 }
 
+/// Annotation colours (ADR-0026 K3-10): fixed, drawn on photos in either appearance.
+public enum DSAnnotationColor {
+    public static let red = Color(light: 0xE5484DFF, dark: 0xE5484DFF)
+    public static let yellow = Color(light: 0xF5C518FF, dark: 0xF5C518FF)
+    public static let green = Color(light: 0x30A46CFF, dark: 0x30A46CFF)
+    public static let blue = Color(light: 0x3E8BFFFF, dark: 0x3E8BFFFF)
+    public static let white = Color(light: 0xFFFFFFFF, dark: 0xFFFFFFFF)
+    public static let black = Color(light: 0x111111FF, dark: 0x111111FF)
+}
+
 public enum DSSpacing {
     public static let xxs: CGFloat = 2
     public static let xs: CGFloat = 4

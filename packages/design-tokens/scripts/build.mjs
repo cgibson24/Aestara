@@ -15,6 +15,7 @@ const HEADER = "Generated from packages/design-tokens/tokens.json by scripts/bui
 const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 
 const lightKeys = Object.keys(tokens.color.light);
+const annotationColors = Object.entries(tokens.annotation).filter(([k]) => k !== "note");
 const darkKeys = Object.keys(tokens.color.dark);
 if (lightKeys.join() !== darkKeys.join()) {
   throw new Error("color.light and color.dark must define the same roles in the same order");
@@ -35,6 +36,7 @@ const colorVars = (theme) =>
     .join("\n");
 
 const scalarVars = [
+  ...annotationColors.map(([k, v]) => `  --annotation-${k}: ${v};`),
   ...Object.entries(tokens.space).map(([k, v]) => `  --space-${k}: ${v}px;`),
   ...Object.entries(tokens.radius).map(([k, v]) => `  --radius-${k}: ${v}px;`),
   ...Object.entries(tokens.size).map(([k, v]) => `  --size-${kebab(k)}: ${v}px;`),
@@ -87,6 +89,7 @@ const ts = `// ${HEADER}
 export const tokens = ${JSON.stringify(
   {
     color: tokens.color,
+    annotation: Object.fromEntries(annotationColors),
     typography: tokens.typography,
     space: tokens.space,
     radius: tokens.radius,
@@ -99,6 +102,7 @@ export const tokens = ${JSON.stringify(
 )} as const;
 
 export type ColorRole = keyof typeof tokens.color.light;
+export type AnnotationColor = keyof typeof tokens.annotation;
 export type TextStyle = keyof typeof tokens.typography.styles;
 export type Space = keyof typeof tokens.space;
 `;
@@ -131,6 +135,11 @@ import UIKit
 
 public enum DSColor {
 ${swiftColors}
+}
+
+/// Annotation colours (ADR-0026 K3-10): fixed, drawn on photos in either appearance.
+public enum DSAnnotationColor {
+${annotationColors.map(([k, v]) => `    public static let ${k} = Color(light: ${hexToSwift(v)}, dark: ${hexToSwift(v)})`).join("\n")}
 }
 
 ${swiftScalars("DSSpacing", tokens.space)}

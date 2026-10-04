@@ -170,6 +170,8 @@ Every role has a light and a dark value. Use the role that matches the meaning, 
 | `photoStage`, `photoStageText` | The neutral backdrop behind clinical images and the camera, and the text on it |
 | `focusRing`, `highlight`, `scrim` | Keyboard focus, search-match highlight, the dimming behind sheets |
 
+**Annotation palette** (`annotation` in `tokens.json`; `DSAnnotationColor` on iOS; ADR-0026 K3-10). Six fixed colours for shapes drawn on clinical photos: red, yellow, green, blue, white and black. They do not change with the appearance, because they sit on the photo rather than on the interface, and they are never used for interface chrome.
+
 ### Type
 
 The scale mirrors iOS Dynamic Type at the default (Large) size:

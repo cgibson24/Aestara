@@ -38,6 +38,8 @@ import { OrganizationsService } from "./organizations/organizations.service.ts";
 import { Outbox } from "./outbox/outbox.ts";
 import { PatientsController } from "./patients/patients.controller.ts";
 import { PatientsService } from "./patients/patients.service.ts";
+import { AnnotationsController } from "./photos/annotations.controller.ts";
+import { AnnotationsService } from "./photos/annotations.service.ts";
 import { BeforeAfterController } from "./photos/before-after.controller.ts";
 import { BeforeAfterService } from "./photos/before-after.service.ts";
 import { PhotoIntake } from "./photos/intake.ts";
@@ -69,6 +71,7 @@ class AppModule {
         SettingsController,
         PhotographyController,
         BeforeAfterController,
+        AnnotationsController,
         ConsultationsController,
         ConfigurationController,
       ],
@@ -96,6 +99,7 @@ class AppModule {
         PermissionLedger,
         PermissionsService,
         BeforeAfterService,
+        AnnotationsService,
         ConsultationsService,
         NotesService,
         HistoryService,

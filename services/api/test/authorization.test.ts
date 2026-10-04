@@ -69,6 +69,7 @@ async function world(
   );
   const clinical = await fx.clinicalRecords(organizationId, patientId, consultationId, admin.userId);
   const setId = await fx.beforeAfter(organizationId, patientId, photography.photoId, admin.userId);
+  const annotationId = await fx.annotation(organizationId, patientId, photography.photoId, admin.userId);
   return {
     admin,
     member,
@@ -90,6 +91,7 @@ async function world(
       consultationId,
       ...clinical,
       setId,
+      annotationId,
     },
   };
 }

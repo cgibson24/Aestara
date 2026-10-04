@@ -2,6 +2,12 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Photo annotations (M3.4 backend; ADR-0027)
+
+- **Design tokens:** a fixed `annotation` palette of six colours, the same in both appearances (`DSAnnotationColor` on iOS, `--annotation-*` in CSS).
+- **API:** list, create (with an optional client UUIDv7), update and delete annotation layers on accepted, unarchived photos; versioned JSON with normalized coordinates, a fixed palette, stroke widths and text sizes, at most 500 shapes and 256 KiB, no measurement tools; only the author changes or deletes a layer, and deleting keeps the row; `PHOTO_ANNOTATED` without text.
+- **Tests:** `annotations.test.ts` (5) and the generated authorization and cross-tenant tests.
+
 ## 2026-10-04: Automatic before/after registration (M3.6 backend; ADR-0027)
 
 - **API:** `POST …/before-after/{setId}/auto-registration` queues an `IMAGE_REGISTRATION` job (`202`); the flag `beforeAfter.autoRegistration` (on by default) hides it per organization or practice.

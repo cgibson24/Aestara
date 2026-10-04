@@ -30,6 +30,12 @@
   --color-photo-stage: #0C0D0F;
   --color-photo-stage-text: #F2F1EE;
   --color-scrim: rgba(12, 13, 15, 0.549);
+  --annotation-red: #E5484D;
+  --annotation-yellow: #F5C518;
+  --annotation-green: #30A46C;
+  --annotation-blue: #3E8BFF;
+  --annotation-white: #FFFFFF;
+  --annotation-black: #111111;
   --space-xxs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;

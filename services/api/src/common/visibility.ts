@@ -66,6 +66,17 @@ export async function resourceVisible(
   const id = params.id ?? "";
   switch (segment(op)) {
     case "patients":
+      if (params.annotationId !== undefined)
+        return (
+          (await tx.photoAnnotation.count({
+            where: {
+              id: params.annotationId,
+              photoId: params.photoId ?? "",
+              patientId: params.patientId ?? "",
+              deletedAt: null,
+            },
+          })) > 0
+        );
       if (params.photoId !== undefined)
         return (
           (await tx.patientPhoto.count({

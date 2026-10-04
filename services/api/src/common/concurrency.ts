@@ -60,6 +60,7 @@ const LOCKABLE = new Set([
   "PatientConcern",
   "PatientMedicalHistory",
   "BeforeAfterSet",
+  "PhotoAnnotation",
 ]);
 
 /**

@@ -64,6 +64,14 @@ export const tokens = {
       "scrim": "#00000099"
     }
   },
+  "annotation": {
+    "red": "#E5484D",
+    "yellow": "#F5C518",
+    "green": "#30A46C",
+    "blue": "#3E8BFF",
+    "white": "#FFFFFF",
+    "black": "#111111"
+  },
   "typography": {
     "fontFamily": {
       "sans": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"SF Pro\", Inter, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
@@ -184,5 +192,6 @@ export const tokens = {
 } as const;
 
 export type ColorRole = keyof typeof tokens.color.light;
+export type AnnotationColor = keyof typeof tokens.annotation;
 export type TextStyle = keyof typeof tokens.typography.styles;
 export type Space = keyof typeof tokens.space;

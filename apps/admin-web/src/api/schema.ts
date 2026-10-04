@@ -1320,6 +1320,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/patients/{patientId}/photos/{photoId}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The photo's annotation layers, oldest first. Deleted layers are not listed.
+         * @description Permission: `photo.view` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listPhotoAnnotations"];
+        put?: never;
+        /**
+         * Add an annotation layer to an accepted, unarchived photo. A client UUIDv7 is accepted for layers drawn offline.
+         * @description Permission: `photo.annotate` (organization scope). Audit: PHOTO_ANNOTATED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createPhotoAnnotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/photos/{photoId}/annotations/{annotationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete one's own annotation layer. The row is kept, marked deleted.
+         * @description Permission: `photo.annotate` (organization scope). Audit: PHOTO_ANNOTATED. Denials are audited as ACCESS_DENIED.
+         */
+        delete: operations["deletePhotoAnnotation"];
+        options?: never;
+        head?: never;
+        /**
+         * Change one's own annotation layer.
+         * @description Permission: `photo.annotate` (organization scope). Audit: PHOTO_ANNOTATED. Denials are audited as ACCESS_DENIED.
+         */
+        patch: operations["updatePhotoAnnotation"];
+        trace?: never;
+    };
     "/patients/{patientId}/before-after": {
         parameters: {
             query?: never;
@@ -3127,6 +3175,100 @@ export interface components {
             /** @enum {string} */
             variant?: "THUMBNAIL" | "DISPLAY_PREVIEW";
             occurredAt: components["schemas"]["Timestamp"];
+        };
+        PhotoAnnotation: {
+            id: components["schemas"]["Uuid"];
+            photoId: components["schemas"]["Uuid"];
+            authorUserId: components["schemas"]["Uuid"];
+            label?: string;
+            layer: components["schemas"]["AnnotationLayer"];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+            version: number;
+        };
+        /** @description Version 1: shapes in coordinates normalized to the upright photo. No measurements. */
+        AnnotationLayer: {
+            /** @enum {number} */
+            schemaVersion: 1;
+            shapes: components["schemas"]["AnnotationShape"][];
+        };
+        AnnotationShape: {
+            /** @enum {string} */
+            type: "FREEHAND";
+            points: components["schemas"]["AnnotationPoint"][];
+            color: components["schemas"]["AnnotationColor"];
+            stroke: components["schemas"]["AnnotationStroke"];
+        } | {
+            /** @enum {string} */
+            type: "LINE";
+            from: components["schemas"]["AnnotationPoint"];
+            to: components["schemas"]["AnnotationPoint"];
+            color: components["schemas"]["AnnotationColor"];
+            stroke: components["schemas"]["AnnotationStroke"];
+        } | {
+            /** @enum {string} */
+            type: "ARROW";
+            from: components["schemas"]["AnnotationPoint"];
+            to: components["schemas"]["AnnotationPoint"];
+            color: components["schemas"]["AnnotationColor"];
+            stroke: components["schemas"]["AnnotationStroke"];
+        } | {
+            /** @enum {string} */
+            type: "ELLIPSE";
+            center: components["schemas"]["AnnotationPoint"];
+            radiusX: number;
+            radiusY: number;
+            color: components["schemas"]["AnnotationColor"];
+            stroke: components["schemas"]["AnnotationStroke"];
+        } | {
+            /** @enum {string} */
+            type: "RECTANGLE";
+            /** @description Top-left corner. */
+            origin: [
+                number,
+                number
+            ];
+            size: [
+                number,
+                number
+            ];
+            color: components["schemas"]["AnnotationColor"];
+            stroke: components["schemas"]["AnnotationStroke"];
+        } | {
+            /** @enum {string} */
+            type: "TEXT";
+            /** @description Top-left of the text. */
+            position: [
+                number,
+                number
+            ];
+            text: string;
+            color: components["schemas"]["AnnotationColor"];
+            size: components["schemas"]["AnnotationTextSize"];
+        };
+        AnnotationPoint: [
+            number,
+            number
+        ];
+        /** @enum {string} */
+        AnnotationColor: "RED" | "YELLOW" | "GREEN" | "BLUE" | "WHITE" | "BLACK";
+        /** @enum {string} */
+        AnnotationStroke: "THIN" | "MEDIUM" | "THICK";
+        /** @enum {string} */
+        AnnotationTextSize: "SMALL" | "MEDIUM" | "LARGE";
+        PhotoAnnotationCreate: {
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for a layer drawn offline.
+             */
+            id?: string;
+            label?: string;
+            layer: components["schemas"]["AnnotationLayer"];
+        };
+        /** @description Only the author changes a layer. */
+        PhotoAnnotationUpdate: {
+            label?: string | null;
+            layer?: components["schemas"]["AnnotationLayer"];
         };
         BeforeAfterSet: {
             id: components["schemas"]["Uuid"];
@@ -6799,6 +6941,182 @@ export interface operations {
             400: components["responses"]["Error400"];
             401: components["responses"]["Error401"];
             409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listPhotoAnnotations: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoAnnotation"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createPhotoAnnotation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoAnnotationCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoAnnotation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    deletePhotoAnnotation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                annotationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    updatePhotoAnnotation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                photoId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                annotationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoAnnotationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PhotoAnnotation"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
             500: components["responses"]["Error500"];
             503: components["responses"]["Error503"];
         };
