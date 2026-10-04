@@ -70,3 +70,24 @@ actor TokenBox: AccessTokenProviding {
     }
     #expect(await tokens.refreshes == 1)
 }
+
+/// Records the headers each request was sent with.
+actor SentHeaders {
+    var ifMatch: [String] = []
+    func record(_ value: String?) { if let value { ifMatch.append(value) } }
+}
+
+@Test func sendsIfMatchAsTheLiteralETag() async {
+    let sent = SentHeaders()
+    let transport = StubTransport { request in
+        await sent.record(request.headerFields[.ifMatch])
+        let body = #"{"error":{"code":"VERSION_CONFLICT","message":"m","requestId":"r","details":{"currentVersion":4}}}"#
+        return (HTTPResponse(status: .preconditionFailed, headerFields: [.contentType: "application/json"]), HTTPBody(body))
+    }
+    let client = APIClientFactory.make(baseURL: URL(string: "https://api.test")!, transport: transport)
+    let patientId = "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+    let consultationId = "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e60"
+    _ = try? await client.startConsultation(path: .init(patientId: patientId, consultationId: consultationId),
+                                             headers: .init(ifMatch: ifMatch(3)))
+    #expect(await sent.ifMatch == ["\"v3\""])
+}

@@ -19,7 +19,7 @@ public protocol AccessTokenProviding: Sendable {
 /// Builds the generated client for a server.
 public enum APIClientFactory {
     public static func make(baseURL: URL, tokens: (any AccessTokenProviding)? = nil) -> Client {
-        var middlewares: [any ClientMiddleware] = [CorrelationMiddleware(), ErrorEnvelopeMiddleware()]
+        var middlewares: [any ClientMiddleware] = [CorrelationMiddleware(), ETagHeaderMiddleware(), ErrorEnvelopeMiddleware()]
         if let tokens { middlewares.append(AuthorizationMiddleware(tokens: tokens)) }
         return Client(
             serverURL: baseURL.appending(path: "api/v1"),
@@ -32,7 +32,7 @@ public enum APIClientFactory {
 
     /// For tests: the same middleware over another transport.
     public static func make(baseURL: URL, transport: any ClientTransport, tokens: (any AccessTokenProviding)? = nil) -> Client {
-        var middlewares: [any ClientMiddleware] = [CorrelationMiddleware(), ErrorEnvelopeMiddleware()]
+        var middlewares: [any ClientMiddleware] = [CorrelationMiddleware(), ETagHeaderMiddleware(), ErrorEnvelopeMiddleware()]
         if let tokens { middlewares.append(AuthorizationMiddleware(tokens: tokens)) }
         return Client(
             serverURL: baseURL.appending(path: "api/v1"),
@@ -98,6 +98,25 @@ struct CorrelationMiddleware: ClientMiddleware {
     ) async throws -> (HTTPResponse, HTTPBody?) {
         var request = request
         request.headerFields[Self.header] = UUID().uuidString.lowercased()
+        return try await next(request, body, baseURL)
+    }
+}
+
+/// Sends `If-Match` as the literal ETag, `"v3"` (spec §6.1.7). The generated client writes
+/// header values as URI components, which percent-encodes the quotes (`%22v3%22`); an ETag
+/// is not a URI component, and the api rightly refuses the encoded form.
+struct ETagHeaderMiddleware: ClientMiddleware {
+    func intercept(
+        _ request: HTTPRequest,
+        body: HTTPBody?,
+        baseURL: URL,
+        operationID: String,
+        next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+    ) async throws -> (HTTPResponse, HTTPBody?) {
+        var request = request
+        if let value = request.headerFields[.ifMatch], let literal = value.removingPercentEncoding {
+            request.headerFields[.ifMatch] = literal
+        }
         return try await next(request, body, baseURL)
     }
 }
