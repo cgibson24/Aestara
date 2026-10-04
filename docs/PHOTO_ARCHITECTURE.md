@@ -466,10 +466,9 @@ The Layer 2 kickoff decided every Layer 2 item ([LAYER_2_KICKOFF.md](LAYER_2_KIC
 | UD-25 offline cache policy | Practice setting, 25 patients and 7 days; CryptoKit AES-GCM store (K2-17) |
 | UD-24 retention defaults and legal hold | Policies recorded; `DELETE` refused until legal hold; no retention job in Layer 2 (K2-19) |
 
-Still open:
+The Layer 3 kickoff decided the export purposes and derivative kinds (ADR-0026 K3-14) and the compatible-view rule: the same view key and pose target, the before photo captured earlier (K3-11). Still open:
 
 | Item | Decided at |
 |---|---|
-| Which export purposes produce `MARKETING_DERIVATIVE` versus `EXPORT_DERIVATIVE`; the "compatible view" rule for before/after | Layer 3 (M3.5, M3.7) |
 | UD-20 `PATIENT_APP` grant for the patient's own media | Layer 5 kickoff |
 | HEIC uploads (needs an HEVC decoder licence) | Layer 5 kickoff |

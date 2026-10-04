@@ -104,7 +104,7 @@ flowchart TB
 | BeforeAfter | feature | §8 | Five comparison modes; display-only alignment | Layer 3 |
 | Simulation | feature | §9 | Visualization request, provider review, approve, then separate release, with the disclaimer | Layer 8 |
 | TreatmentPlans | feature | §11 | Plans A/B/C, estimates, procedure tracking | Layer 4 |
-| DocumentsConsent | feature | §12 | Consent assignment and signing, staff-assisted signing mode | Layer 4 |
+| DocumentsConsent | feature | §12 | Documents and the consultation summary (Layer 3, ADR-0026 K3-16); consent assignment and signing, staff-assisted signing mode (Layer 4) | Layer 3 |
 | Education | feature | §12.5 | Education content and care instructions | Layer 4 |
 | Appointments | feature | §15 | Schedule and appointment lifecycle | Layer 6 |
 | Messaging | feature | §14 | Secure messaging with attachments | Layer 5 |

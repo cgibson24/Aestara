@@ -20,7 +20,7 @@
 | 3 | Layer 0 completion | Layer 0 | Full documentation pack, threat model, Terraform skeleton, iOS project skeleton building in CI, Layer 0 acceptance table | ✅ Accepted 2026-09-28 |
 | 4 | Layer 1: Identity, tenancy, patients | Layer 1 | Real login, organizations, users/roles, patient search/create/profile, audit; provider iOS shell; admin web shell | ✅ Accepted 2026-10-01 (`ACCEPTANCE_CRITERIA.md` §6) |
 | 5 | Layer 2: Photography core | Layer 2 | Guided capture, immutable originals, derivatives, media permissions | ✅ Accepted 2026-10-03 (`ACCEPTANCE_CRITERIA.md` §7) |
-| 6 | Layer 3: Consultations & before/after | Layer 3 | Consultation lifecycle, annotations, comparison viewer, timeline | — |
+| 6 | Layer 3: Consultations & before/after | Layer 3 | Consultation lifecycle, annotations, comparison viewer, timeline | Kickoff confirmed 2026-10-04 ([LAYER_3_KICKOFF.md](LAYER_3_KICKOFF.md), ADR-0026); in progress |
 | 7 | Layer 4: Documents, consent, education, plans | Layer 4 | Plans A/B/C + estimates, consent builder + signing, education, instructions | — |
 | 8 | Layer 5: Patient app & messaging | Layer 5 | Patient iOS app, released content, secure messaging, notifications | — |
 | 9 | Layer 6: Scheduling & telehealth | Layer 6 | Appointments, virtual consultations | — |
@@ -140,7 +140,7 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 
 ### Step 6: Layer 3, Consultations & Before/After
 
-**Kickoff:** UD-15 final notes · UD-28 consultation transitions · UD-33 completion preconditions.
+**Kickoff:** UD-15 final notes · UD-28 consultation transitions · UD-33 completion preconditions. **Confirmed by the owner on 2026-10-04:** every recommendation in [LAYER_3_KICKOFF.md](LAYER_3_KICKOFF.md) (K3-01 to K3-24), recorded as ADR-0026.
 
 | # | Micro-prompt |
 |---|---|

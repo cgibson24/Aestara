@@ -398,7 +398,7 @@ Every layer ends with a PASS / FAIL / DEFERRED BY SPECIFICATION table and a stop
 |---|---|---|
 | Quantitative product success metrics | Not specified by the Bible; none adopted ([`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md) F-33) | Owner input before the pilot; does not block Layer 1 |
 | Bible §10 says "the practice's" case library; ADR-0001 makes the library organization-wide | ADR-0001 governs as the owner's interpretation; recorded as a conflict for the owner to confirm | L9 kickoff (with UD-10) |
-| UD-15 final notes; UD-28 consultation transitions; UD-33 completion preconditions | Adopted baseline (spec §10.2) | L3 kickoff |
+| UD-15 final notes; UD-28 consultation transitions; UD-33 completion preconditions | Confirmed (ADR-0026 K3-07, K3-01, K3-03) | L3 kickoff |
 | UD-11 estimate vs quote; UD-14 in-clinic plan acceptance; UD-23 pre-completion void and minors; UD-31 staff-assisted signing | Adopted baseline | L4 kickoff |
 | UD-08 patient identity across organizations; UD-20 PATIENT_APP grant for own media; UD-30 portal visibility of procedures, appointments and telehealth | Adopted baseline | L5 kickoff |
 | UD-05 telehealth vendor | Adopted baseline | L6 kickoff |
@@ -406,4 +406,4 @@ Every layer ends with a PASS / FAIL / DEFERRED BY SPECIFICATION table and a stop
 | UD-32 media grant for simulation sources; UD-29 simulation transitions | Adopted baseline | L8 kickoff |
 | UD-10 case-library permission and de-identification | Adopted baseline | L9 kickoff |
 | UD-25 offline cache policy | Confirmed (ADR-0023 K2-17) | L2 kickoff |
-| The consultation cancellation policy (PR-CONSULT-01) and patient-app offline caching (F-55) | Not specified | L3 and L5 kickoffs |
+| The consultation cancellation policy (PR-CONSULT-01) and patient-app offline caching (F-55) | Cancellation confirmed (ADR-0026 K3-05: any non-final state, with a reason); patient-app caching not specified | L3 kickoff; L5 kickoff |

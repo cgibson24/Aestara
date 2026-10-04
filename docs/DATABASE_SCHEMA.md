@@ -964,7 +964,7 @@ Two runs share one behavior suite, `docs/technical-spec/verification/behavior/`.
 
 | Run | Command | What it proves |
 |---|---|---|
-| Design | `pnpm verify:schema` (`run_schema_checks.sh`) | `schema.prisma` validates with Prisma 7.10; the full schema plus all of `constraints.sql` applies to an **empty** PostgreSQL; all fragments pass (101 checks) |
+| Design | `pnpm verify:schema` (`run_schema_checks.sh`) | `schema.prisma` validates with Prisma 7.10; the full schema plus all of `constraints.sql` applies to an **empty** PostgreSQL; all fragments pass (145 checks) |
 | Built layers | `pnpm --filter @aestara/database db:test` | The real migrations apply as a non-superuser, Prisma sees no drift, `check-rls.ts` passes, and the built layers' fragments plus the RLS suite (`test/sql/rls.sql`) pass (61 checks in Layer 1) |
 
 Prerequisites: Node.js, the `psql` client, and a PostgreSQL superuser connection (local `docker compose` or the CI service).
@@ -1006,7 +1006,7 @@ Details: [technical-spec/verification/README.md](technical-spec/verification/REA
 | Custom roles under RLS | `Role` uses RLS without `FORCE` while only system roles exist; organization custom roles would need a forced policy and a catalog-maintenance path | When custom roles are enabled |
 | Patient identities in `User` | `User` has no RLS (spec §4.1). Patient-kind users arrive in Layer 5, and their contact fields are more sensitive than staff ones; review their protection there | Layer 5 |
 | Custom roles (UD-07) | System roles only in Layer 1 (ADR-0018 K-02). `UserRole.roleId` references `Role(id)` alone, so before custom roles are enabled `UserRole` gets a composite key that stops one organization's custom role being assigned in another | When custom roles are enabled |
-| Final notes (UD-15) | Immutable, corrections as new notes | Layer 3 |
+| Final notes (UD-15) | Confirmed (ADR-0026 K3-07): immutable and never deleted; corrections are addenda (`correctsNoteId`) | Layer 3 kickoff |
 | Estimate versus quote (UD-11) | `Quote` is a proposed shape; drop if unused | Layer 4 |
 | Retention defaults and legal hold (UD-24) | No automated deletion without a customer policy; re-confirmed in ADR-0018 and ADR-0023 K2-19: policies are recorded, `DELETE` waits for legal hold, no retention job runs before production readiness | Production readiness (roadmap step 14) |
 | Case-library permission and de-identification (UD-10) | Baseline: `EDUCATION` grant plus de-identified display derivative | Layer 9 |

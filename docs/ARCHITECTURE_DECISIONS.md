@@ -37,6 +37,7 @@ Status values:
 | [0023](#adr-0023) | Layer 2 kickoff decisions | Accepted | 2026-10-01 |
 | [0024](#adr-0024) | Layer 2 backend implementation decisions | Adopted (delegated) | 2026-10-01 |
 | [0025](#adr-0025) | Layer 2 provider app implementation decisions | Adopted (delegated) | 2026-10-01 |
+| [0026](#adr-0026) | Layer 3 kickoff decisions | Accepted | 2026-10-04 |
 
 ---
 
@@ -705,3 +706,49 @@ Status values:
   - The snapshot tests of K2-21 need reference images recorded on a Mac, or a CI job allowed to record them and commit them to the branch: an owner decision (F-68).
   - The device camera path is confirmed on an iPhone and an iPad before first clinical use (F-69).
   - Layer 3 annotation of cached photos and Layer 4 consent evidence build on the same store and permission screens.
+
+## ADR-0026
+
+**Layer 3 kickoff decisions**
+
+- **Status:** Accepted, 2026-10-04. The owner accepted Layer 2 on 2026-10-03, then confirmed every recommendation in [`LAYER_3_KICKOFF.md`](LAYER_3_KICKOFF.md) ("adopt all"), and chose for F-68 that CI records missing snapshot references into its job log and Claude reviews and commits them (K3-22). The spec is corrected to match before any Layer 3 code (Bible §0).
+- **Context:** the roadmap requires the Layer 3 decisions (UD-15, UD-28, UD-33) to be confirmed, and the findings carried to Layer 3 (F-35's compatible-view rule, F-37, F-55's cancellation policy, F-64, F-68, F-70), the documentation pack's Layer 3 open items and the Node.js re-evaluation of ADR-0023 K2-22 to be resolved, before implementation.
+- **Decision:** K3-01 to K3-24 as written in `LAYER_3_KICKOFF.md` §2:
+  - **Consultations:**
+    - K3-01: the proposed transitions of spec §5.4.1 are adopted (`/resume`, `/submit-for-review` from `IN_PROGRESS`, `/return-to-progress`, archiving a cancelled consultation); a trigger enforces the machine.
+    - K3-02: in `READY_FOR_REVIEW` the reviewed content (reason, provider, location, concerns, notes) is frozen; a completed consultation changes only by addenda and summary regeneration; cancelled and archived ones are frozen.
+    - K3-03: `/complete` checks the five spec §5.4.1 preconditions and names each unmet one (`422 COMPLETION_PRECONDITIONS_NOT_MET`); the summary must postdate the last entry into review; `/submit-for-review` needs no draft note.
+    - K3-04: new columns record the release decision; Layer 3 accepts only `NOTHING_TO_RELEASE`; Layer 5's `/release` records `MATERIALS_RELEASED`.
+    - K3-05: any non-final state may be cancelled with a required reason; nothing attached is deleted; no configurable policy in Layer 3.
+    - K3-06: offline, notes are drafted, cached photos annotated and photos captured into a linked session; every transition, finalization, summary, before/after set, registration, export and document upload is online only.
+    - K3-07: final notes are immutable; corrections are addenda (`correctsNoteId`); only the author edits, discards or finalizes a draft; after completion only addenda; a new audit action `CONSULTATION_NOTE_FINALIZED`.
+    - K3-08: concern areas come from a list registered in code; medical history is staff-sourced in Layer 3, edited with `If-Match` and never deleted.
+    - K3-09: `PhotoSession.consultationId` links sessions started from the workspace.
+  - **Imagery:**
+    - K3-10: annotations are a versioned JSON layer of shapes in normalized coordinates, with no measurement tools, author-only changes and offline client IDs.
+    - K3-11: a before/after set takes two accepted, unarchived photos of the patient with the same view key and pose target, the before one captured earlier; other photos answer the same `404`.
+    - K3-12: comparison modes are client rendering of display previews (side by side, swipe, cross-fade, blink at most 3 per second, overlay) with synchronized zoom and pan.
+    - K3-13: automatic registration estimates a similarity transform (AKAZE and RANSAC with `opencv-python-headless`) on the display previews, on request only, behind the flag `beforeAfter.autoRegistration`; every alignment change needs `photo.annotate`.
+    - K3-14: export purposes and derivative kinds.
+    - K3-15: exports need `photo.export` and step-up, check and pin the current grant of every photo, render asynchronously from the original with no text or metadata, and download while the release is active.
+  - **Documents and history:**
+    - K3-16: documents in Layer 3 are the consultation summary and uploaded clinical PDFs (50 MiB, scanned); the presigning role and the malware scan cover `DOCUMENT/`.
+    - K3-17: the summary is a PDF rendered in the api with PDFKit and Inter, with no drafts and no images; a new audit action `DOCUMENT_ADDED`.
+    - K3-18: the timeline is built from the domain tables, filtered per item by domain permission, metadata only.
+  - **Platform:**
+    - K3-19: the Layer 3 audit events, with the two additions above.
+    - K3-20: consultations are practice-owned; concerns, history, annotations, before/after sets and uploaded documents are organization-owned patient data.
+    - K3-21: the iPad workspace is a stepper of the Bible §5.1 steps that exist; later layers' steps are not shown.
+    - K3-22: snapshot references are recorded by CI into its log, reviewed and committed by Claude (F-68); Layer 3 tests.
+    - K3-23: F-70 is fixed before the Layer 3 acceptance.
+    - K3-24: Node.js 24 stays through Layer 3; Node 26 is re-evaluated at the Layer 4 kickoff.
+  - **Delegated baselines confirmed:** UD-15 (as K3-07), UD-28 (as K3-01) and UD-33 (as K3-03).
+- **Spec and schema changes made under this ADR:**
+  - **Spec §2.1:** Node.js re-evaluation moves to the Layer 4 kickoff; OpenCV's role (K3-13, K3-24).
+  - **Spec §5.2:** the Layer 3 entity rules (K3-02, K3-04, K3-07, K3-08, K3-10, K3-11, K3-16, K3-17).
+  - **Spec §5.4.1:** the confirmed transitions and preconditions, what each state allows, cancellation (K3-01 to K3-05).
+  - **Spec §5.5:** the consultation, note and before/after rules (behaviour checks H2–H28, C15–C17).
+  - **Spec §6.1.9, §6.2, §6.3:** document limits and download lifetime; three new error codes; the Layer 3 endpoint rows, including the note discard, the export status and download endpoints, and `photo.annotate` for automatic registration.
+  - **Spec §6.7, §7.3, §8, §10.2:** the registration and export job contracts, the two audit actions, offline consultation work, UD-15, UD-28 and UD-33 confirmed.
+  - **Schema:** `Consultation` gains `releaseDecision`, `releaseDecidedAt` and `releaseDecidedById` (enum `ConsultationReleaseDecision`); `ConsultationNote` gains `correctsNoteId` with a same-consultation foreign key; `AuditAction` gains `CONSULTATION_NOTE_FINALIZED` and `DOCUMENT_ADDED`. **`constraints.sql`:** the Layer 3 fragment gains the consultation machine and frozen states, the note and addendum rules, the frozen concern links and the before/after order rule.
+- **Consequences:** the Layer 3 tables of spec §5.8 are created by the Layer 3 migrations. The image-processing service gains OpenCV and the registration consumer. Terraform's presigning role and malware scan gain the `DOCUMENT/` prefix. The iOS `DocumentsConsent` module starts in Layer 3 with documents. The concern-area list and the summary's contents are reviewed by a clinical lead before first clinical use.

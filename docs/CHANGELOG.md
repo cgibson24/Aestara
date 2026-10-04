@@ -2,6 +2,13 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Layer 3 kickoff confirmed (ADR-0026)
+
+- The owner confirmed every recommendation in `LAYER_3_KICKOFF.md` (K3-01 to K3-24), choosing for F-68 that CI records missing snapshot references into its job log and Claude reviews and commits them. Recorded as **ADR-0026**.
+- **Spec corrected under change control** (Bible §0): §2.1 (Node.js re-evaluated at the Layer 4 kickoff; OpenCV's role), §5.2, §5.4.1 (confirmed transitions and preconditions, what each state allows, cancellation), §5.5, §6.1.9, §6.2 (`COMPLETION_PRECONDITIONS_NOT_MET`, `INCOMPATIBLE_VIEWS`, `BEFORE_AFTER_ORDER`), §6.3 (note discard, export status and download, `photo.annotate` for automatic registration, document limits), §6.7, §7.3, §8, §10.2.
+- **Schema:** the consultation's release decision, note addenda (`correctsNoteId`), and the audit actions `CONSULTATION_NOTE_FINALIZED` and `DOCUMENT_ADDED`. **`constraints.sql`:** the consultation machine and frozen states, the note and addendum rules, frozen concern links and the before/after order rule; the behaviour suite grows to 145 checks.
+- **Findings:** F-35 (compatible view), F-37, F-55 (cancellation), F-64 resolved; F-68 decided; F-70 stays open until its fix.
+
 ## 2026-10-03: Layer 2 accepted; Layer 3 kickoff proposed
 
 - The owner accepted the Layer 2 acceptance review (`ACCEPTANCE_CRITERIA.md` §7). F-68 (snapshot references), F-69 (the device camera check before first clinical use) and F-70 (the iPad main-thread hang during an audit) stay open.

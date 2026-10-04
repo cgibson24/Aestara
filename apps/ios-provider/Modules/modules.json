@@ -104,7 +104,7 @@
     "DocumentsConsent": {
       "tier": "feature",
       "bible": "§12",
-      "layer": 4,
+      "layer": 3,
       "summary": "Consent assignment and signing, including staff-assisted in-clinic signing mode, and documents.",
       "dependsOn": ["DesignSystem", "PatientDomain", "CoreSecurity"]
     },

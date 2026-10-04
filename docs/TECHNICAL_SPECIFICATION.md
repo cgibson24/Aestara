@@ -131,7 +131,7 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 
 | Area | Choice | Version | Source | Why |
 |---|---|---|---|---|
-| Runtime | Node.js **24 LTS "Krypton"** | 24.x | [B §31] "current supported LTS" | Active LTS today, supported to April 2028. Node 26 enters LTS in October 2026; kept on 24 through Layer 2 and re-evaluated at the Layer 3 kickoff [ADR-0023 K2-22]. |
+| Runtime | Node.js **24 LTS "Krypton"** | 24.x | [B §31] "current supported LTS" | Active LTS today, supported to April 2028. Node 26 enters Active LTS in late October 2026; kept on 24 through Layer 3 and re-evaluated at the Layer 4 kickoff [ADR-0023 K2-22, ADR-0026 K3-24]. |
 | Language | TypeScript | **6.0.x** | [B §25.1] | NestJS 12's CLI ships TypeScript ~6.0. TypeScript 7.0 (native compiler) is out but not yet supported by the NestJS toolchain (decorator metadata). Adopt 7.x when NestJS supports it. |
 | Monorepo | **pnpm workspaces** + Turborepo | pnpm 12.x, turbo 2.x | [B §31] pnpm · [P] Turborepo | Turborepo adds cached, dependency-aware task runs across ~15 packages. It is optional and can be removed without changing structure. |
 | API framework | **NestJS 12** on the **Fastify** adapter | @nestjs/core 12.1 | [B §25.1] NestJS · [P] Fastify | Nest gives modules, guards and interceptors that map directly onto authz/audit/tenancy. Fastify gives lower latency and schema-first request handling. |
@@ -142,7 +142,7 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 | Object storage | **Amazon S3**, private, SSE-KMS, versioning, Block Public Access | — | [B §25.3] | No public buckets and no public CDN for patient media [B §21.2, §25.3]. |
 | Queues & events | **SQS** (work queues) + **EventBridge** (domain events), fed by a **transactional outbox** | — | [B §25.3] · [P] outbox | The outbox (`OutboxEvent`) guarantees events are published only when the DB change commits: no lost or phantom events. |
 | Workers | NestJS worker processes (same codebase, separate deployables) | — | [B §25.2] "worker" | Exports, sync, derivatives, retention jobs; the UI always exposes job status [B §22.4]. |
-| Image processing | **Python 3.13** service using libvips (pyvips); OpenCV joins in Layer 3 for registration | pyvips-binary (libvips 8.18) | [P] · [UD-06, confirmed ADR-0023 K2-01] | Registration and alignment need OpenCV. Keeping all pixel work in one language avoids two imaging stacks. Bible §25.1 prefers TypeScript "or another approved strongly typed framework", so Python (typed, mypy strict) is adopted by delegation (ADR-0008). |
+| Image processing | **Python 3.13** service using libvips (pyvips); OpenCV joins in Layer 3 for registration | pyvips-binary (libvips 8.18); opencv-python-headless from Layer 3 | [P] · [UD-06, confirmed ADR-0023 K2-01] | Registration and alignment need OpenCV. Images are decoded only by pyvips; OpenCV receives pixel arrays [ADR-0026 K3-13]. Keeping all pixel work in one language avoids two imaging stacks. Bible §25.1 prefers TypeScript "or another approved strongly typed framework", so Python (typed, mypy strict) is adopted by delegation (ADR-0008). |
 | AI gateway | NestJS (TypeScript) | — | [P] | Authenticated internal job API, model routing, provenance [B §25.2]. |
 | AI inference | Python + PyTorch / ONNX Runtime in a **private** GPU environment (no public egress) | — | [B §2.1] "Private AI Jobs" (privacy) · [P] Python · [UD-04] hosting | Patient images never go to third-party AI APIs unless a separately approved BAA-covered service is chosen. Python is the de facto ML runtime but is not the Bible's preferred backend language (§25.1), so it is adopted by delegation (ADR-0008). |
 | Notifications | APNs (token auth), Amazon SES (email), AWS End User Messaging (SMS) | — | [P] | SES and End User Messaging are HIPAA-eligible AWS services; APNs is Apple's service and receives only generic text plus a deep-link identifier. Payloads are generic text only [B §14.3]. |
@@ -556,8 +556,8 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | StaffProfile | Non-clinical staff profile | FK → Membership | 1 |
 | Patient | Bible §4.2 minimum entity | Unique `(organizationId, mrn)`; database-maintained search keys with B-tree indexes (ADR-0020); `ARCHIVED` ⇔ `archivedAt` | 1 |
 | PatientContact | Emergency contact / guardian / caregiver | FK → Patient | 1 |
-| PatientMedicalHistory | Allergies, medications, conditions, prior procedures | Category enum; source (staff / intake / integration) | 3 |
-| PatientConcern | Aesthetic concern by area | Linked to consultations | 3 |
+| PatientMedicalHistory | Allergies, medications, conditions, prior procedures | Category enum; source (staff / intake / integration; staff only in Layer 3); edited with If-Match, never deleted [ADR-0026 K3-08] | 3 |
+| PatientConcern | Aesthetic concern by area | Area from a list registered in code; linked to consultations [ADR-0026 K3-08] | 3 |
 | ✚ PatientUserLink | Patient-app account ↔ patient record (§13) | Unique `(organizationId, patientId, userId)`; `INVITED/ACTIVE/REVOKED` | 5 |
 
 #### Scheduling & consultation (8 + 2)
@@ -565,8 +565,8 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | Entity | Purpose | Key relations & rules | Layer |
 |---|---|---|---|
 | Appointment | §15.1 fields incl. timezone, source system, external ID | Location must belong to the practice (3-column FK); `endsAt > startsAt`; integration source needs mapping | 6 ³ |
-| Consultation | §5 workflow container | State machine §5.4.1 | 3 |
-| ConsultationNote | Clinical notes (offline-draftable) | `FINAL` ⇔ `finalizedAt`; [P] FINAL immutable | 3 |
+| Consultation | §5 workflow container | State machine §5.4.1 (trigger); content frozen in review and once closed; completion records the release decision [ADR-0026 K3-01, K3-02, K3-04] | 3 |
+| ConsultationNote | Clinical notes (offline-draftable) | `FINAL` ⇔ `finalizedAt`; FINAL immutable; corrections are addenda (`correctsNoteId`, a FINAL note of the same consultation) [UD-15, ADR-0026 K3-07] | 3 |
 | Procedure | Planned/performed procedure ("Procedures" tab) | Optional link to the accepted plan item (1:1) | 4 |
 | Treatment | Org treatment/procedure catalog | Unique `(organizationId, code)`; maps to simulation category | 4 |
 | TreatmentCategory | Catalog hierarchy | Self-FK within tenant | 4 |
@@ -586,11 +586,11 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | PhotoSession | Capture session (patient, protocol, capturer, time, optional consultation/procedure/practice/location) | Capturer required unless IMPORT; location implies practice; offline client IDs | 2 |
 | PatientPhoto | Clinical photo record → immutable ORIGINAL | Original, patient and capture time immutable (trigger) | 2 |
 | PhotoDerivative | THUMBNAIL … EXPORT_DERIVATIVE (§6.6) | Immutable; references source photo + generation metadata | 2 |
-| PhotoAnnotation | Vector annotation layer (never burned into the original) | Offline client IDs | 3 |
+| PhotoAnnotation | Vector annotation layer (never burned into the original) | Offline client IDs; versioned JSON layer, no measurement tools; author-only changes [ADR-0026 K3-10] | 3 |
 | PhotoTag | Free-form photo tags | Unique `(photoId, tag)` | 2 |
 | PhotoPermission | Versioned permission per category (§7) | Append-only; one *current* row per scope (partial unique) | 2 |
 | MediaRelease | Asset released/exported for a purpose | Exactly one subject; ≥ 1 pinned permission (checked at commit); only revocation may change | 2 |
-| BeforeAfterSet | Before + after of the **same patient** (§8) | Composite FKs incl. `patientId`; photos must differ | 3 |
+| BeforeAfterSet | Before + after of the **same patient** (§8) | Composite FKs incl. `patientId`; photos must differ; the before photo is the earlier one (trigger); compatible views checked by the api [ADR-0026 K3-11] | 3 |
 | ✚ StorageObject | Ledger of every S3 object (Media Service §2: checksum, retention, isolation) | Write-once after verification; key never exposed via API | 2 |
 | ✚ PhotoRequest | Provider request for patient photos (§13.4) | Protocol required; `OPEN → SUBMITTED → COMPLETED` [P] | 5 |
 | ✚ MediaReleasePermission | Every permission version a release relied on (§7.3; a before/after or simulation can depend on several) | Same-patient composite FKs; append-only | 2 |
@@ -621,7 +621,7 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | ConsentTemplateVersion | Builder blocks (§12.1); publish freezes content | One open DRAFT; published immutable; `contentHash` | 4 |
 | ConsentAssignment | Consent issued to a patient (§12.4 state machine) | `COMPLETE` needs snapshot + hash; executed = frozen | 4 |
 | ConsentSignature | Patient / provider / witness signature | Append-only; idempotency key; one per role | 4 |
-| Document | Patient document (summary, signed consent, upload, …) | Release timestamp gates patient visibility | 3–4 |
+| Document | Patient document (summary, signed consent, upload, …) | Release timestamp gates patient visibility; Layer 3 types: consultation summary and uploaded clinical PDF [ADR-0026 K3-16, K3-17] | 3–4 |
 | DocumentVersion | Immutable file version + SHA-256 | Immutable | 3–4 |
 | PatientInstruction | Versioned instruction by procedure **or** consultation | Acknowledgment separate from clinical completion | 4 |
 | EducationContent | Org content library item (original or licensed content only) | — | 4 |
@@ -720,19 +720,23 @@ The server enforces each machine through **one transition table per aggregate**:
 | any non-final ⁱⁱ | CANCELLED | `/cancel` (when policy allows) | consultation.edit | ″ | B |
 | CANCELLED | ARCHIVED | `/archive` | consultation.complete | ″ | P |
 
-ⁱ The Bible lists the states in order. Whether a consultation with no missing information may skip AWAITING_INFORMATION is [UD-28]. ⁱⁱ Non-final = DRAFT, IN_PROGRESS, AWAITING_INFORMATION, READY_FOR_REVIEW.
+ⁱ The Bible lists the states in order; a consultation with no missing information may skip AWAITING_INFORMATION. The P rows are confirmed [UD-28, ADR-0026 K3-01], and a trigger enforces the table. ⁱⁱ Non-final = DRAFT, IN_PROGRESS, AWAITING_INFORMATION, READY_FOR_REVIEW.
 
-**Bible §5.1 "mandatory sequence" → transition preconditions [P] · [UD-33].** The 20 steps are the consultation workflow. Steps the Bible marks optional ("Annotate if needed", "Optional AI visualization") or conditional are UI guidance. This spec proposes that these gate `READY_FOR_REVIEW → COMPLETED`:
+**Bible §5.1 "mandatory sequence" → transition preconditions [UD-33, confirmed ADR-0026 K3-03].** The 20 steps are the consultation workflow. Steps the Bible marks optional ("Annotate if needed", "Optional AI visualization") or conditional are UI guidance. These gate `READY_FOR_REVIEW → COMPLETED`; `/complete` answers `422 COMPLETION_PRECONDITIONS_NOT_MET` with `details.unmet` naming each one that fails:
 
 | Precondition for `/complete` | Bible step |
 |---|---|
 | A reason or at least one concern is recorded | Select reason / concerns |
-| No simulation is `QUEUED`, `PROCESSING` or `VALIDATING` | Optional AI visualization → provider reviews |
-| A consultation summary document has been generated | Generate consultation summary |
-| A release decision is recorded (materials released, or "nothing to release" confirmed) | Release approved patient-facing materials |
+| No simulation is `QUEUED`, `PROCESSING` or `VALIDATING` (checked from Layer 8, which creates simulations) | Optional AI visualization → provider reviews |
+| A consultation summary was generated after the consultation last entered `READY_FOR_REVIEW` | Generate consultation summary |
+| A release decision is recorded: `MATERIALS_RELEASED` by the Layer 5 `/release`, or `NOTHING_TO_RELEASE` confirmed in the `/complete` request, the only value Layer 3 accepts [ADR-0026 K3-04] | Release approved patient-facing materials |
 | No consultation note is still `DRAFT` | Discuss / document |
 
 The other steps (protocol selection, capture, quality review, education, plans, estimates, consents, instructions, scheduling) are available throughout `IN_PROGRESS` and tracked on the timeline, but do not block completion, because not every consultation needs every step.
+
+**What each state allows [ADR-0026 K3-02].** `DRAFT`: reason, primary provider, location and selected concerns; no notes until `/start`. `IN_PROGRESS` and `AWAITING_INFORMATION`: everything, including notes and linked photo sessions. `READY_FOR_REVIEW`: reason, provider, location, concerns and notes are frozen (`/return-to-progress` to change them), so `/submit-for-review` also requires that no note is `DRAFT`; the summary is generated here. `COMPLETED`: frozen except addenda to final notes and regenerating the summary after one. `CANCELLED` and `ARCHIVED`: frozen. Triggers enforce the frozen columns; archived consultations are hidden from lists by default.
+
+**Cancellation [ADR-0026 K3-05].** Any non-final state, by `consultation.edit` within the practice, with a required reason (at most 500 characters, stored on the consultation, never in audit metadata or logs). Nothing attached is deleted or detached. There is no configurable cancellation policy in Layer 3.
 
 #### 5.4.2 Simulation [B §9.3, §34.2, Appendix A]
 
@@ -847,7 +851,9 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 | Protocol status forward-only; fields and views frozen once not `DRAFT` | Triggers | C12–C14 |
 | Every audit row is fed to the WORM copy | Trigger inserts an outbox row in the same transaction | G5 |
 | Storage objects write-once after verification; keys never change | Triggers | C3–C4, C10 |
-| Before/after = two different photos of the same patient | Composite FK + CHECK | C5–C7 |
+| Before/after = two different photos of the same patient, the before one captured earlier; a set keeps its photos | Composite FK + CHECK + trigger | C5–C7, C15–C17 |
+| Consultation status follows the §5.4.1 machine; content frozen in review and once closed; completion needs its actor and release decision; cancelling needs a reason; review and completion leave no draft note; never deleted | Triggers + CHECKs | H3, H7–H8, H12–H14, H17–H20, H23–H28 |
+| Notes: FINAL immutable and never deleted; written while the consultation is open, only addenda after completion; an addendum corrects a FINAL note of the same consultation; concerns frozen with the content | Triggers + composite FK | H2, H9–H11, H15–H16, H21–H22 |
 | Derivatives immutable | Trigger | C8–C9 |
 | One current permission per scope; history append-only; scope shape | Partial unique + triggers + CHECK | D1–D9 |
 | Media release covers exactly one asset, pins ≥ 1 permission version (deferred constraint trigger); only revocation may change; pins append-only | CHECK + triggers | D10, R15–R17 |
@@ -974,9 +980,9 @@ Keys are scoped per actor and retained **7 days** [P], long enough to cover the 
 #### 6.1.9 Media access [B §14.4, §20.3, §21.2]
 
 - **Uploads:** `POST …/uploads` returns a presigned S3 `PUT` URL valid **10 min** [P], with required headers (`Content-Type`, `x-amz-checksum-sha256`, `If-None-Match: *`, so an object is never overwritten). One `PUT` per object, no multipart. While the photo is `UPLOAD_PENDING`, replaying the intent with the same `Idempotency-Key` returns a fresh URL. Then `POST …/complete-upload` makes the server verify size, checksum and the file's first bytes before anything becomes visible: it takes the SHA-256 that S3 verified on upload, or computes it by reading the object when the store reports none [ADR-0023 K2-03].
-- **Downloads:** `POST …/access-urls` returns a presigned `GET` URL valid **120 s** [P] (exports: 10 min) for one object and variant, with `Content-Disposition` and `Cache-Control: private, no-store`. Each issuance writes the view/download audit event.
+- **Downloads:** `POST …/access-urls` returns a presigned `GET` URL valid **120 s** [P] (exports and documents: 10 min [ADR-0026 K3-15, K3-16]) for one object and variant, with `Content-Disposition` and `Cache-Control: private, no-store`. Each issuance writes the view/download audit event.
 - Object keys are **opaque random paths with no PHI**. They appear only inside short-lived signed URLs and are never returned as data or in errors. There are no permanent or public URLs.
-- Size and type allow-lists are enforced both at intent time and at completion: **JPEG and PNG for photos**, at most **50 MiB** and **100 megapixels** (HEIC is not accepted until an HEVC decoder licence is reviewed, re-decided in Layer 5) [ADR-0023 K2-02]; PDF for documents; configured attachment types. The file's first bytes must match the declared type.
+- Size and type allow-lists are enforced both at intent time and at completion: **JPEG and PNG for photos**, at most **50 MiB** and **100 megapixels** (HEIC is not accepted until an HEVC decoder licence is reviewed, re-decided in Layer 5) [ADR-0023 K2-02]; PDF for documents, at most 50 MiB, first bytes `%PDF-`, scanned like every upload [ADR-0026 K3-16]; configured attachment types. The file's first bytes must match the declared type.
 
 #### 6.1.10 Other rules
 
@@ -1011,6 +1017,9 @@ Keys are scoped per actor and retained **7 days** [P], long enough to cover the 
 | 413 | `PAYLOAD_TOO_LARGE` | Upload exceeds limit |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | File type not allowed |
 | 422 | `UPLOAD_VERIFICATION_FAILED` | Size/checksum mismatch on completion |
+| 422 | `COMPLETION_PRECONDITIONS_NOT_MET` | `/complete` with a §5.4.1 precondition unmet; `details.unmet` names each one [ADR-0026 K3-03] |
+| 422 | `INCOMPATIBLE_VIEWS` | A before/after set from photos of different views (view key and pose target) [ADR-0026 K3-11] |
+| 422 | `BEFORE_AFTER_ORDER` | A before/after set whose before photo is not the earlier one [ADR-0026 K3-11] |
 | 422 | `REQUIRED_VIEWS_MISSING` | Completing a photo session with required views missing, without `acknowledgeMissingRequiredViews`; `details.viewKeys` [ADR-0023 K2-13] |
 | 422 | `INPUT_QUALITY_INSUFFICIENT` | AI input fails quality checks; `details.reasons` holds actionable codes (e.g. `LIGHTING_TOO_DARK`) [B §34.2 #24] |
 | 422 | `UNSUPPORTED_SIMULATION_INPUT` | View/category outside the validated model domain |
@@ -1079,7 +1088,7 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `GET /patients/{pid}` | Profile (demographics; per-tab counts only for tabs the caller may read) | patient.read | – | PATIENT_VIEWED | 1 |
 | `PATCH /patients/{pid}` | Update demographics, and status `INACTIVE` / `DECEASED` (If-Match; §5.4.10) | patient.update | – | PATIENT_UPDATED | 1 |
 | `POST /patients/{pid}/archive` | Archive (If-Match) | patient.archive | – | PATIENT_ARCHIVED | 1 |
-| `GET /patients/{pid}/timeline` | Chronological events (metadata only). **Each item is filtered by the caller's permission for its domain**, so demographics-only roles see only demographic/scheduling items | patient.read (+ per-item) | – | – | 3 |
+| `GET /patients/{pid}/timeline` | Chronological events (metadata only), built from the domain tables, newest first, cursor-paginated, filterable by kind. **Each item is filtered by the caller's permission for its domain**, so demographics-only roles see only demographic/scheduling items [ADR-0026 K3-18] | patient.read (+ per-item) | – | – | 3 |
 | `GET/POST /patients/{pid}/contacts` · `PATCH/DELETE …/{id}` | Contacts | patient.read / patient.update | – | PATIENT_UPDATED | 1 |
 | `GET/POST /patients/{pid}/medical-history` · `PATCH …/{id}` | History entries (clinical: **not** readable with `patient.read`) | consultation.create (read) / consultation.edit | – | PATIENT_UPDATED | 3 |
 | `GET/POST /patients/{pid}/concerns` · `PATCH …/{id}` | Concerns | consultation.create (read) / consultation.edit | – | PATIENT_UPDATED | 3 |
@@ -1091,11 +1100,11 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `GET …/consultations` · `GET …/consultations/{cid}` | List/view | consultation.create (read) | – | – | 3 |
 | `POST …/consultations` | Create (DRAFT) | consultation.create | R | CONSULTATION_CREATED | 3 |
 | `PATCH …/consultations/{cid}` | Reason, provider, location (If-Match) | consultation.edit | – | – | 3 |
-| `POST …/{cid}/start` · `/request-information` · `/resume` · `/submit-for-review` · `/return-to-progress` · `/cancel` | Transitions (§5.4.1, If-Match) | consultation.edit | – | CONSULTATION_STATUS_CHANGED* | 3 |
-| `POST …/{cid}/complete` · `/archive` | Complete/archive (If-Match) | consultation.complete | – | CONSULTATION_COMPLETED / CONSULTATION_STATUS_CHANGED* | 3 |
+| `POST …/{cid}/start` · `/request-information` · `/resume` · `/submit-for-review` · `/return-to-progress` · `/cancel` | Transitions (§5.4.1, If-Match); `/cancel` takes a required reason [ADR-0026 K3-05]; all online only (§8) | consultation.edit | – | CONSULTATION_STATUS_CHANGED* | 3 |
+| `POST …/{cid}/complete` · `/archive` | Complete (If-Match; body `releaseDecision`, only `NOTHING_TO_RELEASE` in Layer 3; `422 COMPLETION_PRECONDITIONS_NOT_MET`) / archive (If-Match) [ADR-0026 K3-03, K3-04] | consultation.complete | – | CONSULTATION_COMPLETED / CONSULTATION_STATUS_CHANGED* | 3 |
 | `PUT …/{cid}/concerns` | Set selected concerns | consultation.edit | – | – | 3 |
-| `GET/POST …/{cid}/notes` · `PATCH …/notes/{nid}` · `POST …/notes/{nid}/finalize` | Notes (offline-capable create; client ID) | consultation.edit | R (create) | – | 3 |
-| `POST …/{cid}/summary` | Generate consultation summary document | consultation.edit | R | – | 3 |
+| `GET/POST …/{cid}/notes` · `PATCH/DELETE …/notes/{nid}` · `POST …/notes/{nid}/finalize` | Notes (offline-capable create and draft edits; client ID). Only the author edits, discards (`DELETE`, drafts only) or finalizes a draft; finalizing is online only; an addendum names `correctsNoteId` [UD-15, ADR-0026 K3-07] | consultation.edit | R (create) | CONSULTATION_NOTE_FINALIZED* (finalize) | 3 |
+| `POST …/{cid}/summary` | Generate the consultation summary PDF (a new version of the consultation's summary document), in `READY_FOR_REVIEW` or after an addendum [ADR-0026 K3-17] | consultation.edit | R | DOCUMENT_ADDED* | 3 |
 | `POST …/{cid}/release` | Release approved patient-facing materials (summary, selected items) | consultation.complete | R | DOCUMENT_RELEASED* | 5 |
 
 #### Photography (`/patients/{pid}/photo-sessions`, `/patients/{pid}/photos`, ✚ `/photography-protocols`) [B §6, §7, §20.2]
@@ -1114,8 +1123,8 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `PUT …/photos/{phid}/tags` | Replace tags | photo.annotate | – | – | 2 |
 | `POST …/photos/{phid}/review` | Intake decision: ACCEPT / REQUEST_RETAKE / REJECT | photo.capture | – | PHOTO_INTAKE_REVIEWED* | 5 |
 | `POST …/photos/{phid}/archive` | Archive photo (original retained; hidden from lists by default, never reused) [ADR-0023 K2-14] | photo.capture | – | PHOTO_ARCHIVED* | 2 |
-| `GET/POST …/photos/{phid}/annotations` · `PATCH/DELETE …/annotations/{aid}` | Vector annotations (client ID allowed) | photo.view / photo.annotate | R (create) | PHOTO_ANNOTATED* | 3 |
-| `POST …/photos/{phid}/exports` | Purpose-specific export derivative (checks current grant) | photo.export | R | PHOTO_EXPORTED | 3 |
+| `GET/POST …/photos/{phid}/annotations` · `PATCH/DELETE …/annotations/{aid}` | Vector annotations (client ID allowed); accepted, unarchived photos; only the author changes or deletes a layer [ADR-0026 K3-10] | photo.view / photo.annotate | R (create) | PHOTO_ANNOTATED* | 3 |
+| `POST …/photos/{phid}/exports` · `GET …/exports/{eid}` · `POST …/exports/{eid}/access-urls` | Purpose-specific export derivative (checks the current grant, pins it, renders asynchronously with visible status); download while the release is active [ADR-0026 K3-14, K3-15] | photo.export + step-up | R (create) | PHOTO_EXPORTED (create) / PHOTO_VIEWED (download) | 3 |
 | `GET /patients/{pid}/photo-permissions` · `GET …/history` | Current state per category/scope; full version history | photo.permission.read | – | – | 2 |
 | `POST /patients/{pid}/photo-permissions` | Record a transition (category, scope, target, state, evidence, expiry) | photo.permission.manage | R | PHOTO_PERMISSION_CHANGED | 2 |
 | `GET/POST /patients/{pid}/media-releases` · `POST …/{id}/revoke` | Release assets for a purpose (PATIENT_APP, WEBSITE, …); pins every permission version relied on | photo.export (non-patient purposes) / consultation.complete (PATIENT_APP) | R | MEDIA_RELEASED* / MEDIA_RELEASE_REVOKED* | 2 |
@@ -1128,10 +1137,10 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | Method & path | Purpose | Perm | Idem | Audit | L |
 |---|---|---|---|---|---|
 | `GET …/before-after` · `GET …/{setId}` | List/view sets | photo.view | – | – | 3 |
-| `POST …/before-after` | Create from **exactly two** photos of this patient; compatible view check | photo.view | R | BEFORE_AFTER_CREATED* | 3 |
-| `PATCH …/{setId}` | Manual alignment/registration transform, reset (If-Match) | photo.annotate | – | – | 3 |
-| `POST …/{setId}/auto-registration` | Queue automatic registration job (`AIJob` of type IMAGE_REGISTRATION, Layer 3) | photo.view | R | – | 3 |
-| `POST …/{setId}/exports` | Composite export (checks purpose grant for **both** photos) | photo.export | R | PHOTO_EXPORTED | 3 |
+| `POST …/before-after` | Create from **exactly two** accepted, unarchived photos of this patient; compatible views (same view key and pose target, else `422 INCOMPATIBLE_VIEWS`); the before photo is the earlier one (else `422 BEFORE_AFTER_ORDER`) [ADR-0026 K3-11] | photo.view | R | BEFORE_AFTER_CREATED* | 3 |
+| `PATCH …/{setId}` | Manual alignment (similarity transform), reset to `NONE` (If-Match) [ADR-0026 K3-13] | photo.annotate | – | – | 3 |
+| `POST …/{setId}/auto-registration` | Queue automatic registration job (`AIJob` of type IMAGE_REGISTRATION, Layer 3), on request only; hidden by the flag `beforeAfter.autoRegistration` [ADR-0026 K3-13] | photo.annotate | R | – | 3 |
+| `POST …/{setId}/exports` | Composite export (checks purpose grant for **both** photos); status and download as for photo exports (`GET …/exports/{eid}` · `POST …/exports/{eid}/access-urls`) [ADR-0026 K3-15] | photo.export + step-up | R (create) | PHOTO_EXPORTED (create) / PHOTO_VIEWED (download) | 3 |
 
 Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized zoom/pan) are **client rendering** of display previews plus the registration transform. The original is never modified [B §8.2, §34.1 #14].
 
@@ -1169,7 +1178,7 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | Method & path | Purpose | Perm | Idem | Audit | L |
 |---|---|---|---|---|---|
 | `GET …/documents` · `GET …/{docId}` | List/view documents | document.read* | – | – | 3 |
-| `POST …/documents/uploads` · `POST …/{docId}/complete-upload` | Upload a clinical document (new version on existing doc) | document.manage* | R | – | 3 |
+| `POST …/documents/uploads` · `POST …/{docId}/complete-upload` | Upload a clinical document (new version on existing doc): PDF only, at most 50 MiB, first bytes `%PDF-`, write-once and scanned [ADR-0026 K3-16] | document.manage* | R | DOCUMENT_ADDED* (complete) | 3 |
 | `POST …/{docId}/access-urls` | Signed download | document.read* | – | DOCUMENT_VIEWED* | 3 |
 | `POST …/{docId}/release` | Release to patient app | document.manage* | – | DOCUMENT_RELEASED* | 5 |
 | `GET …/consents` · `GET …/{consentId}` | List/view assignments | consent.assign (read) | – | – | 4 |
@@ -1378,7 +1387,7 @@ Clients and server share these enums so the provider app, patient app and API sp
 |---|---|---|---|
 | AI job submission | api → ai-gateway | `POST /internal/v1/ai-jobs {jobId, organizationId, jobType, modelKey, inputs:[{objectRef, role}], parameters}` (opaque object references only, no demographics) | Service-to-service: IAM-signed requests or mTLS inside the VPC [P] |
 | AI job results | ai-gateway → api | Event on SQS `ai.job.completed` / `ai.job.failed` with scores and output object refs; api persists `AIValidationRecord`, `PhotoDerivative` and transitions | Queue IAM policy |
-| Image jobs | api → image-processing → api | SQS `image.derivative.requested {jobId, attempt, source:{url, contentType, sha256}, outputs:[{kind, url, maxEdgePx}]}` with presigned per-object URLs (≤ 10 min) for output objects the api registered first / `image.derivative.completed` or `.failed`; `image.registration.*` (Layer 3) [ADR-0023 K2-06] | Queue IAM policy |
+| Image jobs | api → image-processing → api | SQS `image.derivative.requested {jobId, attempt, source:{url, contentType, sha256}, outputs:[{kind, url, maxEdgePx}]}` with presigned per-object URLs (≤ 10 min) for output objects the api registered first / `image.derivative.completed` or `.failed` [ADR-0023 K2-06]. Exports reuse this job with export outputs, read from the original through a presigned URL issued for the job [ADR-0026 K3-15]. `image.registration.requested {jobId, attempt, before:{url}, after:{url}}` with presigned URLs of the two display previews / `image.registration.completed {jobId, transform, inliers}` or `.failed`; no image is written [ADR-0026 K3-13] | Queue IAM policy |
 | Notifications | api → notifications | SQS `notification.requested {notificationId, userId, channel, templateKey, deepLink}`; **no content field exists** | Queue IAM policy |
 | Integration | api ↔ integration-service | `IntegrationAdapter` interface (`fetchChanges`, `upsert`, `mapToCanonical`, `mapFromCanonical`); vendor specifics stay inside adapters [B §18.1] | Internal |
 | Vendor webhooks | vendor → `/webhooks/v1/{vendor}` | HMAC/signature verified, replay-protected, then enqueued | Vendor signature |
@@ -1459,6 +1468,7 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 | CONSULTATION_STATUS_CHANGED | "Audit lifecycle events" [B §5.1] |
 | PHOTO_ANNOTATED · PHOTO_INTAKE_REVIEWED · BEFORE_AFTER_CREATED | Clinical media changes; intake "Audit events" [B §13.4] |
 | PHOTO_REJECTED · PHOTO_ARCHIVED | A scan blocked a photo (system actor; security event [B §26]); a clinical photo was archived (parity with PATIENT_ARCHIVED) [ADR-0023 K2-20] |
+| CONSULTATION_NOTE_FINALIZED · DOCUMENT_ADDED | A final note becomes part of the legal record; a document or a new version was uploaded or generated (the consultation summary) [ADR-0026 K3-19] |
 | MEDIA_RELEASED · MEDIA_RELEASE_REVOKED | Release and revocation tracking [B §7] |
 | SIMILAR_CASES_SHOWN | "Records which historical cases were shown" [B §10] |
 | AI_MODEL_ROLLOUT_CHANGED | Never silently replace a model [B §9.7] |
@@ -1483,7 +1493,7 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 
 - **Cross-tenant suite:** for every tenant-scoped route (enumerated from the route table), tenant B's user requests tenant A's resource IDs and must get `404` with the same body as a random-UUID request, byte for byte apart from the per-request `requestId`. Runs in CI against a real Postgres (Testcontainers).
 - **Authorization suite:** role × endpoint matrix generated from §4.5; each cell asserts allow or deny.
-- **Database behavior suite:** `technical-spec/verification/behavior/`, one fragment per layer (ADR-0018 K-19): 101 checks over the full design, including the automated V7 audit. Each layer's migrations run the fragments of the layers built so far, plus the Row-Level Security suite (`packages/database/test/sql/rls.sql`).
+- **Database behavior suite:** `technical-spec/verification/behavior/`, one fragment per layer (ADR-0018 K-19): 145 checks over the full design, including the automated V7 audit. Each layer's migrations run the fragments of the layers built so far, plus the Row-Level Security suite (`packages/database/test/sql/rls.sql`).
 - **PHI log canary test** and **media permission tests** (export/release with a revoked or expired grant must fail).
 - **Session revocation tests:** a revoked session's refresh and access tokens are both rejected **immediately**, because the session is checked on every request (§3.3 step 3).
 - **Separation-of-duties tests** (§4.5): self-assignment, platform actor granting clinical roles, and a practice admin exceeding its scope are all rejected.
@@ -1522,6 +1532,8 @@ Detailed in the Layer 0 `INFRASTRUCTURE.md`, `DEPLOYMENT.md` and `TESTING_STRATE
 | Draft notes / consultation content | Operations needing real-time authorization confirmation (release, export, sign-off, permission changes, consent completion) |
 | Annotate locally cached photos | Finalization steps configured as server-dependent |
 | Queue uploads / mutations | |
+
+**Consultation work offline [ADR-0026 K3-06]:** drafting notes (creating and editing one's own drafts), annotating cached photos and capturing photos into a session linked to a consultation are queued. Creating a consultation, every transition, finalizing a note, the summary, before/after sets, registration, export and document upload need the connection. The patient cache adds each cached patient's non-final consultations with their concerns and notes, and the medical history, under the same policy.
 
 **Mutation queue rules [B §23.3] [P]:**
 
@@ -1636,9 +1648,9 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 | UD-21 | Permission scope granularity in UI | Patient-wide + per-photo exceptions; most specific current row wins · **confirmed ADR-0023 K2-15** | L2 |
 | UD-22 | Malware scanning | Managed scanning if in BAA scope, else ClamAV worker; every upload scanned · **confirmed ADR-0023 K2-04** | L2 |
 | UD-25 | Offline cache policy | 25 recent patients, 7 days, purge on sign-out · **confirmed ADR-0023 K2-17** | L2 |
-| UD-15 | Final notes | Immutable; corrections as addenda | L3 |
-| UD-28 | Consultation P transitions | §5.4.1 P rows | L3 |
-| UD-33 | Completion preconditions | §5.4.1 table | L3 |
+| UD-15 | Final notes | Immutable; corrections as addenda · **confirmed ADR-0026 K3-07** | L3 |
+| UD-28 | Consultation P transitions | §5.4.1 P rows · **confirmed ADR-0026 K3-01** | L3 |
+| UD-33 | Completion preconditions | §5.4.1 table · **confirmed ADR-0026 K3-03** | L3 |
 | UD-11 | Estimate vs Quote | Estimate = frozen priced snapshot; Quote = formal offer referencing an estimate (drop if unused) | L4 |
 | UD-14 | In-clinic plan acceptance | Staff-recorded with patient attestation; sibling options auto-decline | L4 |
 | UD-23 | Pre-completion void; minors | Pre-completion void with reason; GUARDIAN signer if minors are in scope | L4 |
@@ -1655,6 +1667,8 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 **Confirmed at the Layer 1 kickoff (ADR-0018, 2026-09-29):** UD-16, UD-17, UD-07, UD-18 and UD-19 with the corrections ADR-0018 lists, and UD-24 and UD-27 unchanged.
 
 **Confirmed at the Layer 2 kickoff (ADR-0023, 2026-10-01):** UD-06, UD-21, UD-22 and UD-25 as noted in the table, and UD-24 again (no automated deletion; `DELETE` policies wait for legal hold; K2-19).
+
+**Confirmed at the Layer 3 kickoff (ADR-0026, 2026-10-04):** UD-15, UD-28 and UD-33 as noted in the table.
 
 **Raised in Layer 0 (2026-09-28).** New decisions found while building the Layer 0 pack. The full list of Layer 0 findings, with their dispositions, is in `ACCEPTANCE_CRITERIA.md` §5.
 

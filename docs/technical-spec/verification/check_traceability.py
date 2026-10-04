@@ -178,7 +178,7 @@ unknown = sorted(e for e in event_like if e not in enums["AuditAction"] and not 
                  and e not in {"PATIENT_APP", "SIGNED_CONSENT", "SENT_TO_PATIENT",
                                "RELEASED_TO_PATIENT", "READY_FOR_PROVIDER_REVIEW", "REQUEST_RETAKE",
                                "DISPLAY_PREVIEW", "INVALID_STATE_TRANSITION", "SOCIAL_MEDIA", "PAID_ADVERTISING",
-                               "IN_PROGRESS", "ACCESS_DENIED"})
+                               "IN_PROGRESS", "ACCESS_DENIED", "BEFORE_AFTER_ORDER"})
 check("Audit events named in API tables exist in AuditAction", not unknown, f"unknown: {unknown}")
 
 # Layer 1 subsets (Bible 32)

@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| Version | 0.1 |
-| Status | **Proposed 2026-10-03; awaiting the owner's confirmation.** Nothing here is adopted until the owner confirms it, and no Layer 3 code exists yet. |
+| Version | 1.0 |
+| Status | **Confirmed by the owner, 2026-10-04.** Every recommendation adopted, with the owner choosing for F-68 that CI records missing snapshot references into its job log and Claude reviews and commits them (K3-22). Recorded as ADR-0026. |
 | Authority | Bible §4.3 (profile tabs), §5 (consultation workflow), §6.6 (original protection), §7.3 (enforcement), §8 (before/after), §19.1, §22, §23 (offline), §27.2, §29 (Layer 3), §30, §33, §34.1 #12–21; ADR-0001, ADR-0004, ADR-0018, ADR-0022 to ADR-0025 |
 | Normative sources | spec §5.2 (Scheduling & consultation; Photography & media; Documents), §5.4.1, §5.5, §5.8, §6.2, §6.3 (Patients rows marked L3; Consultations; Photography rows marked L3; Before / after; Documents), §6.7, §7.3, §8; [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) Step 6; [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §5.3 |
 
-Before any Layer 3 code, the roadmap requires confirming the decisions listed for the layer (UD-15, UD-28, UD-33). It also requires resolving the findings carried to Layer 3 (F-35's compatible-view rule, F-37, F-55's cancellation policy, F-64, F-68, F-70), the Layer 3 open items in the documentation pack, and the Node.js re-evaluation that ADR-0023 K2-22 scheduled here. This document gives one recommendation for each. Where a recommendation changes spec text, the spec is corrected under change control before implementation (Bible §0).
+Before any Layer 3 code, the roadmap requires confirming the decisions listed for the layer (UD-15, UD-28, UD-33). It also requires resolving the findings carried to Layer 3 (F-35's compatible-view rule, F-37, F-55's cancellation policy, F-64, F-68, F-70), the Layer 3 open items in the documentation pack, and the Node.js re-evaluation that ADR-0023 K2-22 scheduled here. This document gives one recommendation for each. The owner confirmed them all, and they are recorded as ADR-0026. The spec text they change was corrected under change control before implementation (Bible §0).
 
 ## 1. Scope (Bible §29)
 
@@ -209,12 +209,11 @@ Layer 3 is built and proven locally and in CI; nothing is deployed.
 
 | Needed | Before | Item |
 |---|---|---|
-| Choose how snapshot references are recorded (K3-22) | The snapshot tests join CI (during Layer 3) | F-68 |
 | The concern-area list (K3-08) and the summary's contents (K3-17) reviewed by the practice's clinical lead | First clinical use | K3-08, K3-17 |
 | The open items of [LAYER_2_KICKOFF.md](LAYER_2_KICKOFF.md) §3 and [LAYER_1_KICKOFF.md](LAYER_1_KICKOFF.md) §3 (BAA scope of malware scanning, AWS accounts, Apple team, pilot metrics, repository visibility) | As listed there | F-32, F-33, F-56, F-59, UD-34 |
 | The device camera check | First clinical use | F-69 |
 
-## 4. After confirmation
+## 4. After confirmation (done 2026-10-04)
 
 1. The confirmed decisions are recorded as ADR-0026.
 2. The spec, schema, `constraints.sql` and the documentation pack are corrected under change control:
@@ -226,5 +225,5 @@ Layer 3 is built and proven locally and in CI; nothing is deployed.
    - §6.7 (`image.registration.*` and export outputs);
    - §7.3 (`CONSULTATION_NOTE_FINALIZED`, `DOCUMENT_ADDED`);
    - §8 (offline consultation work).
-3. F-35 (compatible view), F-37, F-55 (cancellation), F-64 and, once chosen, F-68 are marked resolved in [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §5.3; F-70 stays open until its fix.
+3. F-35 (compatible view), F-37, F-55 (cancellation), F-64 and F-68 are marked resolved or scheduled in [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §5.3; F-70 stays open until its fix.
 4. M3.1 starts.

@@ -155,6 +155,7 @@ model User {
   consultationsCreated        Consultation[]          @relation("ConsultationCreatedBy")
   consultationsCompleted      Consultation[]          @relation("ConsultationCompletedBy")
   consultationsCancelled      Consultation[]          @relation("ConsultationCancelledBy")
+  consultationReleaseDecisions Consultation[]         @relation("ConsultationReleaseDecidedBy")
   consultationNotes           ConsultationNote[]
   proceduresCreated           Procedure[]
   treatmentPlansCreated       TreatmentPlan[]
@@ -855,6 +856,14 @@ enum NoteStatus {
   FINAL
 }
 
+/// What a consultation released to the patient before completion (spec 5.4.1;
+/// ADR-0026 K3-04). Layer 3 records only NOTHING_TO_RELEASE; Layer 5's
+/// consultation release records MATERIALS_RELEASED.
+enum ConsultationReleaseDecision {
+  NOTHING_TO_RELEASE
+  MATERIALS_RELEASED
+}
+
 enum ProcedureStatus {
   PLANNED
   SCHEDULED
@@ -959,6 +968,10 @@ model Consultation {
   cancelledAt           DateTime?          @db.Timestamptz(3)
   cancelledById         String?            @db.Uuid
   cancellationReason    String?
+  /// Required for COMPLETED (ADR-0026 K3-04); the three columns are set together.
+  releaseDecision       ConsultationReleaseDecision?
+  releaseDecidedAt      DateTime?          @db.Timestamptz(3)
+  releaseDecidedById    String?            @db.Uuid
   archivedAt            DateTime?          @db.Timestamptz(3)
   createdById           String             @db.Uuid
   createdAt             DateTime           @default(now()) @db.Timestamptz(3)
@@ -972,6 +985,7 @@ model Consultation {
   createdBy       User             @relation("ConsultationCreatedBy", fields: [createdById], references: [id])
   completedBy     User?            @relation("ConsultationCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
   cancelledBy     User?            @relation("ConsultationCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  releaseDecidedBy User?           @relation("ConsultationReleaseDecidedBy", fields: [releaseDecidedById], references: [id], onDelete: Restrict)
 
   concerns           ConsultationConcern[]
   notes              ConsultationNote[]
@@ -1017,14 +1031,19 @@ model ConsultationNote {
   authorUserId   String     @db.Uuid
   status         NoteStatus @default(DRAFT)
   body           String
+  /// An addendum names the FINAL note of the same consultation it corrects (UD-15; ADR-0026 K3-07).
+  correctsNoteId String?    @db.Uuid
   finalizedAt    DateTime?  @db.Timestamptz(3)
   createdAt      DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
   version        Int        @default(1)
 
-  consultation Consultation @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id])
-  author       User         @relation(fields: [authorUserId], references: [id])
+  consultation Consultation      @relation(fields: [organizationId, patientId, consultationId], references: [organizationId, patientId, id])
+  author       User              @relation(fields: [authorUserId], references: [id])
+  corrects     ConsultationNote? @relation("NoteAddenda", fields: [consultationId, correctsNoteId], references: [consultationId, id], onDelete: Restrict)
+  addenda      ConsultationNote[] @relation("NoteAddenda")
 
+  @@unique([consultationId, id])
   @@index([organizationId, consultationId])
 }
 
@@ -2921,6 +2940,9 @@ enum AuditAction {
   // ---- added at the Layer 1 kickoff (ADR-0018 K-04) ----
   SECURITY_CREDENTIAL_CHANGED
   ORGANIZATION_SWITCHED
+  // ---- added at the Layer 3 kickoff (ADR-0026 K3-19) ----
+  CONSULTATION_NOTE_FINALIZED
+  DOCUMENT_ADDED
 }
 
 model Integration {

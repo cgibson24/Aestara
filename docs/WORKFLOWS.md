@@ -655,10 +655,10 @@ stateDiagram-v2
 
 | Item | Detail | Confirmed at |
 |---|---|---|
-| Consultation cancellation policy | "When allowed by policy" [B §5.2] is not defined | Layer 3 |
-| Offline consultation transitions | Spec §8 excludes sign-off and release offline, but does not say whether `/start`, `/request-information` and similar transitions may be queued | Layer 3 |
-| Release-decision precondition | Spec §5.4.1 requires a recorded release decision for `/complete`, but no column stores it, and the consultation release endpoint arrives in Layer 5 | Layer 3 (UD-33) |
-| UD-28, UD-33 | Consultation proposed transitions and completion preconditions | Layer 3 |
+| Consultation cancellation policy | Decided: any non-final state, with a required reason; nothing attached is deleted (ADR-0026 K3-05) | Layer 3 kickoff |
+| Offline consultation transitions | Decided: no transition is queued offline; notes are drafted, cached photos annotated and photos captured (ADR-0026 K3-06) | Layer 3 kickoff |
+| Release-decision precondition | Decided: `Consultation.releaseDecision`; Layer 3 completion confirms `NOTHING_TO_RELEASE` (ADR-0026 K3-04) | Layer 3 kickoff |
+| UD-28, UD-33 | Confirmed (ADR-0026 K3-01, K3-03) | Layer 3 kickoff |
 | UD-14 sibling auto-decline | Siblings in `DRAFT` or `SENT_TO_PATIENT` have no transition to `DECLINED` in spec §5.4.3, and no system actor row exists | Layer 4 |
 | Plan scheduling before Layer 6 | `/schedule` "links appointment/procedure"; appointments exist only from Layer 6 | Layer 4 |
 | Staff-assisted signing actors | Spec §5.4.4 lists only "patient (link)" for patient transitions; the hand-off session (UD-31) is described only in spec §6.3. `ConsentSignature.signerUserId` is documented as `NULL` for a non-user witness, but a Layer 4 patient has no user account yet | Layer 4 (UD-31) |

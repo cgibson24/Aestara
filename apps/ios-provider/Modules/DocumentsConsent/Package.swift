@@ -1,6 +1,6 @@
 // swift-tools-version: 6.2
 // DocumentsConsent: Consent assignment and signing, including staff-assisted in-clinic signing mode, and documents.
-// Bible §12. Tier: feature. Built from Layer 4. Allowed dependencies: see modules.json.
+// Bible §12. Tier: feature. Built from Layer 3 (documents; consent in Layer 4). Allowed dependencies: see modules.json.
 import PackageDescription
 
 let package = Package(

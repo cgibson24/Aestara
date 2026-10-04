@@ -378,7 +378,7 @@ The Layer 1 kickoff (ADR-0018) confirmed UD-16, UD-17 and UD-07 for Layer 1 (K-0
 |---|---|
 | Error code returned for a separation-of-duties rejection | M1.6 |
 | LOCATION-scoped grants and records without a location; photo sessions without a practice (§5) | M1.1 for Layer 1 models (ADR-0018 K-08); L2 (photo sessions) and L4 (plans) |
-| Which other records count as practice-owned (the list names consultation, appointment, procedure, photo session, plan; message threads, consent templates, protocols, appointment types, feature flags and integrations also carry an optional `practiceId`) | M1.1 for Layer 1 models, then each layer for its own (ADR-0018 K-08) |
+| Which other records count as practice-owned (the list names consultation, appointment, procedure, photo session, plan; message threads, consent templates, protocols, appointment types, feature flags and integrations also carry an optional `practiceId`) | M1.1 for Layer 1 models, then each layer for its own (ADR-0018 K-08). Layer 3: consultations, their notes, concern links and summary are practice-owned; concerns, medical history, annotations, before/after sets and uploaded documents are organization-owned patient data (ADR-0026 K3-20) |
 | Remaining RLS questions (§9.1) | L1 (M1.1) |
 | UD-30 portal visibility of procedures, appointments, telehealth; UD-20 PATIENT_APP grant | L5 kickoff |
 | `PatientUserLink` allows several patient records per login in one organization, while spec §4.7 assumes a single `link.patientId` | L5 kickoff (UD-08; deferred there by ADR-0018 K-24) |
