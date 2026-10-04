@@ -97,7 +97,7 @@ public struct ProviderRootView: View {
         }
         let context = PhotographyContext(client: store.client, scope: scope, permissions: session.permissions)
         photography = context
-        let work = ConsultationWork(client: store.client, scope: scope, photography: context)
+        let work = ConsultationWork(client: store.client, scope: scope, photography: context, auth: store)
         consultations = work
         // After sign-in: re-validated, so offline views replay, then the queues (spec §8 rule 5).
         Task {
@@ -167,7 +167,7 @@ struct SignedInShell: View {
         let consultations = self.consultations
         return SignOutCheck(
             unsentPhotos: { await photography.unsentBeforeSignOut() },
-            unsentNotes: { await consultations.unsentBeforeSignOut() },
+            unsentDrafts: { await consultations.unsentBeforeSignOut() },
             purge: {
                 await photography.purgeForSignOut()
                 await consultations.purge()

@@ -78,7 +78,7 @@
       "bible": "§6.6",
       "layer": 3,
       "summary": "Annotation layers drawn over photos, stored separately from the immutable original.",
-      "dependsOn": ["DesignSystem", "CoreNetworking", "Media"]
+      "dependsOn": ["DesignSystem", "CoreNetworking", "CoreSecurity", "Media"]
     },
     "BeforeAfter": {
       "tier": "feature",

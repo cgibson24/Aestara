@@ -14,6 +14,8 @@ enum WorkspaceStep: String, CaseIterable, Identifiable, Hashable {
     case reason
     case history
     case photography
+    case annotate
+    case beforeAfter
     case notes
     case summary
     case completion
@@ -25,6 +27,8 @@ enum WorkspaceStep: String, CaseIterable, Identifiable, Hashable {
         case .reason: String(localized: "Reason and concerns")
         case .history: String(localized: "Medical history")
         case .photography: String(localized: "Photography")
+        case .annotate: String(localized: "Annotate")
+        case .beforeAfter: String(localized: "Before and after")
         case .notes: String(localized: "Notes")
         case .summary: String(localized: "Summary")
         case .completion: String(localized: "Review and completion")
@@ -36,6 +40,8 @@ enum WorkspaceStep: String, CaseIterable, Identifiable, Hashable {
         case .reason: "text.bubble"
         case .history: "list.clipboard"
         case .photography: "camera"
+        case .annotate: "pencil.tip.crop.circle"
+        case .beforeAfter: "rectangle.split.2x1"
         case .notes: "note.text"
         case .summary: "doc.text"
         case .completion: "checkmark.seal"
@@ -162,6 +168,8 @@ struct StepScreen: View {
         case .reason: ReasonStep(model: model)
         case .history: HistoryStep(model: model)
         case .photography: PhotographyStep(model: model)
+        case .annotate: AnnotateStep(model: model)
+        case .beforeAfter: BeforeAfterStep(model: model)
         case .notes: NotesStep(model: model)
         case .summary: SummaryStep(model: model)
         case .completion: CompletionStep(model: model)

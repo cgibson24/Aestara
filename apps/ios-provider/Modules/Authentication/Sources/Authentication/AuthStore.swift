@@ -275,6 +275,63 @@ public final class AuthStore {
         phase = .signedIn
     }
 
+    // MARK: Step-up
+
+    /// Step-up (ADR-0021; ADR-0027): the signed-in user signs in again with their password,
+    /// as the same user in the same organization. Returns the second-factor challenge when the
+    /// account has a factor; otherwise the new session already counts as recent.
+    public func confirmIdentity(password: String) async throws(APIError) -> MFAChallenge? {
+        guard let current = session, let organizationId = current.organizationId else { throw APIError.unexpected }
+        let device = self.device
+        let bare = self.bare
+        let email = current.email
+        do throws(APIError) {
+            let result = try await callAPI {
+                try await bare.login(body: .json(.init(
+                    email: email,
+                    password: password,
+                    clientApp: .iosProvider,
+                    device: device,
+                    organizationId: organizationId
+                ))).ok.body.json.data
+            }
+            try await replaceSession(with: result)
+            return nil
+        } catch {
+            if let challenge = error.challenge { return challenge }
+            throw error
+        }
+    }
+
+    /// The second factor of a step-up sign-in.
+    public func confirmIdentity(challenge: MFAChallenge, code: String) async throws(APIError) {
+        guard let organizationId = session?.organizationId else { throw APIError.unexpected }
+        let device = self.device
+        let bare = self.bare
+        let result = try await callAPI {
+            try await bare.verifyMfa(body: .json(.init(
+                challengeToken: challenge.challengeToken,
+                totpCode: code,
+                device: device,
+                organizationId: organizationId
+            ))).ok.body.json.data
+        }
+        try await replaceSession(with: result)
+    }
+
+    /// The new session replaces the current one, which is logged out. It must be the same user
+    /// in the same organization, so the device's queues and copies stay with it.
+    private func replaceSession(with result: Components.Schemas.AuthTokens) async throws(APIError) {
+        let summary = SessionSummary(result.session)
+        guard summary.userId == session?.userId, summary.organizationId == session?.organizationId else {
+            throw APIError.unexpected
+        }
+        let client = self.client
+        _ = try? await callAPI { try await client.logout().noContent }
+        await tokens.store(access: result.accessToken, refresh: result.refreshToken)
+        session = summary
+    }
+
     public func signOut(notice: String? = nil) async {
         let client = self.client
         _ = try? await callAPI { try await client.logout().noContent }

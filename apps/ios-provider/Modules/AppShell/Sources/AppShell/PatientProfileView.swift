@@ -195,6 +195,8 @@ struct TabContent: View {
                 ConsultationsTab(work: consultations, patient: profile.patient)
             case .photos:
                 PhotosTabView(context: photography, patientId: profile.patient.id)
+            case .beforeAfter:
+                ComparisonList(work: consultations, patientId: profile.patient.id, consultationId: nil)
             case .documents:
                 DocumentsTabView(repository: consultations.documents, patientId: profile.patient.id,
                                  canManage: consultations.can("document.manage"))

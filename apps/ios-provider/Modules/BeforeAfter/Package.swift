@@ -15,5 +15,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "BeforeAfter", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "Media", package: "Media"), .product(name: "PatientDomain", package: "PatientDomain")]),
+        .testTarget(name: "BeforeAfterTests", dependencies: ["BeforeAfter"]),
     ]
 )

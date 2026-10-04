@@ -239,11 +239,16 @@ public struct PhotosTabView: View {
 }
 
 /// One photo in the grid: its thumbnail, or its state in words.
-struct PhotoTile: View {
+public struct PhotoTile: View {
     let photo: PhotoItem
     let image: Data?
 
-    var body: some View {
+    public init(photo: PhotoItem, image: Data?) {
+        self.photo = photo
+        self.image = image
+    }
+
+    public var body: some View {
         VStack(alignment: .leading, spacing: DSSpacing.xs) {
             ZStack {
                 DSColor.photoStage

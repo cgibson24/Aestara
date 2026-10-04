@@ -11,16 +11,17 @@ import SwiftUI
 public struct SignOutCheck: Sendable {
     /// Tries once more to upload, then counts the photos still waiting.
     public let unsentPhotos: @MainActor @Sendable () async -> Int
-    /// Tries once more to send, then counts the note drafts written offline and still waiting (ADR-0026 K3-06).
-    public let unsentNotes: @MainActor @Sendable () async -> Int
-    /// Deletes this user's queued photos and notes and the cached copies.
+    /// Tries once more to send, then counts the note drafts and annotation layers written
+    /// offline and still waiting (ADR-0026 K3-06).
+    public let unsentDrafts: @MainActor @Sendable () async -> Int
+    /// Deletes this user's queued photos, drafts and the cached copies.
     public let purge: @MainActor @Sendable () async -> Void
 
     public init(unsentPhotos: @escaping @MainActor @Sendable () async -> Int,
-                unsentNotes: @escaping @MainActor @Sendable () async -> Int = { 0 },
+                unsentDrafts: @escaping @MainActor @Sendable () async -> Int = { 0 },
                 purge: @escaping @MainActor @Sendable () async -> Void) {
         self.unsentPhotos = unsentPhotos
-        self.unsentNotes = unsentNotes
+        self.unsentDrafts = unsentDrafts
         self.purge = purge
     }
 }
@@ -32,7 +33,7 @@ public struct SettingsView: View {
     @State private var confirmSignOut = false
     @State private var checking = false
     @State private var unsent = 0
-    @State private var unsentNotes = 0
+    @State private var unsentDrafts = 0
 
     public init(store: AuthStore, signOutCheck: SignOutCheck? = nil) {
         self.store = store
@@ -81,7 +82,7 @@ public struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .confirmationDialog(signOutTitle, isPresented: $confirmSignOut, titleVisibility: .visible) {
-            Button(unsent + unsentNotes == 0 ? String(localized: "Sign out") : String(localized: "Sign out and delete them"), role: .destructive) {
+            Button(unsent + unsentDrafts == 0 ? String(localized: "Sign out") : String(localized: "Sign out and delete them"), role: .destructive) {
                 Task {
                     await signOutCheck?.purge()
                     await store.signOut()
@@ -90,7 +91,7 @@ public struct SettingsView: View {
             .accessibilityIdentifier("settings.signOutConfirm")
             Button("Stay signed in", role: .cancel) {}
         } message: {
-            if unsent + unsentNotes > 0 {
+            if unsent + unsentDrafts > 0 {
                 Text("They have not reached the server. Signing out deletes them from this device, and they cannot be recovered.")
             }
         }
@@ -98,19 +99,19 @@ public struct SettingsView: View {
 
     private var signOutTitle: String {
         let photos = unsent == 1 ? String(localized: "1 photo") : String(localized: "\(unsent) photos")
-        let notes = unsentNotes == 1 ? String(localized: "1 note") : String(localized: "\(unsentNotes) notes")
-        switch (unsent, unsentNotes) {
+        let drafts = unsentDrafts == 1 ? String(localized: "1 draft") : String(localized: "\(unsentDrafts) drafts")
+        switch (unsent, unsentDrafts) {
         case (0, 0): return String(localized: "Sign out of Aestara?")
         case (_, 0): return unsent == 1 ? String(localized: "1 photo has not uploaded") : String(localized: "\(unsent) photos have not uploaded")
-        case (0, _): return unsentNotes == 1 ? String(localized: "1 note has not been sent") : String(localized: "\(unsentNotes) notes have not been sent")
-        default: return String(localized: "\(photos) and \(notes) have not been sent")
+        case (0, _): return unsentDrafts == 1 ? String(localized: "1 draft has not been sent") : String(localized: "\(unsentDrafts) drafts have not been sent")
+        default: return String(localized: "\(photos) and \(drafts) have not been sent")
         }
     }
 
     private func prepareSignOut() async {
         checking = true
         unsent = await signOutCheck?.unsentPhotos() ?? 0
-        unsentNotes = await signOutCheck?.unsentNotes() ?? 0
+        unsentDrafts = await signOutCheck?.unsentDrafts() ?? 0
         checking = false
         confirmSignOut = true
     }

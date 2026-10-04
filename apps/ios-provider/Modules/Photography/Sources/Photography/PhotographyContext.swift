@@ -183,7 +183,7 @@ public final class PhotographyContext {
         Task.detached(priority: .utility) { try? store.writeJSON(photos, as: name) }
     }
 
-    func cachedPhotos(patientId: String) -> [PhotoItem] {
+    public func cachedPhotos(patientId: String) -> [PhotoItem] {
         (try? store.readJSON([PhotoItem].self, from: "\(Self.photosPrefix)\(Self.safe(patientId)).json")) ?? []
     }
 
@@ -207,7 +207,7 @@ public final class PhotographyContext {
     /// the server audits each view as it issues them (`PHOTO_VIEWED`); bytes already in
     /// the encrypted cache are not downloaded again. Offline, cached images are shown
     /// and each view is recorded for replay (spec §8 rule 8).
-    func derivatives(patientId: String, photoIds: [String], variant: DerivativeVariant) async -> [String: Data] {
+    public func derivatives(patientId: String, photoIds: [String], variant: DerivativeVariant) async -> [String: Data] {
         guard !photoIds.isEmpty else { return [:] }
         var found: [String: Data] = [:]
         do throws(APIError) {

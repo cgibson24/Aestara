@@ -2,6 +2,15 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Annotations, comparisons and exports in the provider app (M3.4–M3.7 iOS; ADR-0027)
+
+- **Annotations:** the workspace's Annotate step lists the consultation's accepted photos (offline, the ones saved on the device). A photo opens over its display preview with every layer, each shown or hidden; one's own layers are drawn with SwiftUI `Canvas` and drag gestures (finger or Apple Pencil): freehand, line, arrow, ellipse, rectangle and text, in the token palette and the fixed widths and sizes, with no measurement tools. Layers travel as the contract's JSON. Offline, layers drawn over cached photos wait in the encrypted queue with their client UUIDv7; a `412` keeps both drawings for the author.
+- **Before/after:** the profile's Before/After tab and the workspace step list the sets; a new set pairs a before photo with a later photo of the same view. The viewer draws the two display previews with the set's transform in five modes (side by side, swipe, cross-fade, blink at most 3 changes a second, overlay), with zoom and pan linked or unlinked. Alignment by hand (drag, pinch, rotate or step buttons), automatic alignment when the flag allows it (followed until it ends), and reset.
+- **Exports:** from a photo (optionally with one layer) or a set, for one purpose; purposes the patient has not granted are marked. The export is followed until ready, failed or revoked, then shared from a temporary file deleted when the share sheet closes.
+- **Step-up:** `403 REAUTHENTICATION_REQUIRED` opens "Confirm it's you": the password and, when the account has one, the authenticator code sign the same user in again in the same organization; the old session is logged out and nothing on the device is cleared.
+- **Sign-out:** unsent note drafts and annotation layers are counted together as drafts.
+- **Modules:** `Annotations` (models, repository, offline store, renderer, editor, screen), `BeforeAfter` (models, repository, viewer, alignment, list) and the export models in `Media`. Module tests: `ConsultationDomain` (7), `Annotations` (11, including the trip through the generated types) and `BeforeAfter` (5), run by CI.
+
 ## 2026-10-04: The consultation workspace in the provider app (M3.2, M3.3, M3.8 iOS; ADR-0026 K3-21, K3-23; ADR-0027)
 
 - **Photography for a consultation (api):** a photo session may name a consultation of the patient that is `IN_PROGRESS` or `AWAITING_INFORMATION` (K3-09). It takes the consultation's practice and location; another practice answers `400 CONSULTATION_PRACTICE`, another state `409`. The session list filters by `consultationId`, and the DTO names it.

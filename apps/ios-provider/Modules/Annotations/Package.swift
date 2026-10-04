@@ -10,9 +10,11 @@ let package = Package(
     dependencies: [
         .package(path: "../DesignSystem"),
         .package(path: "../CoreNetworking"),
+        .package(path: "../CoreSecurity"),
         .package(path: "../Media"),
     ],
     targets: [
-        .target(name: "Annotations", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "Media", package: "Media")]),
+        .target(name: "Annotations", dependencies: [.product(name: "DesignSystem", package: "DesignSystem"), .product(name: "CoreNetworking", package: "CoreNetworking"), .product(name: "CoreSecurity", package: "CoreSecurity"), .product(name: "Media", package: "Media")]),
+        .testTarget(name: "AnnotationsTests", dependencies: ["Annotations", .product(name: "CoreSecurity", package: "CoreSecurity")]),
     ]
 )
