@@ -29,8 +29,9 @@ locals {
   object_data_actions = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"]
   endpoint_exempt     = concat([aws_iam_role.presign.arn], [for r in aws_iam_role.malware_protection : r.arn])
 
-  # The object classes devices upload and view in Layer 2 (spec §7.4 key layout).
-  presigned_prefixes = ["CLINICAL_ORIGINAL/", "CLINICAL_DERIVATIVE/"]
+  # The object classes devices upload and view (spec §7.4 key layout): Layer 2's
+  # photos and their derivatives, and Layer 3's documents (ADR-0026 K3-16).
+  presigned_prefixes = ["CLINICAL_ORIGINAL/", "CLINICAL_DERIVATIVE/", "DOCUMENT/"]
   # The roles that sign URLs: the api and the worker (for image-processing) task roles.
   presign_signers = [for service in ["api", "worker"] : "arn:${local.partition}:iam::${local.account_id}:role/${var.name_prefix}-${service}-task"]
   guardduty       = var.malware_scanner == "guardduty"

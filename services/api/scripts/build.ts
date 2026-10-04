@@ -5,7 +5,7 @@
 // rolldown takes from tsconfig.json.
 //
 // Usage: node scripts/build.ts
-import { copyFileSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "rolldown";
@@ -30,4 +30,8 @@ await build({
 });
 // Data files the code loads next to itself (new URL("./…", import.meta.url)).
 copyFileSync(join(root, "src/auth/common-passwords.txt.gz"), join(root, "dist/common-passwords.txt.gz"));
+// The summary PDF's fonts, with their licence (src/documents/summary.ts).
+mkdirSync(join(root, "dist/fonts"), { recursive: true });
+for (const file of ["Inter-Regular.ttf", "Inter-SemiBold.ttf", "OFL.txt"])
+  copyFileSync(join(root, "src/documents/fonts", file), join(root, "dist/fonts", file));
 console.log("built dist/main.js and dist/worker.js");

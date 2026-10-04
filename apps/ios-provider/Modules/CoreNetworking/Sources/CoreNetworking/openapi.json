@@ -5063,6 +5063,126 @@
         "additionalProperties": false,
         "description": "Only the author changes a DRAFT note."
       },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "patientId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/DocumentType"
+          },
+          "title": {
+            "type": "string"
+          },
+          "consultationId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocumentStatus"
+          },
+          "createdByUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentVersion"
+            },
+            "minItems": 1,
+            "description": "Newest first."
+          }
+        },
+        "required": [
+          "id",
+          "patientId",
+          "type",
+          "title",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "versions"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentType": {
+        "type": "string",
+        "enum": [
+          "CONSULTATION_SUMMARY",
+          "SIGNED_CONSENT",
+          "TREATMENT_PLAN",
+          "ESTIMATE",
+          "UPLOADED_CLINICAL",
+          "EXTERNAL_EMR",
+          "OTHER"
+        ],
+        "description": "Layer 3 creates CONSULTATION_SUMMARY (generated) and UPLOADED_CLINICAL (uploaded by staff)."
+      },
+      "DocumentStatus": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "ARCHIVED"
+        ]
+      },
+      "DocumentVersion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "versionNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocumentVersionStatus"
+          },
+          "byteSize": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "changeNote": {
+            "type": "string"
+          },
+          "createdByUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "versionNumber",
+          "status",
+          "sha256",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentVersionStatus": {
+        "type": "string",
+        "enum": [
+          "SCANNING",
+          "AVAILABLE",
+          "REJECTED"
+        ],
+        "description": "From the file: being scanned, available, or rejected by the malware scan and never served."
+      },
       "PatientConcern": {
         "type": "object",
         "properties": {
@@ -5287,6 +5407,248 @@
         },
         "additionalProperties": false,
         "description": "Entries are corrected, never deleted."
+      },
+      "TimelineItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Opaque and stable."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TimelineItemKind"
+          },
+          "domain": {
+            "$ref": "#/components/schemas/TimelineDomain"
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "actorUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "resource": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Patient",
+                  "Consultation",
+                  "PhotoSession",
+                  "BeforeAfterSet",
+                  "Document",
+                  "PhotoPermission",
+                  "MediaRelease"
+                ]
+              },
+              "id": {
+                "$ref": "#/components/schemas/Uuid"
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "domain",
+          "occurredAt",
+          "resource"
+        ],
+        "additionalProperties": false,
+        "description": "Metadata only: never text from the record."
+      },
+      "TimelineItemKind": {
+        "type": "string",
+        "enum": [
+          "PATIENT_CREATED",
+          "PATIENT_ARCHIVED",
+          "CONSULTATION_CREATED",
+          "CONSULTATION_STARTED",
+          "CONSULTATION_SUBMITTED_FOR_REVIEW",
+          "CONSULTATION_COMPLETED",
+          "CONSULTATION_CANCELLED",
+          "CONSULTATION_ARCHIVED",
+          "PHOTO_SESSION_COMPLETED",
+          "BEFORE_AFTER_CREATED",
+          "DOCUMENT_ADDED",
+          "MEDIA_PERMISSION_CHANGED",
+          "MEDIA_RELEASED",
+          "MEDIA_RELEASE_REVOKED"
+        ]
+      },
+      "TimelineDomain": {
+        "type": "string",
+        "enum": [
+          "PATIENT",
+          "CONSULTATION",
+          "PHOTOGRAPHY",
+          "DOCUMENT",
+          "MEDIA_PERMISSION"
+        ],
+        "description": "Each domain needs its read permission: patient.read, consultation.create, photo.view, document.read and photo.permission.read."
+      },
+      "DocumentUploadIntent": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "uploadId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Send it to complete-upload once the PUT succeeded.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          },
+          "upload": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "PUT"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "expiresAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Send exactly these headers with the PUT."
+              }
+            },
+            "required": [
+              "method",
+              "url",
+              "expiresAt",
+              "headers"
+            ],
+            "additionalProperties": false,
+            "description": "Present while the file is awaited."
+          }
+        },
+        "required": [
+          "documentId",
+          "uploadId"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentUploadRequest": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Add a version to this uploaded document.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "A new document's title. Never audited or logged."
+          },
+          "consultationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Link a new document to a consultation of the patient.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "application/pdf"
+            ]
+          },
+          "byteSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52428800
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "contentType",
+          "byteSize",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentUploadComplete": {
+        "type": "object",
+        "properties": {
+          "uploadId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "changeNote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "What the new version changes."
+          }
+        },
+        "required": [
+          "uploadId"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentAccessUrl": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "versionId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "versionNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "documentId",
+          "versionId",
+          "versionNumber",
+          "url",
+          "expiresAt"
+        ],
+        "additionalProperties": false,
+        "description": "A signed GET, valid 10 minutes, served as an attachment."
+      },
+      "DocumentAccessUrlRequest": {
+        "type": "object",
+        "properties": {
+          "versionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Default: the newest available version.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          }
+        },
+        "additionalProperties": false
       },
       "AuditEvent": {
         "type": "object",
@@ -15307,6 +15669,89 @@
         }
       }
     },
+    "/patients/{patientId}/consultations/{consultationId}/summary": {
+      "post": {
+        "operationId": "generateConsultationSummary",
+        "tags": [
+          "Consultations"
+        ],
+        "summary": "Generate the summary PDF as a new version of the consultation's summary document: in READY_FOR_REVIEW, or when completed and an addendum was finalized since the last summary.",
+        "description": "Permission: `consultation.edit` (organization scope). Audit: DOCUMENT_ADDED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "consultationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Document"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
     "/patients/{patientId}/concerns": {
       "get": {
         "operationId": "listPatientConcerns",
@@ -15912,6 +16357,612 @@
           },
           "428": {
             "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/timeline": {
+      "get": {
+        "operationId": "getPatientTimeline",
+        "tags": [
+          "Patients"
+        ],
+        "summary": "The patient's history, newest first, from the domain tables. Each item appears only to a caller who can read its domain. Metadata only.",
+        "description": "Permission: `patient.read` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/TimelineDomain"
+            },
+            "required": false,
+            "description": "Each domain needs its read permission: patient.read, consultation.create, photo.view, document.read and photo.permission.read.",
+            "name": "domain",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TimelineItem"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/documents": {
+      "get": {
+        "operationId": "listDocuments",
+        "tags": [
+          "Documents"
+        ],
+        "summary": "The patient's documents, newest first, with their versions.",
+        "description": "Permission: `document.read` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/DocumentType"
+            },
+            "required": false,
+            "description": "Layer 3 creates CONSULTATION_SUMMARY (generated) and UPLOADED_CLINICAL (uploaded by staff).",
+            "name": "type",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": false,
+            "description": "Resource identifier (UUID).",
+            "name": "consultationId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Document"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/documents/{documentId}": {
+      "get": {
+        "operationId": "getDocument",
+        "tags": [
+          "Documents"
+        ],
+        "summary": "One document with its versions.",
+        "description": "Permission: `document.read` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "documentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Document"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/documents/uploads": {
+      "post": {
+        "operationId": "createDocumentUpload",
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Start uploading a PDF (at most 50 MiB) as a new document or a new version of an uploaded one. Returns a write-once PUT carrying the checksum.",
+        "description": "Permission: `document.manage` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DocumentUploadIntent"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/documents/{documentId}/complete-upload": {
+      "post": {
+        "operationId": "completeDocumentUpload",
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Verify the uploaded file (size, SHA-256, a PDF) and add it as the next version, which is served once its malware scan is clean.",
+        "description": "Permission: `document.manage` (organization scope). Audit: DOCUMENT_ADDED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "documentId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentUploadComplete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Document"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/documents/{documentId}/access-urls": {
+      "post": {
+        "operationId": "createDocumentAccessUrl",
+        "tags": [
+          "Documents"
+        ],
+        "summary": "A signed download of an available version, valid 10 minutes, as an attachment.",
+        "description": "Permission: `document.read` (organization scope). Audit: DOCUMENT_VIEWED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "documentId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentAccessUrlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DocumentAccessUrl"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
           },
           "500": {
             "$ref": "#/components/responses/Error500"

@@ -2,6 +2,16 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-04: Documents, consultation summary and patient timeline (M3.8 backend; ADR-0027)
+
+- **Documents API:** list, read, upload intent, complete-upload and download (`document.read`, `document.manage`). Files are PDF only, at most 50 MiB, verified (size, SHA-256, `%PDF-`) and scanned like photos. A version is created at completion and served once its scan is clean. Downloads are attachments valid 10 minutes. `DOCUMENT_ADDED` and `DOCUMENT_VIEWED` never carry a title.
+- **Summary:** `POST …/consultations/{id}/summary` renders the summary PDF in the api with PDFKit 0.20.2 (MIT; its dependencies fontkit, linebreak, png-js, fflate and @noble are MIT), embedding Inter Regular and SemiBold (OFL, bundled with the licence and copied into `dist/fonts`). It is allowed in `READY_FOR_REVIEW`, or after an addendum to a completed consultation, and adds a version to the consultation's one summary document. It contains final notes with their addenda, no drafts and no images.
+- **Timeline:** `GET /patients/{id}/timeline` merges items from the domain tables with an exact cursor and a domain filter. A caller sees only the domains it can read.
+- **Worker:** scan results apply to document versions. A failed scan of a document is logged as a security event with identifiers only.
+- **Storage:** the `DOCUMENT/` prefix joins the presigning role and the GuardDuty scan prefixes in Terraform, and the local scanner's notifications.
+- **CI (F-70):** the main-thread sampler runs `sample` as root, and prints why when no sample was taken; run 101 hung on the iPad again and took none.
+- **Tests:** `documents.test.ts` (8), `consultation-summary.test.ts` (3) and `timeline.test.ts` (3). The generated authorization and cross-tenant tests cover the seven new operations. The api suite runs 586 tests.
+
 ## 2026-10-04: Purpose-specific exports (M3.7 backend; ADR-0027)
 
 - **API:** `POST …/photos/{photoId}/exports` (optionally with one annotation layer) and `POST …/before-after/{setId}/exports` (`202`); `GET /patients/{patientId}/exports/{exportId}` (pending, ready, failed or revoked); `POST …/exports/{exportId}/access-urls` (10 minutes). All four need `photo.export`, `photo.view` and step-up. The request checks the current grant on every photo shown (`403 MEDIA_PERMISSION_NOT_GRANTED`), then in one transaction registers the output object, creates the derivative and its release pinning every permission version relied on, queues the render and writes `PHOTO_EXPORTED` per photo. Downloads re-check the grants and write `PHOTO_VIEWED`. 30 requests per user in 10 minutes.

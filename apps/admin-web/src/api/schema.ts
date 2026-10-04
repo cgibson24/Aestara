@@ -1812,6 +1812,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/patients/{patientId}/consultations/{consultationId}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate the summary PDF as a new version of the consultation's summary document: in READY_FOR_REVIEW, or when completed and an addendum was finalized since the last summary.
+         * @description Permission: `consultation.edit` (organization scope). Audit: DOCUMENT_ADDED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["generateConsultationSummary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/patients/{patientId}/concerns": {
         parameters: {
             query?: never;
@@ -1898,6 +1918,126 @@ export interface paths {
          * @description Permission: `consultation.edit` (organization scope). Audit: PATIENT_UPDATED. Denials are audited as ACCESS_DENIED.
          */
         patch: operations["updateMedicalHistoryEntry"];
+        trace?: never;
+    };
+    "/patients/{patientId}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The patient's history, newest first, from the domain tables. Each item appears only to a caller who can read its domain. Metadata only.
+         * @description Permission: `patient.read` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getPatientTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The patient's documents, newest first, with their versions.
+         * @description Permission: `document.read` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/documents/{documentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One document with its versions.
+         * @description Permission: `document.read` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/documents/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start uploading a PDF (at most 50 MiB) as a new document or a new version of an uploaded one. Returns a write-once PUT carrying the checksum.
+         * @description Permission: `document.manage` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createDocumentUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/documents/{documentId}/complete-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the uploaded file (size, SHA-256, a PDF) and add it as the next version, which is served once its malware scan is clean.
+         * @description Permission: `document.manage` (organization scope). Audit: DOCUMENT_ADDED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["completeDocumentUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/documents/{documentId}/access-urls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A signed download of an available version, valid 10 minutes, as an attachment.
+         * @description Permission: `document.read` (organization scope). Audit: DOCUMENT_VIEWED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createDocumentAccessUrl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/audit/events": {
@@ -3584,6 +3724,41 @@ export interface components {
         ConsultationNoteUpdate: {
             body: string;
         };
+        Document: {
+            id: components["schemas"]["Uuid"];
+            patientId: components["schemas"]["Uuid"];
+            type: components["schemas"]["DocumentType"];
+            title: string;
+            consultationId?: components["schemas"]["Uuid"];
+            status: components["schemas"]["DocumentStatus"];
+            createdByUserId?: components["schemas"]["Uuid"];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+            /** @description Newest first. */
+            versions: components["schemas"]["DocumentVersion"][];
+        };
+        /**
+         * @description Layer 3 creates CONSULTATION_SUMMARY (generated) and UPLOADED_CLINICAL (uploaded by staff).
+         * @enum {string}
+         */
+        DocumentType: "CONSULTATION_SUMMARY" | "SIGNED_CONSENT" | "TREATMENT_PLAN" | "ESTIMATE" | "UPLOADED_CLINICAL" | "EXTERNAL_EMR" | "OTHER";
+        /** @enum {string} */
+        DocumentStatus: "ACTIVE" | "ARCHIVED";
+        DocumentVersion: {
+            id: components["schemas"]["Uuid"];
+            versionNumber: number;
+            status: components["schemas"]["DocumentVersionStatus"];
+            byteSize?: number;
+            sha256: string;
+            changeNote?: string;
+            createdByUserId?: components["schemas"]["Uuid"];
+            createdAt: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description From the file: being scanned, available, or rejected by the malware scan and never served.
+         * @enum {string}
+         */
+        DocumentVersionStatus: "SCANNING" | "AVAILABLE" | "REJECTED";
         PatientConcern: {
             id: components["schemas"]["Uuid"];
             patientId: components["schemas"]["Uuid"];
@@ -3642,6 +3817,90 @@ export interface components {
             onsetDate?: string | null;
             /** Format: date */
             resolvedOn?: string | null;
+        };
+        /** @description Metadata only: never text from the record. */
+        TimelineItem: {
+            /** @description Opaque and stable. */
+            id: string;
+            kind: components["schemas"]["TimelineItemKind"];
+            domain: components["schemas"]["TimelineDomain"];
+            occurredAt: components["schemas"]["Timestamp"];
+            actorUserId?: components["schemas"]["Uuid"];
+            resource: {
+                /** @enum {string} */
+                type: "Patient" | "Consultation" | "PhotoSession" | "BeforeAfterSet" | "Document" | "PhotoPermission" | "MediaRelease";
+                id: components["schemas"]["Uuid"];
+            };
+        };
+        /** @enum {string} */
+        TimelineItemKind: "PATIENT_CREATED" | "PATIENT_ARCHIVED" | "CONSULTATION_CREATED" | "CONSULTATION_STARTED" | "CONSULTATION_SUBMITTED_FOR_REVIEW" | "CONSULTATION_COMPLETED" | "CONSULTATION_CANCELLED" | "CONSULTATION_ARCHIVED" | "PHOTO_SESSION_COMPLETED" | "BEFORE_AFTER_CREATED" | "DOCUMENT_ADDED" | "MEDIA_PERMISSION_CHANGED" | "MEDIA_RELEASED" | "MEDIA_RELEASE_REVOKED";
+        /**
+         * @description Each domain needs its read permission: patient.read, consultation.create, photo.view, document.read and photo.permission.read.
+         * @enum {string}
+         */
+        TimelineDomain: "PATIENT" | "CONSULTATION" | "PHOTOGRAPHY" | "DOCUMENT" | "MEDIA_PERMISSION";
+        DocumentUploadIntent: {
+            documentId: components["schemas"]["Uuid"];
+            /**
+             * Format: uuid
+             * @description Send it to complete-upload once the PUT succeeded.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            uploadId: string;
+            /** @description Present while the file is awaited. */
+            upload?: {
+                /** @enum {string} */
+                method: "PUT";
+                /** Format: uri */
+                url: string;
+                expiresAt: components["schemas"]["Timestamp"];
+                /** @description Send exactly these headers with the PUT. */
+                headers: {
+                    [key: string]: string;
+                };
+            };
+        };
+        DocumentUploadRequest: {
+            /**
+             * Format: uuid
+             * @description Add a version to this uploaded document.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            documentId?: string;
+            /** @description A new document's title. Never audited or logged. */
+            title?: string;
+            /**
+             * Format: uuid
+             * @description Link a new document to a consultation of the patient.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            consultationId?: string;
+            /** @enum {string} */
+            contentType: "application/pdf";
+            byteSize: number;
+            sha256: string;
+        };
+        DocumentUploadComplete: {
+            uploadId: components["schemas"]["Uuid"];
+            /** @description What the new version changes. */
+            changeNote?: string;
+        };
+        /** @description A signed GET, valid 10 minutes, served as an attachment. */
+        DocumentAccessUrl: {
+            documentId: components["schemas"]["Uuid"];
+            versionId: components["schemas"]["Uuid"];
+            versionNumber: number;
+            /** Format: uri */
+            url: string;
+            expiresAt: components["schemas"]["Timestamp"];
+        };
+        DocumentAccessUrlRequest: {
+            /**
+             * Format: uuid
+             * @description Default: the newest available version.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            versionId?: string;
         };
         AuditEvent: {
             id: components["schemas"]["Uuid"];
@@ -8437,6 +8696,46 @@ export interface operations {
             503: components["responses"]["Error503"];
         };
     };
+    generateConsultationSummary: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                consultationId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Document"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
     listPatientConcerns: {
         parameters: {
             query?: {
@@ -8703,6 +9002,270 @@ export interface operations {
             404: components["responses"]["Error404"];
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getPatientTimeline: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Each domain needs its read permission: patient.read, consultation.create, photo.view, document.read and photo.permission.read. */
+                domain?: components["schemas"]["TimelineDomain"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TimelineItem"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listDocuments: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Layer 3 creates CONSULTATION_SUMMARY (generated) and UPLOADED_CLINICAL (uploaded by staff). */
+                type?: components["schemas"]["DocumentType"];
+                /** @description Resource identifier (UUID). */
+                consultationId?: components["schemas"]["Uuid"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Document"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getDocument: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                documentId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Document"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createDocumentUpload: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DocumentUploadIntent"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    completeDocumentUpload: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                documentId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentUploadComplete"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Document"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            413: components["responses"]["Error413"];
+            415: components["responses"]["Error415"];
+            422: components["responses"]["Error422"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createDocumentAccessUrl: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                documentId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentAccessUrlRequest"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DocumentAccessUrl"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
             503: components["responses"]["Error503"];
         };

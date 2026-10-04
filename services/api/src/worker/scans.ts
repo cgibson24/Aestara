@@ -4,7 +4,9 @@
 // it to the scan-results queue. Locally and in CI, the local scanner below
 // stands in for GuardDuty and sends the same event shape to the same queue.
 // A result can arrive before the upload is completed; then it is only
-// recorded, and completion applies it (photos.service completeUpload).
+// recorded, and completion applies it (photos.service and
+// documents.service completeUpload). Document uploads are scanned the same way
+// (ADR-0026 K3-16).
 import { SendMessageCommand } from "@aws-sdk/client-sqs";
 import { Inject, Injectable } from "@nestjs/common";
 import type { Logger } from "pino";
@@ -12,6 +14,7 @@ import { AwsClients } from "../aws/clients.ts";
 import { lockRow } from "../common/concurrency.ts";
 import { CONFIG, type WorkerConfig } from "../config.ts";
 import { Database } from "../db/database.ts";
+import { DocumentIntake } from "../documents/intake.ts";
 import { ObjectStore } from "../media/object-store.ts";
 import { PhotoIntake, type ScanOutcome } from "../photos/intake.ts";
 import { WORKER_LOGGER } from "./logger.ts";
@@ -48,6 +51,7 @@ export class ScanResults {
     private readonly db: Database,
     private readonly workerDb: WorkerDb,
     private readonly intake: PhotoIntake,
+    private readonly documents: DocumentIntake,
     @Inject(WORKER_LOGGER) private readonly logger: Logger,
   ) {}
 
@@ -70,6 +74,21 @@ export class ScanResults {
         where: { id: object.id },
         data: { scanStatus: outcome === "CLEAN" ? "CLEAN" : outcome === "INFECTED" ? "INFECTED" : "ERROR" },
       });
+      if (object.objectClass === "DOCUMENT") {
+        // A security event (Bible §26): identifiers and the reason only, never a title.
+        if (outcome !== "CLEAN")
+          this.logger.warn(
+            {
+              event: "document_rejected",
+              objectId: object.id,
+              reason: outcome === "INFECTED" ? "MALWARE_DETECTED" : "SCAN_FAILED",
+            },
+            "document upload rejected by the malware scan",
+          );
+        if (object.verifiedAt === null || object.status !== "QUARANTINED") return;
+        await this.documents.apply(tx, object.id, outcome);
+        return;
+      }
       if (object.verifiedAt === null) return;
       const photo = await tx.patientPhoto.findFirst({ where: { originalObjectId: object.id } });
       if (photo === null || photo.status !== "QUARANTINED") return;

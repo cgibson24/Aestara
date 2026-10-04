@@ -13,6 +13,7 @@ import { AwsClients } from "../aws/clients.ts";
 import { createLogger, NestPinoLogger } from "../common/logging.ts";
 import { CONFIG, type WorkerConfig } from "../config.ts";
 import { Database } from "../db/database.ts";
+import { DocumentIntake } from "../documents/intake.ts";
 import { ObjectStore } from "../media/object-store.ts";
 import { Outbox } from "../outbox/outbox.ts";
 import { PhotoIntake } from "../photos/intake.ts";
@@ -42,6 +43,7 @@ class WorkerModule {
         AwsClients,
         ObjectStore,
         PhotoIntake,
+        DocumentIntake,
         PermissionLedger,
         OutboxRelay,
         DerivativeJobs,

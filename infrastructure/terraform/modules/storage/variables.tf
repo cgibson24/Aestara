@@ -56,7 +56,7 @@ variable "malware_scanner" {
 }
 
 variable "scanned_prefixes" {
-  description = "Object key prefixes GuardDuty scans: the uploaded object classes (K2-04). Layer 5 adds patient uploads and attachments."
+  description = "Object key prefixes GuardDuty scans: the uploaded object classes (K2-04, K3-16). Layer 5 adds patient uploads and attachments."
   type        = list(string)
-  default     = ["CLINICAL_ORIGINAL/"]
+  default     = ["CLINICAL_ORIGINAL/", "DOCUMENT/"]
 }

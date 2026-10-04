@@ -57,6 +57,9 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 /** Redeliveries before a message moves to its dead-letter queue (ADR-0023 K2-06). */
 export const MAX_RECEIVES = 5;
 
+/** The uploaded object classes the malware scan covers (K2-04, K3-16); Terraform's scanned_prefixes. */
+const SCANNED_PREFIXES = ["CLINICAL_ORIGINAL/", "DOCUMENT/"];
+
 /** Provisions one isolated set of resources, named with `prefix` (tests run several side by side). */
 export async function provisionLocalAws(endpoint: string, prefix: string): Promise<LocalAwsResources> {
   if (!LOCAL_HOSTS.has(new URL(endpoint).hostname))
@@ -142,18 +145,16 @@ export async function provisionLocalAws(endpoint: string, prefix: string): Promi
         Targets: [{ Id: "worker", Arn: workerEvents.arn }],
       }),
     );
-    // The local scanner reads what GuardDuty would scan: every uploaded original.
+    // The local scanner reads what GuardDuty would scan: every uploaded original and document.
     await s3.send(
       new PutBucketNotificationConfigurationCommand({
         Bucket: mediaBucket,
         NotificationConfiguration: {
-          QueueConfigurations: [
-            {
-              QueueArn: scanRequests.arn,
-              Events: ["s3:ObjectCreated:*"],
-              Filter: { Key: { FilterRules: [{ Name: "prefix", Value: "CLINICAL_ORIGINAL/" }] } },
-            },
-          ],
+          QueueConfigurations: SCANNED_PREFIXES.map((prefix) => ({
+            QueueArn: scanRequests.arn,
+            Events: ["s3:ObjectCreated:*" as const],
+            Filter: { Key: { FilterRules: [{ Name: "prefix" as const, Value: prefix }] } },
+          })),
         },
       }),
     );

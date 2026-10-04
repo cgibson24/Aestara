@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Staff and admin API (NestJS on Fastify): authentication, tenancy, authorization, organizations, users, patients, audit (spec \u00a73, \u00a74, \u00a76).",
+  "description": "Staff and admin API (NestJS on Fastify): authentication, tenancy, authorization, organizations, users, patients, audit (spec §3, §4, §6).",
   "scripts": {
     "build": "node scripts/build.ts",
     "start": "node dist/main.js",
@@ -31,6 +31,7 @@
     "@prisma/client": "7.10.0",
     "@simplewebauthn/server": "14.0.3",
     "fastify": "5.12.5",
+    "pdfkit": "0.20.2",
     "pg": "8.23.0",
     "pino": "10.3.1",
     "reflect-metadata": "0.2.2",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@nestjs/testing": "12.1.2",
     "@types/node": "24.13.6",
+    "@types/pdfkit": "0.17.6",
     "@types/pg": "8.23.1",
     "rolldown": "1.2.11",
     "typescript": "6.0.3",

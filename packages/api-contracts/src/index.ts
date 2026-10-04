@@ -4,6 +4,7 @@ export * from "./auth.ts";
 export * from "./before-after.ts";
 export * from "./configuration.ts";
 export * from "./consultations.ts";
+export * from "./documents.ts";
 export * from "./endpoints.ts";
 export * from "./errors.ts";
 export * from "./exports.ts";

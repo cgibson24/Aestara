@@ -25,6 +25,7 @@ export interface ResourceRefs {
   setId: string;
   annotationId: string;
   exportId: string;
+  documentId: string;
 }
 
 let n = 0;
@@ -62,6 +63,7 @@ export function pathFor(e: EndpointDefinition, refs: ResourceRefs): string {
     .replace("{setId}", refs.setId)
     .replace("{annotationId}", refs.annotationId)
     .replace("{exportId}", refs.exportId)
+    .replace("{documentId}", refs.documentId)
     .replace("{practiceId}", refs.practiceId)
     .replace("{key}", key)}`;
 }
@@ -148,6 +150,13 @@ export function bodyFor(e: EndpointDefinition, refs: ResourceRefs): Record<strin
     updatePhotoAnnotation: { label: `Layer ${u}` },
     createPhotoExport: { purpose: "CLINICAL_USE" },
     createBeforeAfterExport: { purpose: "CLINICAL_USE" },
+    createDocumentUpload: {
+      title: `Letter ${u}`,
+      contentType: "application/pdf",
+      byteSize: 10,
+      sha256: "c".repeat(64),
+    },
+    completeDocumentUpload: { uploadId: uuidv7() },
     updatePatientConcern: { description: `Fixture concern ${u}` },
     createMedicalHistoryEntry: { category: "ALLERGY", description: "Fixture allergy" },
     updateMedicalHistoryEntry: { description: `Fixture entry ${u}` },

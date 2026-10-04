@@ -61,6 +61,17 @@ import {
   PatientConcernListQuery,
   PatientConcernUpdate,
 } from "./consultations.ts";
+import {
+  Document,
+  DocumentAccessUrl,
+  DocumentAccessUrlRequest,
+  DocumentListQuery,
+  DocumentUploadComplete,
+  DocumentUploadIntent,
+  DocumentUploadRequest,
+  TimelineItem,
+  TimelineQuery,
+} from "./documents.ts";
 import { BeforeAfterExportCreate, ExportAccessUrl, MediaExport, PhotoExportCreate } from "./exports.ts";
 import {
   AdminBootstrapResult,
@@ -190,6 +201,7 @@ export interface EndpointDefinition {
     | "Patients"
     | "Photography"
     | "Consultations"
+    | "Documents"
     | "Audit"
     | "Settings"
     | "Health";
@@ -237,6 +249,7 @@ const HistoryParams = z.strictObject({ patientId: Uuid, entryId: Uuid });
 const SetParams = z.strictObject({ patientId: Uuid, setId: Uuid });
 const AnnotationParams = z.strictObject({ patientId: Uuid, photoId: Uuid, annotationId: Uuid });
 const ExportParams = z.strictObject({ patientId: Uuid, exportId: Uuid });
+const DocumentParams = z.strictObject({ patientId: Uuid, documentId: Uuid });
 
 const perm = (permission: string, ...scopes: PermissionScope[]): EndpointAuth => ({
   kind: "permission",
@@ -1788,6 +1801,23 @@ export const ENDPOINTS = [
     errors: [409],
   },
   {
+    operationId: "generateConsultationSummary",
+    method: "POST",
+    path: "/patients/{patientId}/consultations/{consultationId}/summary",
+    tag: "Consultations",
+    summary:
+      "Generate the summary PDF as a new version of the consultation's summary document: in " +
+      "READY_FOR_REVIEW, or when completed and an addendum was finalized since the last summary.",
+    auth: perm("consultation.edit"),
+    params: ConsultationParams,
+    idempotency: "required",
+    response: { status: 201, shape: "resource", schema: Document },
+    notFound: "CONSULTATION_NOT_FOUND",
+    audit: ["DOCUMENT_ADDED"],
+    patientData: true,
+    errors: [409],
+  },
+  {
     operationId: "listPatientConcerns",
     method: "GET",
     path: "/patients/{patientId}/concerns",
@@ -1872,6 +1902,97 @@ export const ENDPOINTS = [
     notFound: "MEDICAL_HISTORY_ENTRY_NOT_FOUND",
     audit: ["PATIENT_UPDATED"],
     patientData: true,
+  },
+  {
+    operationId: "getPatientTimeline",
+    method: "GET",
+    path: "/patients/{patientId}/timeline",
+    tag: "Patients",
+    summary:
+      "The patient's history, newest first, from the domain tables. Each item appears only to a caller " +
+      "who can read its domain. Metadata only.",
+    auth: perm("patient.read"),
+    params: PatientParam,
+    query: TimelineQuery,
+    response: { status: 200, shape: "collection", schema: TimelineItem },
+    notFound: "PATIENT_NOT_FOUND",
+    patientData: true,
+  },
+  // ---- Documents (spec §6.3 "Documents"; ADR-0026 K3-16; ADR-0027) ---------------
+  {
+    operationId: "listDocuments",
+    method: "GET",
+    path: "/patients/{patientId}/documents",
+    tag: "Documents",
+    summary: "The patient's documents, newest first, with their versions.",
+    auth: perm("document.read"),
+    params: PatientParam,
+    query: DocumentListQuery,
+    response: { status: 200, shape: "collection", schema: Document },
+    notFound: "PATIENT_NOT_FOUND",
+    patientData: true,
+  },
+  {
+    operationId: "getDocument",
+    method: "GET",
+    path: "/patients/{patientId}/documents/{documentId}",
+    tag: "Documents",
+    summary: "One document with its versions.",
+    auth: perm("document.read"),
+    params: DocumentParams,
+    response: { status: 200, shape: "resource", schema: Document },
+    notFound: "DOCUMENT_NOT_FOUND",
+    patientData: true,
+  },
+  {
+    operationId: "createDocumentUpload",
+    method: "POST",
+    path: "/patients/{patientId}/documents/uploads",
+    tag: "Documents",
+    summary:
+      "Start uploading a PDF (at most 50 MiB) as a new document or a new version of an uploaded one. " +
+      "Returns a write-once PUT carrying the checksum.",
+    auth: perm("document.manage"),
+    params: PatientParam,
+    body: DocumentUploadRequest,
+    idempotency: "required",
+    response: { status: 201, shape: "resource", schema: DocumentUploadIntent },
+    notFound: "PATIENT_NOT_FOUND",
+    patientData: true,
+    errors: [409, 503],
+  },
+  {
+    operationId: "completeDocumentUpload",
+    method: "POST",
+    path: "/patients/{patientId}/documents/{documentId}/complete-upload",
+    tag: "Documents",
+    summary:
+      "Verify the uploaded file (size, SHA-256, a PDF) and add it as the next version, which is " +
+      "served once its malware scan is clean.",
+    auth: perm("document.manage"),
+    params: DocumentParams,
+    body: DocumentUploadComplete,
+    idempotency: "required",
+    response: { status: 200, shape: "resource", schema: Document },
+    notFound: "DOCUMENT_NOT_FOUND",
+    audit: ["DOCUMENT_ADDED"],
+    patientData: true,
+    errors: [409, 413, 415, 422, 503],
+  },
+  {
+    operationId: "createDocumentAccessUrl",
+    method: "POST",
+    path: "/patients/{patientId}/documents/{documentId}/access-urls",
+    tag: "Documents",
+    summary: "A signed download of an available version, valid 10 minutes, as an attachment.",
+    auth: perm("document.read"),
+    params: DocumentParams,
+    body: DocumentAccessUrlRequest,
+    response: { status: 201, shape: "resource", schema: DocumentAccessUrl },
+    notFound: "DOCUMENT_NOT_FOUND",
+    audit: ["DOCUMENT_VIEWED"],
+    patientData: true,
+    errors: [409, 503],
   },
   // ---- Audit, settings, health -------------------------------------------------
   {

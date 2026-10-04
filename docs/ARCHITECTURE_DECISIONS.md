@@ -815,4 +815,25 @@ Status values:
     - A pair is shown at the smaller photo's height, reduced until it fits 4096 px side by side, with the after photo placed by the transform inside a frame the size of the before photo, on a neutral dark grey.
     - No photo is enlarged.
     - Labels are drawn in Inter, bundled with image-processing with its own fontconfig file, so they render the same in every environment.
+- **Decision, documents (M3.8):**
+  - Routes under `/patients/{patientId}/documents`: list, read, `POST …/uploads` (an upload intent, `Idempotency-Key`), `POST …/{documentId}/complete-upload` and `POST …/{documentId}/access-urls`. Reading needs `document.read`; uploading `document.manage`.
+  - An intent either names an existing `UPLOADED_CLINICAL` document (a new version) or gives a title, at most 200 characters, and optionally a consultation of the same patient within the caller's practice scope (K3-20). It registers a `DOCUMENT` object with the declared size and SHA-256 and returns a presigned write-once `PUT` that carries the checksum, valid 10 minutes.
+  - The version is created at completion, after the size, checksum and `%PDF-` check, with the next version number under a lock on the document, and `DOCUMENT_ADDED` is written then. A new document with no completed version is neither listed nor found.
+  - A version's status follows its object: `SCANNING` while quarantined, `AVAILABLE` after a clean scan, `REJECTED` after a failed one. Only an available version is downloaded. A rejected version stays in the history and is never served; the security log records it. There is no new audit action: K3-19 lists the Layer 3 additions.
+  - A summary document takes versions only from generation: an upload to it answers `409`.
+  - A download is an attachment named `document-v{n}.pdf`, valid 10 minutes, and writes `DOCUMENT_VIEWED` with the document and the version number. Audit metadata never holds a title.
+  - The `DOCUMENT/` prefix joins the presigning role's prefixes and the malware scan's prefixes in Terraform, and the local scanner's bucket notification.
+- **Decision, consultation summary (M3.8):**
+  - `POST …/consultations/{consultationId}/summary` needs `consultation.edit` within the consultation's practice and an `Idempotency-Key`, and answers `201` with the summary document. It is allowed in `READY_FOR_REVIEW`, or in `COMPLETED` when a final addendum was finalized after the latest summary version; otherwise `409`.
+  - The api renders the PDF with PDFKit 0.20 (MIT) on US Letter, embedding Inter Regular and SemiBold (SIL Open Font License; bundled in `services/api` with the licence). Times are in the practice's time zone.
+  - The contents are those of K3-17:
+    - concerns by area;
+    - final notes in the order they were finalized, each addendum under the note it corrects;
+    - the photo sessions linked to the consultation, with the protocol and the views of their accepted photos.
+    - No draft and no image is included.
+  - Each generation writes a write-once `DOCUMENT` object from the api (available at once, not scanned, its SHA-256 computed) and adds a version to the consultation's one `CONSULTATION_SUMMARY` document, which the first generation creates; a lock on the consultation serializes generations. `DOCUMENT_ADDED` records the document, the version number and that it was generated.
+- **Decision, patient timeline (M3.8):**
+  - `GET /patients/{patientId}/timeline` needs `patient.read`. It merges items from the domain tables, newest first, ordered by time, then kind, then source ID, with a cursor, and filters by domain: `PATIENT`, `CONSULTATION`, `PHOTOGRAPHY`, `DOCUMENT` and `MEDIA_PERMISSION`.
+  - The items of a domain are included only for a caller holding its read permission: `patient.read`, `consultation.create`, `photo.view`, `document.read` and `photo.permission.read`. A caller filtering on a domain it cannot read gets an empty page.
+  - An item is its kind, its time, its actor when the table records one, and a link (`resource` type and ID). It never holds text from the record.
 - **Consequences:** M3.8's summary generator satisfies `CURRENT_SUMMARY`.

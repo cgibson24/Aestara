@@ -14,7 +14,7 @@ import { AwsClients } from "../aws/clients.ts";
 import { ApiError } from "../common/errors.ts";
 import { CONFIG, type Config } from "../config.ts";
 
-export type ObjectClass = "CLINICAL_ORIGINAL" | "CLINICAL_DERIVATIVE";
+export type ObjectClass = "CLINICAL_ORIGINAL" | "CLINICAL_DERIVATIVE" | "DOCUMENT";
 
 /** Presigned URL lifetimes (spec §6.1.9). */
 export const UPLOAD_URL_SECONDS = 600;
@@ -112,6 +112,7 @@ export class ObjectStore {
     contentType: string;
     fileName: string;
     seconds?: number;
+    disposition?: "inline" | "attachment";
     now?: Date;
   }): Promise<{ url: string; expiresAt: Date }> {
     const seconds = input.seconds ?? VIEW_URL_SECONDS;
@@ -119,7 +120,7 @@ export class ObjectStore {
       Bucket: this.bucket,
       Key: input.key,
       ResponseCacheControl: "private, no-store",
-      ResponseContentDisposition: `inline; filename="${input.fileName}"`,
+      ResponseContentDisposition: `${input.disposition ?? "inline"}; filename="${input.fileName}"`,
       ResponseContentType: input.contentType,
     });
     try {
@@ -184,6 +185,15 @@ export class ObjectStore {
         chunks.push(chunk as Buffer);
       }
       return Buffer.concat(chunks);
+    } catch {
+      throw storageUnavailable();
+    }
+  }
+
+  /** Writes a file the platform generated to the media bucket, once (a consultation summary). */
+  async writeNew(key: string, body: Buffer, contentType: string): Promise<void> {
+    try {
+      await this.putNew(this.bucket, key, body, contentType);
     } catch {
       throw storageUnavailable();
     }

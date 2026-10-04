@@ -286,6 +286,29 @@ export class Fixtures {
     return exportId;
   }
 
+  /** An uploaded clinical PDF with one available version. */
+  async document(organizationId: string, patientId: string, userId: string): Promise<string> {
+    const objectId = uuidv7();
+    const documentId = uuidv7();
+    const q = (sql: string, values: unknown[]) => this.api.db.query(sql, values);
+    await q(
+      `INSERT INTO "StorageObject" (id, "organizationId", "objectClass", bucket, "objectKey", "contentType", "byteSize", sha256, status, "scanStatus", "verifiedAt")
+       VALUES ($1, $2, 'DOCUMENT', 'aestara-test-media', $3, 'application/pdf', 10, $4, 'AVAILABLE', 'CLEAN', now())`,
+      [objectId, organizationId, `DOCUMENT/${uuidv7()}`, "d".repeat(64)],
+    );
+    await q(
+      `INSERT INTO "Document" (id, "organizationId", "patientId", type, title, "createdById", "updatedAt")
+       VALUES ($1, $2, $3, 'UPLOADED_CLINICAL', 'Referral letter', $4, now())`,
+      [documentId, organizationId, patientId, userId],
+    );
+    await q(
+      `INSERT INTO "DocumentVersion" (id, "organizationId", "patientId", "documentId", "versionNumber", "storageObjectId", sha256, "createdById")
+       VALUES ($1, $2, $3, $4, 1, $5, $6, $7)`,
+      [uuidv7(), organizationId, patientId, documentId, objectId, "d".repeat(64), userId],
+    );
+    return documentId;
+  }
+
   /** An empty annotation layer on a photo, by its author. */
   async annotation(
     organizationId: string,

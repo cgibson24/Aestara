@@ -1088,7 +1088,7 @@ Notation: **Perm** = required permission (see §4.4 for proposed keys marked *).
 | `GET /patients/{pid}` | Profile (demographics; per-tab counts only for tabs the caller may read) | patient.read | – | PATIENT_VIEWED | 1 |
 | `PATCH /patients/{pid}` | Update demographics, and status `INACTIVE` / `DECEASED` (If-Match; §5.4.10) | patient.update | – | PATIENT_UPDATED | 1 |
 | `POST /patients/{pid}/archive` | Archive (If-Match) | patient.archive | – | PATIENT_ARCHIVED | 1 |
-| `GET /patients/{pid}/timeline` | Chronological events (metadata only), built from the domain tables, newest first, cursor-paginated, filterable by kind. **Each item is filtered by the caller's permission for its domain**, so demographics-only roles see only demographic/scheduling items [ADR-0026 K3-18] | patient.read (+ per-item) | – | – | 3 |
+| `GET /patients/{pid}/timeline` | Chronological events (metadata only), built from the domain tables, newest first, cursor-paginated, filterable by domain [ADR-0027]. **Each item is filtered by the caller's permission for its domain**, so demographics-only roles see only demographic/scheduling items [ADR-0026 K3-18] | patient.read (+ per-item) | – | – | 3 |
 | `GET/POST /patients/{pid}/contacts` · `PATCH/DELETE …/{id}` | Contacts | patient.read / patient.update | – | PATIENT_UPDATED | 1 |
 | `GET/POST /patients/{pid}/medical-history` · `PATCH …/{id}` | History entries (clinical: **not** readable with `patient.read`) | consultation.create (read) / consultation.edit | – | PATIENT_UPDATED | 3 |
 | `GET/POST /patients/{pid}/concerns` · `PATCH …/{id}` | Concerns | consultation.create (read) / consultation.edit | – | PATIENT_UPDATED | 3 |

@@ -71,6 +71,7 @@ async function world(
   const setId = await fx.beforeAfter(organizationId, patientId, photography.photoId, admin.userId);
   const annotationId = await fx.annotation(organizationId, patientId, photography.photoId, admin.userId);
   const exportId = await fx.export(organizationId, patientId, photography.photoId, admin.userId);
+  const documentId = await fx.document(organizationId, patientId, admin.userId);
   return {
     admin,
     member,
@@ -94,6 +95,7 @@ async function world(
       setId,
       annotationId,
       exportId,
+      documentId,
     },
   };
 }

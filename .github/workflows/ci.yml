@@ -666,13 +666,17 @@ jobs:
             bundle="$RUNNER_TEMP/ui-$name.xcresult"
             status=0
             # F-70: when the app's main thread stays busy (XCTest logs it), sample the app's
-            # stacks once, to show what keeps it busy.
+            # stacks once, to show what keeps it busy. Attaching to another process needs
+            # root on macOS; the runner's sudo needs no password. What the watcher did is
+            # kept, so a missing sample explains itself (run 37167786120 had none).
             (
               while sleep 20; do
                 if xcrun simctl spawn "$udid" log show --last 25s --style compact \
                   --predicate 'eventMessage CONTAINS "process main thread busy"' 2> /dev/null | grep -q "main thread busy"; then
                   pid=$(pgrep -f "AestaraProvider.app/AestaraProvider" | head -1)
-                  [ -n "$pid" ] && sample "$pid" 5 -file "$RUNNER_TEMP/sample-$name.txt" > /dev/null 2>&1
+                  echo "main thread busy seen at $(date -u +%T); app pid: ${pid:-none}" > "$RUNNER_TEMP/watch-$name.txt"
+                  [ -n "$pid" ] && sudo -n sample "$pid" 5 -file "$RUNNER_TEMP/sample-$name.txt" \
+                    >> "$RUNNER_TEMP/watch-$name.txt" 2>&1
                   break
                 fi
               done
@@ -706,6 +710,9 @@ jobs:
                 echo "::group::Sample of the app while its main thread was busy ($name)"
                 sed -n '/^Call graph:/,/^Total number in stack/p' "$RUNNER_TEMP/sample-$name.txt" | head -300
                 echo "::endgroup::"
+              elif [ -s "$RUNNER_TEMP/watch-$name.txt" ]; then
+                echo "No sample ($name):"
+                tail -20 "$RUNNER_TEMP/watch-$name.txt"
               fi
               echo "::group::Device log, last 20 minutes ($name)"
               xcrun simctl spawn "$udid" log show --last 20m --style compact \

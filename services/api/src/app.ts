@@ -30,6 +30,11 @@ import { ConsultationsService } from "./consultations/consultations.service.ts";
 import { HistoryService } from "./consultations/history.service.ts";
 import { NotesService } from "./consultations/notes.service.ts";
 import { Database } from "./db/database.ts";
+import { DocumentsController } from "./documents/documents.controller.ts";
+import { DocumentsService } from "./documents/documents.service.ts";
+import { DocumentIntake } from "./documents/intake.ts";
+import { SummaryService } from "./documents/summary.service.ts";
+import { TimelineService } from "./documents/timeline.service.ts";
 import { EmailService } from "./email/email.ts";
 import { HealthController } from "./health/health.controller.ts";
 import { ObjectStore } from "./media/object-store.ts";
@@ -74,6 +79,7 @@ class AppModule {
         PhotographyController,
         BeforeAfterController,
         ExportsController,
+        DocumentsController,
         AnnotationsController,
         ConsultationsController,
         ConfigurationController,
@@ -103,6 +109,10 @@ class AppModule {
         PermissionsService,
         BeforeAfterService,
         ExportsService,
+        DocumentIntake,
+        DocumentsService,
+        SummaryService,
+        TimelineService,
         AnnotationsService,
         ConsultationsService,
         NotesService,

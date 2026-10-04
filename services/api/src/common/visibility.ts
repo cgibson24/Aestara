@@ -43,6 +43,7 @@ const PATIENT_SUBRESOURCE_READ: Record<string, readonly string[]> = {
   "medical-history": ["consultation.create"],
   "before-after": ["photo.view"],
   exports: ["photo.view"],
+  documents: ["document.read"],
 };
 
 function segment(op: EndpointDefinition): string {
@@ -52,7 +53,9 @@ function segment(op: EndpointDefinition): string {
 export function readPermissionsFor(op: EndpointDefinition): readonly string[] {
   if (
     segment(op) === "patients" &&
-    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId|setId|exportId)\}/.test(op.path)
+    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId|setId|exportId|documentId)\}/.test(
+      op.path,
+    )
   ) {
     const sub = op.path.split("/")[3];
     if (sub !== undefined && PATIENT_SUBRESOURCE_READ[sub] !== undefined)
@@ -81,6 +84,12 @@ export async function resourceVisible(
               patientId: params.patientId ?? "",
               deletedAt: null,
             },
+          })) > 0
+        );
+      if (params.documentId !== undefined)
+        return (
+          (await tx.document.count({
+            where: { id: params.documentId, patientId: params.patientId ?? "", versions: { some: {} } },
           })) > 0
         );
       if (params.exportId !== undefined)

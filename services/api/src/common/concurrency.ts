@@ -38,6 +38,7 @@ export function defined<T extends Record<string, unknown>>(
 }
 
 const LOCKABLE = new Set([
+  "Document",
   "Organization",
   "Practice",
   "Location",
