@@ -154,11 +154,15 @@ public struct AnnotationEditor: View {
                     .pickerStyle(.menu)
                     .accessibilityIdentifier("annotation.stroke")
                 }
-                Button("Undo", systemImage: "arrow.uturn.backward") {
+                Button {
                     if !drawing.shapes.isEmpty { drawing.shapes.removeLast() }
+                } label: {
+                    // The 44-pt frame inside the label, so the whole of it takes the tap (C1).
+                    Label("Undo", systemImage: "arrow.uturn.backward")
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: DSSize.touchTarget, minHeight: DSSize.touchTarget)
+                        .contentShape(Rectangle())
                 }
-                .labelStyle(.iconOnly)
-                .frame(minWidth: DSSize.touchTarget, minHeight: DSSize.touchTarget)
                 .disabled(drawing.shapes.isEmpty)
                 .accessibilityIdentifier("annotation.undo")
             }

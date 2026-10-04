@@ -120,6 +120,7 @@ struct ConcernRow: View {
                     Image(systemName: "ellipsis.circle")
                         .font(DSFont.title3)
                         .frame(minWidth: DSSize.touchTarget, minHeight: DSSize.touchTarget)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel(Text("More for \(concern.area.title)"))
                 .accessibilityIdentifier("concerns.more.\(concern.id)")

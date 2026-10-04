@@ -6,6 +6,7 @@ All material changes to the architecture, contracts and repository. Newest first
 
 - **Snapshot references:** the 18 pictures recorded with the app's tint (view states, annotation editor, alignment editor, the five comparison modes on iPhone and iPad) are reviewed and committed. All 40 references of `ProviderSnapshotsTests` are in the repository and compared on every push.
 - **UI test typing:** a field is typed into only once it has the keyboard's focus, and short fields are checked for every key: typing that started while the keyboard was still appearing kept only the "B" of "Baseline" (run 37190303393).
+- **Accessibility:** the annotation editor's Undo button takes its whole 44-pt frame (the audit on iPad measured 20 × 17 pt: the frame sat outside the button); the concern menu's frame takes the tap too.
 - **CI:** the UI step's api stack writes through `cat`. Node made the step's output non-blocking, and a long device log then made `echo` fail with "Resource temporarily unavailable", which ended the step before the iPad ran.
 
 ## 2026-10-04: Annotation and comparison screens are pushed in the workspace and keep their state (F-70; ADR-0027)
