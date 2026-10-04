@@ -460,7 +460,7 @@ final class ProviderFlowTests: XCTestCase {
     /// not carry it, the dialog's button with that label (the one after the `besides` buttons
     /// with the same label on the screen behind it).
     private func dialogButton(_ app: XCUIApplication, _ identifier: String, label: String, besides: Int) -> XCUIElement {
-        let byIdentifier = app.buttons[identifier]
+        let byIdentifier = app.buttons.matching(identifier: identifier).firstMatch
         let byLabel = app.buttons.matching(NSPredicate(format: "label == %@", label))
         XCTAssertTrue(waitUntil(timeout: 10) { byIdentifier.exists || byLabel.count > besides },
                       "The confirmation did not appear. Screen: \(screen(app))")

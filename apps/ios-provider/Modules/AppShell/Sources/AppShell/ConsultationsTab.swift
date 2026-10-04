@@ -109,6 +109,7 @@ struct ConsultationsTab: View {
 struct ConsultationRow: View {
     let consultation: Consultation
     let open: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Button(action: open) {
@@ -119,7 +120,11 @@ struct ConsultationRow: View {
                         .foregroundStyle(DSColor.textPrimary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    HStack(spacing: DSSpacing.sm) {
+                    // Side by side, or stacked at accessibility sizes so neither is squeezed.
+                    let details = typeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: DSSpacing.xs))
+                        : AnyLayout(HStackLayout(spacing: DSSpacing.sm))
+                    details {
                         ConsultationStatusBadge(status: consultation.status)
                         Text(consultation.startedAt ?? consultation.createdAt, format: .dateTime.day().month().year())
                             .font(DSFont.footnote)

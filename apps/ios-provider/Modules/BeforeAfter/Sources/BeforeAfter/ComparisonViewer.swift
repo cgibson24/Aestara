@@ -152,7 +152,7 @@ public struct ComparisonViewer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Blink never changes more than 3 times a second (WCAG 2.3.1).
-    static let maxBlinkRate = 3.0
+    nonisolated static let maxBlinkRate = 3.0
 
     public init(before: UIImage, after: UIImage, transform: SimilarityTransform, mode: Binding<ComparisonMode>) {
         self.before = before

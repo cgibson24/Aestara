@@ -143,6 +143,7 @@ struct DocumentRow: View {
     let document: DocumentItem
     let opening: Bool
     let open: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Button(action: open) {
@@ -153,7 +154,11 @@ struct DocumentRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: DSSpacing.xxs) {
                     Text(document.title).font(DSFont.headline).foregroundStyle(DSColor.textPrimary)
-                    HStack(spacing: DSSpacing.sm) {
+                    // Side by side, or stacked at accessibility sizes so nothing is squeezed.
+                    let details = typeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: DSSpacing.xs))
+                        : AnyLayout(HStackLayout(spacing: DSSpacing.sm))
+                    details {
                         DSBadge(document.typeTitle)
                         if let latest = document.versions.first {
                             Text("Version \(latest.versionNumber)")

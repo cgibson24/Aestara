@@ -27,14 +27,16 @@ private func traits(_ style: UIUserInterfaceStyle, _ size: UIContentSizeCategory
     }
 }
 
-/// Light and dark, at the default text size and at an accessibility size.
+/// Light and dark, at the default text size and at an accessibility size. Set on the view's
+/// environment as well as its traits, so the picture is measured at that size, not cut to the
+/// default one.
 @MainActor
-private func looks() -> [(name: String, traits: UITraitCollection)] {
+private func looks() -> [(name: String, scheme: ColorScheme, size: DynamicTypeSize, traits: UITraitCollection)] {
     [
-        ("light", traits(.light, .large)),
-        ("dark", traits(.dark, .large)),
-        ("light-ax", traits(.light, .accessibilityExtraLarge)),
-        ("dark-ax", traits(.dark, .accessibilityExtraLarge)),
+        ("light", .light, .large, traits(.light, .large)),
+        ("dark", .dark, .large, traits(.dark, .large)),
+        ("light-ax", .light, .accessibility2, traits(.light, .accessibilityExtraLarge)),
+        ("dark-ax", .dark, .accessibility2, traits(.dark, .accessibilityExtraLarge)),
     ]
 }
 
@@ -45,7 +47,9 @@ private func assertLooks(_ view: some View, width: CGFloat = 390, fileID: Static
     for look in looks() {
         assertSnapshot(
             of: view.frame(width: width).fixedSize(horizontal: false, vertical: true)
-                .padding(DSSpacing.lg).background(DSColor.canvas),
+                .padding(DSSpacing.lg).background(DSColor.canvas)
+                .environment(\.colorScheme, look.scheme)
+                .environment(\.dynamicTypeSize, look.size),
             as: .image(precision: 0.99, perceptualPrecision: 0.98, layout: .sizeThatFits, traits: look.traits),
             named: look.name, fileID: fileID, file: file, testName: testName, line: line, column: column
         )

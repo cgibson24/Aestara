@@ -707,10 +707,11 @@ jobs:
               while sleep 20; do
                 if xcrun simctl spawn "$udid" log show --last 25s --style compact \
                   --predicate 'eventMessage CONTAINS "process main thread busy"' 2> /dev/null | grep -q "main thread busy"; then
-                  # The simulated app is a host process; match its executable by name first
-                  # (run 37176704495 found no pid by its path).
-                  pid=$(pgrep -x AestaraProvider | head -1)
-                  [ -n "$pid" ] || pid=$(pgrep -f "AestaraProvider" | head -1)
+                  # The app's pid from the simulator's launchd, by bundle ID: by path pgrep
+                  # found none (run 37176704495), and by name it matched xcodebuild
+                  # (run 37178901041). Simulated apps are host processes with that pid.
+                  pid=$(xcrun simctl spawn "$udid" launchctl list 2> /dev/null \
+                    | awk '/UIKitApplication:com\.aestara\.provider\[/ && $1 ~ /^[0-9]+$/ { print $1; exit }')
                   echo "main thread busy seen at $(date -u +%T); app pid: ${pid:-none}" > "$RUNNER_TEMP/watch-$name.txt"
                   ps -axo pid,comm | grep -i aestara >> "$RUNNER_TEMP/watch-$name.txt" 2>&1 || true
                   [ -n "$pid" ] && sudo -n sample "$pid" 5 -file "$RUNNER_TEMP/sample-$name.txt" \
@@ -754,7 +755,7 @@ jobs:
               fi
               echo "::group::Device log, last 20 minutes ($name)"
               xcrun simctl spawn "$udid" log show --last 20m --style compact \
-                --predicate 'process == "AestaraProvider" OR subsystem == "com.apple.hangtracer" OR eventMessage CONTAINS "Hang detected" OR eventMessage CONTAINS "AttributeGraph" OR (process == "testmanagerd" AND eventMessage CONTAINS[c] "audit")' \
+                --predicate '(process == "AestaraProvider" AND subsystem != "com.apple.dt.xctest") OR subsystem == "com.apple.hangtracer" OR eventMessage CONTAINS "Hang detected" OR eventMessage CONTAINS "AttributeGraph" OR (process == "testmanagerd" AND eventMessage CONTAINS[c] "audit")' \
                 2> /dev/null | grep -v '^$' | tail -300 || true
               echo "::endgroup::"
               # The other device still runs, so one run reports both.
