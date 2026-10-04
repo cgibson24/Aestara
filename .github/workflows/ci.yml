@@ -661,7 +661,11 @@ jobs:
           STACK_LOG_LEVEL: info
         run: |
           users="$RUNNER_TEMP/ios-users.json"
-          node services/api/scripts/local-stack.ts --ios "$users" iphone ipad &
+          # The stack writes through `cat`, not to the step's own output: node makes the output
+          # it is given non-blocking, and a long burst (a device log) then made `echo` fail with
+          # "Resource temporarily unavailable", which ended the step before the iPad ran
+          # (run 37190303393).
+          node services/api/scripts/local-stack.ts --ios "$users" iphone ipad > >(cat) 2>&1 &
           stack=$!
           # The step keeps its own exit status: stopping the stack must not turn a failure green.
           trap 'status=$?; kill $stack 2>/dev/null || true; exit $status' EXIT

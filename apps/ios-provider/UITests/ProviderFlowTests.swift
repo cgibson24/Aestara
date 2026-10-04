@@ -29,10 +29,9 @@ final class ProviderFlowTests: XCTestCase {
         let emailField = app.textFields["signin.email"]
         XCTAssertTrue(emailField.waitForExistence(timeout: 60), "The sign-in screen did not appear. Screen: \(screen(app))")
         snapshot(app, "01 Sign in")
-        emailField.tap()
-        emailField.typeText(email)
+        enter(app, email, into: emailField)
         let passwordField = app.secureTextFields["signin.password"]
-        passwordField.tap()
+        focus(passwordField)
         let wrong = "not the right one"
         passwordField.typeText(wrong)
         app.buttons["signin.submit"].tap()
@@ -40,7 +39,7 @@ final class ProviderFlowTests: XCTestCase {
             element(in: app, containing: "incorrect").waitForExistence(timeout: 15),
             "A wrong password did not show an error. Screen: \(screen(app))"
         )
-        passwordField.tap()
+        focus(passwordField)
         passwordField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: wrong.count))
         passwordField.typeText(password)
         app.buttons["signin.submit"].tap()
@@ -48,9 +47,8 @@ final class ProviderFlowTests: XCTestCase {
         // Second factor.
         let codeField = app.textFields["mfa.code"]
         XCTAssertTrue(codeField.waitForExistence(timeout: 15), "The code screen did not appear. Screen: \(screen(app))")
-        codeField.tap()
         let signInCode = TOTP.next(secret: secret, after: lastStep)
-        codeField.typeText(signInCode.code)
+        enter(app, signInCode.code, into: codeField)
         app.buttons["mfa.verify"].tap()
 
         // Signed in: create a patient (duplicate check first).
@@ -66,11 +64,9 @@ final class ProviderFlowTests: XCTestCase {
         let birthYear = String(Int.random(in: 1940...1999))
         let firstName = app.textFields["patient.firstName"]
         XCTAssertTrue(firstName.waitForExistence(timeout: 10), "The new-patient form did not appear. Screen: \(screen(app))")
-        firstName.tap()
-        firstName.typeText(givenName)
+        enter(app, givenName, into: firstName)
         let lastNameField = app.textFields["patient.lastName"]
-        lastNameField.tap()
-        lastNameField.typeText(lastName)
+        enter(app, lastName, into: lastNameField)
         // Date of birth: month, day, year wheels (en_US).
         let year = app.pickerWheels.element(boundBy: 2)
         XCTAssertTrue(year.waitForExistence(timeout: 5), "The date-of-birth picker did not appear. Screen: \(screen(app))")
@@ -116,8 +112,7 @@ final class ProviderFlowTests: XCTestCase {
         }
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10), "The search field did not appear. Screen: \(screen(app))")
-        search.tap()
-        search.typeText(String(lastName.prefix(8)))
+        enter(app, String(lastName.prefix(8)), into: search)
         // The result row is in the list (a collection view), not the profile header.
         let row = app.collectionViews.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS %@", lastName)).firstMatch
@@ -200,8 +195,7 @@ final class ProviderFlowTests: XCTestCase {
         tile.tap()
         let tagField = app.textFields["photo.tagField"]
         XCTAssertTrue(tagField.waitForExistence(timeout: 20), "The photo did not open. Screen: \(screen(app))")
-        tagField.tap()
-        tagField.typeText("Baseline")
+        enter(app, "Baseline", into: tagField)
         app.buttons["photo.addTag"].tap()
         XCTAssertTrue(app.staticTexts["baseline"].waitForExistence(timeout: 15), "The tag was not saved. Screen: \(screen(app))")
         snapshot(app, "12 Photo with a tag")
@@ -253,8 +247,7 @@ final class ProviderFlowTests: XCTestCase {
         new.tap()
         let reason = field(app, "newConsultation.reason")
         XCTAssertTrue(reason.waitForExistence(timeout: 15), "The new-consultation form did not open. Screen: \(screen(app))")
-        reason.tap()
-        reason.typeText("Brow lines")
+        enter(app, "Brow lines", into: reason)
         let create = app.buttons["newConsultation.create"]
         XCTAssertTrue(waitUntil(timeout: 10) { create.isEnabled }, "Create stayed disabled. Screen: \(screen(app))")
         create.tap()
@@ -330,7 +323,7 @@ final class ProviderFlowTests: XCTestCase {
         tapRevealed(app, app.buttons["notes.new"], "New note")
         let body = field(app, "note.body")
         XCTAssertTrue(body.waitForExistence(timeout: 10), "The note editor did not open. Screen: \(screen(app))")
-        body.tap()
+        focus(body)
         body.typeText("Discussed options for the brow lines. Synthetic test note.")
         app.buttons["note.save"].tap()
         let finalize = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'notes.finalize.'")).firstMatch
@@ -382,13 +375,12 @@ final class ProviderFlowTests: XCTestCase {
         if stepUpPassword.exists {
             // More than 15 minutes since the second factor: confirm it is them (step-up).
             snapshot(app, "20a Confirm it's you")
-            stepUpPassword.tap()
+            focus(stepUpPassword)
             stepUpPassword.typeText(password)
             app.buttons["stepUp.continue"].tap()
             let code = app.textFields["stepUp.code"]
             XCTAssertTrue(code.waitForExistence(timeout: 15), "No code was asked for. Screen: \(screen(app))")
-            code.tap()
-            code.typeText(TOTP.next(secret: secret, after: usedStep).code)
+            enter(app, TOTP.next(secret: secret, after: usedStep).code, into: code)
             app.buttons["stepUp.verify"].tap()
         }
         XCTAssertTrue(share.waitForExistence(timeout: 180), "The export never became ready. Screen: \(screen(app))")
@@ -693,6 +685,27 @@ final class ProviderFlowTests: XCTestCase {
     /// Any element whose label contains the text.
     private func element(in app: XCUIApplication, containing text: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", text)).firstMatch
+    }
+
+    /// Taps a field and waits until it has the keyboard's focus: keys typed while the keyboard
+    /// is still appearing are lost (run 37190303393 kept only the "B" of "Baseline").
+    private func focus(_ field: XCUIElement) {
+        field.tap()
+        _ = waitUntil(timeout: 5) { (field.value(forKey: "hasKeyboardFocus") as? Bool) == true }
+    }
+
+    /// Types into a text field once it has focus, and checks that every key arrived; if one went
+    /// missing, what arrived is cleared and the text typed again.
+    private func enter(_ app: XCUIApplication, _ text: String, into field: XCUIElement) {
+        focus(field)
+        field.typeText(text)
+        if !waitUntil(timeout: 3, { (field.value as? String) == text }) {
+            let shown = field.value as? String ?? ""
+            let arrived = shown == field.placeholderValue ? "" : shown
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: arrived.count) + text)
+        }
+        XCTAssertTrue(waitUntil(timeout: 3) { (field.value as? String) == text },
+                      "\(field.identifier) did not take \"\(text)\": \(String(describing: field.value)). Screen: \(screen(app))")
     }
 
     private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
