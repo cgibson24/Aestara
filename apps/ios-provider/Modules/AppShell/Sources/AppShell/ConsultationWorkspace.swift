@@ -1,8 +1,10 @@
 // The consultation workspace (Bible §5.1; ADR-0026 K3-21): the Layer 3 steps
-// of a consultation in Bible order. On iPad a stepper: the steps in a sidebar
-// and the chosen step beside them, each leading to the next. On iPhone the
-// same steps as a list in a navigation stack. Steps of later layers are not
-// shown. Opened full screen from the patient profile's Consultations tab.
+// of a consultation in Bible order. On iPad a stepper: the steps in a fixed
+// column and the chosen step beside them, each leading to the next. A split
+// view is not used: in portrait it hid the steps behind a sidebar button. On
+// iPhone the same steps as a list in a navigation stack. Steps of later layers
+// are not shown. Opened full screen from the patient profile's Consultations
+// tab.
 // Bible §5.1, §24.4–24.5 · tier: app · Layer 3.
 import ConsultationDomain
 import DesignSystem
@@ -57,9 +59,7 @@ enum WorkspaceStep: String, CaseIterable, Identifiable, Hashable {
 
 struct ConsultationWorkspace: View {
     @State private var model: WorkspaceModel
-    @State private var step: WorkspaceStep? = .reason
-    /// The steps stay beside the chosen step, in portrait too.
-    @State private var columns: NavigationSplitViewVisibility = .all
+    @State private var step: WorkspaceStep = .reason
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.dismiss) private var dismiss
 
@@ -70,23 +70,27 @@ struct ConsultationWorkspace: View {
     var body: some View {
         Group {
             if sizeClass == .regular {
-                NavigationSplitView(columnVisibility: $columns) {
-                    List(WorkspaceStep.allCases, selection: $step) { item in
-                        StepLabel(step: item, number: number(of: item)).tag(item)
+                NavigationStack {
+                    HStack(spacing: 0) {
+                        List(WorkspaceStep.allCases) { item in
+                            Button {
+                                step = item
+                            } label: {
+                                StepLabel(step: item, number: number(of: item))
+                                    .foregroundStyle(step == item ? DSColor.accentText : DSColor.textPrimary)
+                            }
+                            .listRowBackground(step == item ? DSColor.accentSoft : DSColor.surface)
+                            .accessibilityAddTraits(step == item ? .isSelected : [])
+                        }
+                        .listStyle(.insetGrouped)
+                        .frame(width: DSSize.sidebarWidth)
+                        Divider()
+                        StepScreen(model: model, step: step) { step = $0 }
+                            .frame(maxWidth: .infinity)
                     }
-                    .listStyle(.sidebar)
-                    .navigationTitle(model.patient.displayName)
-                    .navigationSplitViewColumnWidth(DSSize.sidebarWidth)
+                    .navigationBarTitleDisplayMode(.inline)
                     .toolbar { closeButton }
-                } detail: {
-                    if let step {
-                        StepScreen(model: model, step: step) { self.step = $0 }
-                    } else {
-                        DSStateView(.empty(title: String(localized: "Choose a step"),
-                                           message: String(localized: "The consultation's steps are listed in order.")))
-                    }
                 }
-                .navigationSplitViewStyle(.balanced)
             } else {
                 NavigationStack {
                     List(WorkspaceStep.allCases) { item in

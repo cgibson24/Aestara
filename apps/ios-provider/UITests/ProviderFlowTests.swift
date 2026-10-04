@@ -259,10 +259,12 @@ final class ProviderFlowTests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 10) { create.isEnabled }, "Create stayed disabled. Screen: \(screen(app))")
         create.tap()
 
-        // The workspace opens on the new consultation: start it.
+        // The workspace opens on the new consultation (on iPhone, on its list of steps): start it.
+        let firstStep = app.buttons["workspace.step.reason"]
+        XCTAssertTrue(firstStep.waitForExistence(timeout: 20), "The workspace did not open. Screen: \(screen(app))")
         let status = app.descendants(matching: .any).matching(identifier: "workspace.status").firstMatch
-        XCTAssertTrue(status.waitForExistence(timeout: 20), "The workspace did not open. Screen: \(screen(app))")
         openStep(app, "completion")
+        XCTAssertTrue(status.waitForExistence(timeout: 10), "The consultation's state is not shown. Screen: \(screen(app))")
         tapRevealed(app, app.buttons["completion.action.start"], "Start")
         XCTAssertTrue(waitUntil(timeout: 15) { status.label.contains("In progress") }, "The consultation did not start. Screen: \(screen(app))")
         snapshot(app, "16 Workspace")
@@ -442,12 +444,13 @@ final class ProviderFlowTests: XCTestCase {
         tab.tap()
     }
 
-    /// A workspace step: on iPad from the steps beside it, on iPhone from the list (back first).
+    /// A workspace step: on iPad from the steps beside it, on iPhone from the list (back first;
+    /// the profile's bar behind the workspace is not hittable, so its buttons are skipped).
     private func openStep(_ app: XCUIApplication, _ step: String) {
-        let row = app.descendants(matching: .any).matching(identifier: "workspace.step.\(step)").firstMatch
-        if !(row.exists && row.isHittable) {
-            let back = app.navigationBars.buttons.element(boundBy: 0)
-            if back.exists { back.tap() }
+        let row = app.buttons["workspace.step.\(step)"]
+        if !(row.exists && row.isHittable),
+           let back = app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex.first(where: \.isHittable) {
+            back.tap()
         }
         XCTAssertTrue(waitUntil(timeout: 10) { row.exists && row.isHittable }, "Step \(step) is not offered. Screen: \(screen(app))")
         row.tap()
