@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | Layer 0 acceptance review, 2026-09-28: **accepted by the owner on 2026-09-28** (Bible Appendix B #37). Layer 1 acceptance review, 2026-10-01 (§6): **accepted by the owner on 2026-10-01**. Layer 2 acceptance review, 2026-10-02 (§7): **accepted by the owner on 2026-10-03**. Layer 3 acceptance review, 2026-10-04 (§8): **awaiting the owner's sign-off**. |
+| Status | Layer 0 acceptance review, 2026-09-28: **accepted by the owner on 2026-09-28** (Bible Appendix B #37). Layer 1 acceptance review, 2026-10-01 (§6): **accepted by the owner on 2026-10-01**. Layer 2 acceptance review, 2026-10-02 (§7): **accepted by the owner on 2026-10-03**. Layer 3 acceptance review, 2026-10-04 (§8): **accepted by the owner on 2026-10-07**. |
 | Authority | Bible §27.2 (definition of done), §29 (layer exit conditions), §30 (acceptance review and stop), §31 (Layer 0 kickoff and review), §32 (Layer 1 acceptance), §34 (representative criteria), §36 (production readiness), Appendix B |
 | Normative sources | [TESTING_STRATEGY.md](TESTING_STRATEGY.md) §17–18 (review format and traceability to tests), spec §9.1 (what each layer must pass), [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) |
 
@@ -556,4 +556,4 @@ The owner authorized Layer 1 (Bible Appendix B #38). Its kickoff, confirmed on 2
 
 **Layer 2: accepted by the owner on 2026-10-03** on the review in §7, with F-68 (how the snapshot references are recorded), F-69 (the device camera check before first clinical use) and F-70 (on iPad the app's main thread sometimes stays busy during an audit) still open. The owner confirmed the Layer 3 kickoff on 2026-10-04 ([LAYER_3_KICKOFF.md](LAYER_3_KICKOFF.md), ADR-0026), resolving or scheduling the Layer 3 findings in §5.3.
 
-**Layer 3: awaiting the owner's sign-off** on the review in §8. Work stops here until the owner accepts it (Bible §30, Appendix B #37–38).
+**Layer 3: accepted by the owner on 2026-10-07** on the review in §8, with F-68 and F-70 resolved and F-69 (the device camera check before first clinical use) still open, beside the owner items F-33, F-56 and F-59. Layer 4 begins with its kickoff (roadmap step 7), which resolves the findings carried to it in §5.3 and is confirmed by the owner before any Layer 4 work (Bible Appendix B #38).
