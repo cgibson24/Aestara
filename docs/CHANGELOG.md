@@ -2,6 +2,12 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-07: Layer 4 kickoff proposed
+
+- `LAYER_4_KICKOFF.md` proposes K4-01 to K4-27: one recommendation for each Layer 4 decision (UD-11 estimates only and no quote, UD-14 the in-clinic response with patient attestation and sibling declines, UD-23 void and minors, UD-31 the staff-assisted hand-off), each finding carried to Layer 4 (F-38 to F-43, F-65), the Layer 4 open items in the documentation pack, and the Node.js re-evaluation scheduled by ADR-0026 K3-24 (stay on Node 24 through Layer 4).
+- Owner choices flagged: whether minors are in scope (recommendation: no), and legal review of the in-clinic electronic signature before first clinical use.
+- Nothing of Layer 4 is built until the owner confirms; the confirmed decisions become ADR-0028.
+
 ## 2026-10-07: Layer 3 accepted
 
 - The owner accepted the Layer 3 review (`ACCEPTANCE_CRITERIA.md` §8) on 2026-10-07. F-68 and F-70 are resolved; F-69 (the device camera check before first clinical use) stays open, with the owner items F-33, F-56 and F-59.

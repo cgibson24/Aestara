@@ -156,7 +156,7 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 
 ### Step 7: Layer 4, Documents, Consent, Education, Treatment Plans
 
-**Kickoff:** UD-11 estimate vs quote · UD-14 in-clinic acceptance · UD-23 void/minors · UD-31 staff-assisted signing.
+**Kickoff:** UD-11 estimate vs quote · UD-14 in-clinic acceptance · UD-23 void/minors · UD-31 staff-assisted signing. **Proposed on 2026-10-07** in [LAYER_4_KICKOFF.md](LAYER_4_KICKOFF.md) (K4-01 to K4-27); awaiting the owner's confirmation.
 
 | # | Micro-prompt |
 |---|---|
