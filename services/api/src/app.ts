@@ -36,6 +36,7 @@ import { DocumentIntake } from "./documents/intake.ts";
 import { SummaryService } from "./documents/summary.service.ts";
 import { TimelineService } from "./documents/timeline.service.ts";
 import { EmailService } from "./email/email.ts";
+import { HandoffsService } from "./handoffs/handoffs.service.ts";
 import { HealthController } from "./health/health.controller.ts";
 import { ObjectStore } from "./media/object-store.ts";
 import { OrganizationsController } from "./organizations/organizations.controller.ts";
@@ -60,6 +61,8 @@ import { ConfigurationService } from "./settings/configuration.service.ts";
 import { SettingsController } from "./settings/settings.controller.ts";
 import { TreatmentCatalogController } from "./treatments/catalog.controller.ts";
 import { TreatmentCatalogService } from "./treatments/catalog.service.ts";
+import { TreatmentPlansController } from "./treatments/plans.controller.ts";
+import { TreatmentPlansService } from "./treatments/plans.service.ts";
 import { RolesController } from "./users/roles.controller.ts";
 import { UsersController } from "./users/users.controller.ts";
 import { UsersService } from "./users/users.service.ts";
@@ -86,6 +89,7 @@ class AppModule {
         ConsultationsController,
         ConfigurationController,
         TreatmentCatalogController,
+        TreatmentPlansController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -122,6 +126,8 @@ class AppModule {
         HistoryService,
         ConfigurationService,
         TreatmentCatalogService,
+        TreatmentPlansService,
+        HandoffsService,
         OfflineAuditService,
         OperationPipeline,
       ],

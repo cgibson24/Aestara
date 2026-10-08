@@ -28,6 +28,8 @@ export interface ResourceRefs {
   documentId: string;
   treatmentCategoryId: string;
   treatmentId: string;
+  planId: string;
+  handoffId: string;
 }
 
 let n = 0;
@@ -68,6 +70,8 @@ export function pathFor(e: EndpointDefinition, refs: ResourceRefs): string {
     .replace("{annotationId}", refs.annotationId)
     .replace("{exportId}", refs.exportId)
     .replace("{documentId}", refs.documentId)
+    .replace("{planId}", refs.planId)
+    .replace("{handoffId}", refs.handoffId)
     .replace("{practiceId}", refs.practiceId)
     .replace("{key}", key)}`;
 }
@@ -168,6 +172,11 @@ export function bodyFor(e: EndpointDefinition, refs: ResourceRefs): Record<strin
     updateTreatmentCategory: { name: `Category ${u}` },
     createTreatment: { categoryId: refs.treatmentCategoryId, name: `Treatment ${u}` },
     updateTreatment: { name: `Treatment ${u}` },
+    createTreatmentPlan: { practiceId: refs.practiceId, title: `Option ${u}` },
+    updateTreatmentPlan: { title: `Option ${u}` },
+    putTreatmentPlanItems: { items: [{ treatmentId: refs.treatmentId }] },
+    cancelTreatmentPlan: { reason: "Fixture" },
+    openTreatmentPlanResponse: { identityConfirmed: true },
     putFeatureFlag: { enabled: false },
     putPracticeSetting: { value: { maxPatients: 10, maxAgeDays: 3 } },
     createRetentionPolicy: {

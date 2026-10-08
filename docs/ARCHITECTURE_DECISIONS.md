@@ -959,3 +959,21 @@ Status values:
     - Retiring and reactivating are status changes; nothing is deleted.
   - **Audit:** every change writes `CONFIGURATION_CHANGED` with the change (`CREATED`, `UPDATED`, `RETIRED`, `REACTIVATED`) and the names of the changed fields, never their values.
   - **Admin portal:** a Treatment catalog module for holders of `practice.manage`. It lists the categories as a tree with their treatments, creates and edits both, and retires and reactivates them, with the five view states and a Playwright test against the real api (ADR-0022).
+- **Decision, treatment plans and the in-clinic response (M4.2):**
+  - **Routes:** the spec §6.3 plan rows of Layer 4 except `/schedule` and `/complete`, which arrive with procedures in M4.4, and the estimate rows (M4.3). Reading needs `treatmentplan.create` anywhere in the organization (D-01). Changing needs the permission through a grant covering the plan's practice; plans have no location, so a LOCATION grant never covers a change.
+  - **Creating:** an option of a consultation takes the consultation's practice and the next free letter ("Plan A", "Plan B", …, after "Plan Z" "Plan AA"). A cancelled or archived consultation, or an archived patient, takes no new option. A standalone option names its practice.
+  - **Items and totals:** `PUT …/items` replaces a draft's items as a set.
+    - Each item names an active treatment and has a quantity (a decimal string, default `1`), a unit price (USD `Money`, defaulting to the treatment's default price; with neither, `400 VALIDATION_FAILED`) and a discount (default zero, never above the line amount).
+    - The server computes each line in integer cents, rounding half up, as the database CHECK does.
+    - Every plan DTO carries `notConsentNotice`: "Accepting this plan is not consent to treatment."
+  - **Transitions:** `/propose` needs at least one item. `/revise` returns a proposed option to `DRAFT`, and `/cancel` with a reason discards a draft. Each writes `TREATMENT_PLAN_STATUS_CHANGED` with the states, never the reason.
+  - **Opening the response hand-off:** `POST …/{planId}/record-response` (`treatmentplan.send`, `If-Match`) needs `identityConfirmed: true` and a session from a registered device; otherwise `409 CONFLICT`. It opens a hand-off for that option.
+    - It takes no `Idempotency-Key`, as spec §6.3 now says for both hand-off openings: the token is stored only as its hash, so a replay could never return it. Opening another hand-off for the same option or consent revokes the one still open (`REVOKED`).
+    - The token is `aeh.<organizationId>.<handoffId>.<secret>`, where the secret is 32 random bytes and only its SHA-256 is stored. The organization in it is an identifier, not data; it selects the tenant for Row-Level Security.
+  - **Hand-off routes:** a new endpoint auth kind, `handoff`, accepts only such a token in `Authorization: Bearer`.
+    - A token is refused with `401 SESSION_INVALID` when its secret does not match, when it has ended, after 15 idle minutes or 60 minutes in all, or when the opener's session was revoked or expired. A staff access token is refused on these routes, and a hand-off token on every other route, because it is not a JWT.
+    - Each request refreshes `lastActivityAt`. The request runs as the opener (actor `USER`, their session and device) with no permissions, and the audit rows carry `handoffId`.
+  - **The patient's response:** `GET /handoff` shows the option, its items and estimated total, the notice, and the two attestation texts. `POST /handoff/plan-response` takes the decision, the typed name and the attestation shown.
+    - The attestation must equal the server's current text for that decision, so the stored text is exactly what was shown. The texts await the legal review of `LAYER_4_KICKOFF.md` §3.
+    - Accepting declines the consultation's other shown options in the same transaction (`SIBLING_ACCEPTED`, audit actor `SYSTEM`). Responding ends the hand-off (`COMPLETED`).
+  - **Ending:** `POST /handoffs/{handoffId}/end` lets the staff member who opened a hand-off end it (`EXITED`) after the app's biometric gate or step-up. For anyone else it answers `404 HANDOFF_NOT_FOUND`.

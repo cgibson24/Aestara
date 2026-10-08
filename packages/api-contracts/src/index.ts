@@ -17,4 +17,5 @@ export * from "./patients.ts";
 export * from "./photography.ts";
 export * from "./primitives.ts";
 export * from "./settings.ts";
+export * from "./treatment-plans.ts";
 export * from "./users.ts";

@@ -30,6 +30,16 @@ export interface AuthContext {
   readonly amr: readonly string[];
 }
 
+/** The in-clinic hand-off a /handoff request's token belongs to (ADR-0029). */
+export interface HandoffContext {
+  readonly id: string;
+  readonly purpose: "CONSENT_SIGNING" | "PLAN_RESPONSE";
+  readonly patientId: string;
+  readonly consentAssignmentId: string | null;
+  readonly treatmentPlanId: string | null;
+  readonly absoluteExpiresAt: Date;
+}
+
 export interface RequestContext {
   readonly requestId: string;
   readonly ipAddress: string | null;
@@ -38,6 +48,8 @@ export interface RequestContext {
   readonly startedAt: number;
   operation?: EndpointDefinition | undefined;
   auth?: AuthContext | undefined;
+  /** Set on /handoff routes: the hand-off the token belongs to. */
+  handoff?: HandoffContext | undefined;
   /** The request transaction, when the operation runs in one. */
   tx?: Tx | undefined;
   params: Record<string, string>;

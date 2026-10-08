@@ -988,6 +988,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/patients/{patientId}/treatment-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The patient's plan options, newest first, optionally of one consultation or status.
+         * @description Permission: `treatmentplan.create` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["listTreatmentPlans"];
+        put?: never;
+        /**
+         * Create a DRAFT option, of a consultation (next free letter) or standalone.
+         * @description Permission: `treatmentplan.create` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["createTreatmentPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/treatment-plans/{planId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One option with its items and totals.
+         * @description Permission: `treatmentplan.create` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        get: operations["getTreatmentPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a DRAFT option.
+         * @description Permission: `treatmentplan.edit` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        patch: operations["updateTreatmentPlan"];
+        trace?: never;
+    };
+    "/patients/{patientId}/treatment-plans/{planId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a DRAFT's items; the server computes every line and total.
+         * @description Permission: `treatmentplan.edit` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        put: operations["putTreatmentPlanItems"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/treatment-plans/{planId}/propose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * DRAFT → PROPOSED; needs at least one item.
+         * @description Permission: `treatmentplan.edit` (organization scope). Audit: TREATMENT_PLAN_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["proposeTreatmentPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/treatment-plans/{planId}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * PROPOSED → DRAFT, to change an option before the patient responds.
+         * @description Permission: `treatmentplan.edit` (organization scope). Audit: TREATMENT_PLAN_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["reviseTreatmentPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/treatment-plans/{planId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard a DRAFT, or cancel a SCHEDULED plan, with a reason.
+         * @description Permission: `treatmentplan.edit` (organization scope). Audit: TREATMENT_PLAN_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["cancelTreatmentPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/patients/{patientId}/treatment-plans/{planId}/record-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open the in-clinic hand-off in which the patient accepts or declines a PROPOSED option. Revokes a hand-off still open for it.
+         * @description Permission: `treatmentplan.send` (organization scope). Denials are audited as ACCESS_DENIED.
+         */
+        post: operations["openTreatmentPlanResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the hand-off is scoped to, as the patient sees it.
+         * @description Authorized by an in-clinic hand-off token (Bearer); a staff access token is refused.
+         */
+        get: operations["getHandoff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/handoff/plan-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The patient accepts or declines the option, with the typed name and the attestation shown. Accepting declines the consultation's other shown options. Ends the hand-off.
+         * @description Authorized by an in-clinic hand-off token (Bearer); a staff access token is refused. Audit: TREATMENT_PLAN_STATUS_CHANGED.
+         */
+        post: operations["recordHandoffPlanResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/handoffs/{handoffId}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The staff member who opened the hand-off takes the device back; the token stops working.
+         * @description Any signed-in session; acts on the caller's own account.
+         */
+        post: operations["endHandoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/treatment-categories": {
         parameters: {
             query?: never;
@@ -3177,6 +3385,203 @@ export interface components {
              */
             practiceId?: string | null;
             views?: components["schemas"]["ProtocolViewInput"][];
+        };
+        TreatmentPlan: {
+            id: components["schemas"]["Uuid"];
+            patientId: components["schemas"]["Uuid"];
+            consultationId?: components["schemas"]["Uuid"];
+            practiceId: components["schemas"]["Uuid"];
+            providerUserId?: components["schemas"]["Uuid"];
+            optionLabel?: string;
+            title: string;
+            status: components["schemas"]["TreatmentPlanStatus"];
+            items: components["schemas"]["TreatmentPlanItem"][];
+            subtotal: components["schemas"]["Money"];
+            discountTotal: components["schemas"]["Money"];
+            /** @description Before any tax; an estimate, not a bill. */
+            estimatedTotal: {
+                /** @example 1250.00 */
+                amount: string;
+                currency: components["schemas"]["Currency"];
+            };
+            financingReference?: string;
+            notes?: string;
+            proposedDate?: components["schemas"]["DateOnly"];
+            response?: components["schemas"]["TreatmentPlanResponse"];
+            cancelledAt?: components["schemas"]["Timestamp"];
+            cancellationReason?: string;
+            /** @description Always "Accepting this plan is not consent to treatment." */
+            notConsentNotice: string;
+            createdById: components["schemas"]["Uuid"];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+            version: number;
+        };
+        /** @enum {string} */
+        TreatmentPlanStatus: "DRAFT" | "PROPOSED" | "SENT_TO_PATIENT" | "VIEWED" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "SCHEDULED" | "COMPLETED" | "CANCELLED";
+        TreatmentPlanItem: {
+            id: components["schemas"]["Uuid"];
+            treatmentId: components["schemas"]["Uuid"];
+            treatmentName: string;
+            area?: string;
+            providerUserId?: components["schemas"]["Uuid"];
+            description?: string;
+            quantity: string;
+            unitPrice: components["schemas"]["Money"];
+            discountAmount: components["schemas"]["Money"];
+            /** @description quantity × unit price, rounded half up to cents, less the discount. */
+            lineTotal: {
+                /** @example 1250.00 */
+                amount: string;
+                currency: components["schemas"]["Currency"];
+            };
+            notes?: string;
+            proposedDate?: components["schemas"]["DateOnly"];
+            sortOrder: number;
+        };
+        TreatmentPlanResponse: {
+            source: components["schemas"]["TreatmentPlanResponseSource"];
+            respondedAt: components["schemas"]["Timestamp"];
+            /** @description IN_CLINIC: the name the patient typed. */
+            signerName?: string;
+            /** @description IN_CLINIC: the exact text shown. */
+            attestation?: string;
+            handoffId?: components["schemas"]["Uuid"];
+            /**
+             * Format: uuid
+             * @description SIBLING_ACCEPTED: the option that was accepted.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            acceptedSiblingId?: string;
+        };
+        /** @enum {string} */
+        TreatmentPlanResponseSource: "IN_CLINIC" | "PATIENT_APP" | "SIBLING_ACCEPTED";
+        /** @description Creates a DRAFT option. */
+        TreatmentPlanCreate: {
+            /**
+             * Format: uuid
+             * @description Creates an option of this consultation, in its practice, with the next free letter.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            consultationId?: string;
+            /**
+             * Format: uuid
+             * @description Required without a consultation.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            practiceId?: string;
+            title: string;
+            optionLabel?: string;
+            providerUserId?: components["schemas"]["Uuid"];
+            notes?: string;
+            proposedDate?: components["schemas"]["DateOnly"];
+            /** @description A reference only; no payment is processed. */
+            financingReference?: string;
+        };
+        /** @description Only a DRAFT changes. */
+        TreatmentPlanUpdate: {
+            title?: string;
+            optionLabel?: string | null;
+            /** Format: uuid */
+            providerUserId?: string | null;
+            notes?: string | null;
+            /** Format: date */
+            proposedDate?: string | null;
+            financingReference?: string | null;
+        };
+        /** @description Replaces the items of a DRAFT, in order. */
+        TreatmentPlanItemsPut: {
+            items: components["schemas"]["TreatmentPlanItemInput"][];
+        };
+        TreatmentPlanItemInput: {
+            /**
+             * Format: uuid
+             * @description An active treatment of the catalog.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            treatmentId: string;
+            area?: string;
+            providerUserId?: components["schemas"]["Uuid"];
+            description?: string;
+            /**
+             * @description Default "1".
+             * @example 1.5
+             */
+            quantity?: string;
+            /** @description Default: the treatment's default price. */
+            unitPrice?: {
+                amount: string;
+                currency: components["schemas"]["Currency"];
+            };
+            /** @description Default 0; never above the line amount. */
+            discountAmount?: {
+                amount: string;
+                currency: components["schemas"]["Currency"];
+            };
+            notes?: string;
+            proposedDate?: components["schemas"]["DateOnly"];
+        };
+        TreatmentPlanCancel: {
+            /** @description Why the option is discarded or cancelled. Stored, never logged or audited. */
+            reason: string;
+        };
+        HandoffSession: {
+            handoffId: components["schemas"]["Uuid"];
+            purpose: components["schemas"]["HandoffPurpose"];
+            /** @description Sent as `Authorization: Bearer` to the /handoff routes only. Shown once; never stored by the server. */
+            token: string;
+            absoluteExpiresAt: components["schemas"]["Timestamp"];
+            idleTimeoutSeconds: number;
+        };
+        /** @enum {string} */
+        HandoffPurpose: "CONSENT_SIGNING" | "PLAN_RESPONSE";
+        HandoffOpen: {
+            /** @description Must be true: the staff member checked the patient's identity against the name and date of birth shown. */
+            identityConfirmed: boolean;
+        };
+        /** @description What the hand-off is scoped to, as the patient sees it. */
+        HandoffView: {
+            handoffId: components["schemas"]["Uuid"];
+            purpose: components["schemas"]["HandoffPurpose"];
+            patient: {
+                firstName: string;
+                lastName: string;
+                dateOfBirth: components["schemas"]["DateOnly"];
+            };
+            plan?: {
+                optionLabel?: string;
+                title: string;
+                items: components["schemas"]["HandoffPlanItem"][];
+                estimatedTotal: components["schemas"]["Money"];
+                /** @description Always "Accepting this plan is not consent to treatment." */
+                notConsentNotice: string;
+                attestations: {
+                    ACCEPTED: string;
+                    DECLINED: string;
+                };
+            };
+            absoluteExpiresAt: components["schemas"]["Timestamp"];
+        };
+        HandoffPlanItem: {
+            treatmentName: string;
+            area?: string;
+            quantity: string;
+            lineTotal: components["schemas"]["Money"];
+        };
+        HandoffPlanResponseResult: {
+            /** @enum {string} */
+            decision: "ACCEPTED" | "DECLINED";
+            respondedAt: components["schemas"]["Timestamp"];
+            /** @description Other options of the consultation declined with it. */
+            declinedSiblingIds: components["schemas"]["Uuid"][];
+        };
+        HandoffPlanResponseRequest: {
+            /** @enum {string} */
+            decision: "ACCEPTED" | "DECLINED";
+            /** @description The name the patient typed. */
+            signerName: string;
+            /** @description The exact attestation text shown for the decision. */
+            attestation: string;
         };
         TreatmentCategory: {
             id: components["schemas"]["Uuid"];
@@ -6737,6 +7142,505 @@ export interface operations {
             409: components["responses"]["Error409"];
             412: components["responses"]["Error412"];
             428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listTreatmentPlans: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Resource identifier (UUID). */
+                consultationId?: components["schemas"]["Uuid"];
+                status?: components["schemas"]["TreatmentPlanStatus"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentPlan"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createTreatmentPlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreatmentPlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentPlan"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getTreatmentPlan: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                planId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentPlan"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    updateTreatmentPlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                planId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreatmentPlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentPlan"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    putTreatmentPlanItems: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                planId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreatmentPlanItemsPut"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentPlan"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    proposeTreatmentPlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                planId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentPlan"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    reviseTreatmentPlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                planId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentPlan"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    cancelTreatmentPlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                planId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreatmentPlanCancel"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentPlan"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    openTreatmentPlanResponse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                patientId: components["schemas"]["Uuid"];
+                /** @description Resource identifier (UUID). */
+                planId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffOpen"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["HandoffSession"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    getHandoff: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["HandoffView"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    recordHandoffPlanResponse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description Client-generated UUID. Retained per actor for 7 days (spec §6.1.8). */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffPlanResponseRequest"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["HandoffPlanResponseResult"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    endHandoff: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                handoffId: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            404: components["responses"]["Error404"];
             500: components["responses"]["Error500"];
             503: components["responses"]["Error503"];
         };

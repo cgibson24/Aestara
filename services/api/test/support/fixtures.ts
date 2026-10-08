@@ -305,6 +305,30 @@ export class Fixtures {
     return { treatmentCategoryId, treatmentId };
   }
 
+  /** A DRAFT plan option of a consultation with one priced item (ADR-0028 K4-04). */
+  async treatmentPlan(
+    organizationId: string,
+    patientId: string,
+    practiceId: string,
+    consultationId: string | null,
+    treatmentId: string,
+    createdById: string,
+  ): Promise<string> {
+    const id = uuidv7();
+    await this.api.db.query(
+      `INSERT INTO "TreatmentPlan" (id, "organizationId", "patientId", "consultationId", "practiceId", "optionLabel", title,
+                                    subtotal, "estimatedTotal", "createdById", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, 'Plan A', 'Lips', 450, 450, $6, now())`,
+      [id, organizationId, patientId, consultationId, practiceId, createdById],
+    );
+    await this.api.db.query(
+      `INSERT INTO "TreatmentPlanItem" (id, "organizationId", "patientId", "treatmentPlanId", "treatmentId", "unitPrice", "lineTotal", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, 450, 450, now())`,
+      [uuidv7(), organizationId, patientId, id, treatmentId],
+    );
+    return id;
+  }
+
   async document(organizationId: string, patientId: string, userId: string): Promise<string> {
     const objectId = uuidv7();
     const documentId = uuidv7();

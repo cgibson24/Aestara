@@ -26,6 +26,8 @@ const READ_PERMISSION: Record<string, readonly string[]> = {
   settings: ["configuration.manage"],
   "feature-flags": ["configuration.manage"],
   "photography-protocols": ["photo.view", "photo.capture", "practice.manage"],
+  "treatment-categories": ["treatmentplan.create", "practice.manage"],
+  treatments: ["treatmentplan.create", "practice.manage"],
 };
 
 /**
@@ -44,6 +46,7 @@ const PATIENT_SUBRESOURCE_READ: Record<string, readonly string[]> = {
   "before-after": ["photo.view"],
   exports: ["photo.view"],
   documents: ["document.read"],
+  "treatment-plans": ["treatmentplan.create"],
 };
 
 function segment(op: EndpointDefinition): string {
@@ -53,7 +56,7 @@ function segment(op: EndpointDefinition): string {
 export function readPermissionsFor(op: EndpointDefinition): readonly string[] {
   if (
     segment(op) === "patients" &&
-    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId|setId|exportId|documentId)\}/.test(
+    /\{(photoId|sessionId|releaseId|consultationId|concernId|entryId|setId|exportId|documentId|planId)\}/.test(
       op.path,
     )
   ) {
@@ -158,6 +161,12 @@ export async function resourceVisible(
             where: { id: params.releaseId, patientId: params.patientId ?? "" },
           })) > 0
         );
+      if (params.planId !== undefined)
+        return (
+          (await tx.treatmentPlan.count({
+            where: { id: params.planId, patientId: params.patientId ?? "" },
+          })) > 0
+        );
       if (params.contactId !== undefined)
         return (
           (await tx.patientContact.count({
@@ -189,6 +198,10 @@ export async function resourceVisible(
       return isFeatureFlagKey(params.key ?? "");
     case "photography-protocols":
       return (await tx.photographyProtocol.count({ where: { id } })) > 0;
+    case "treatment-categories":
+      return (await tx.treatmentCategory.count({ where: { id } })) > 0;
+    case "treatments":
+      return (await tx.treatment.count({ where: { id } })) > 0;
     default:
       return false;
   }

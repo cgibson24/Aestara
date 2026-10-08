@@ -153,7 +153,9 @@ function registerEndpoint(registry: OpenAPIRegistry, e: EndpointDefinition): voi
         ? `Authorized by the ${auth.token} token.`
         : auth.kind === "session"
           ? "Any signed-in session; acts on the caller's own account."
-          : "Public.",
+          : auth.kind === "handoff"
+            ? "Authorized by an in-clinic hand-off token (Bearer); a staff access token is refused."
+            : "Public.",
     e.stepUp ? "Needs a recent MFA (step-up)." : "",
     e.audit ? `Audit: ${e.audit.join(", ")}.` : "",
     e.patientData ? "Denials are audited as ACCESS_DENIED." : "",

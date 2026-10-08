@@ -2,6 +2,22 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-08: Treatment plans and the in-clinic response (M4.2; ADR-0029)
+
+- **API:** `/patients/{patientId}/treatment-plans`.
+  - Options are lettered per consultation ("Plan A", "Plan B", …) or are standalone in a practice.
+  - Items are replaced as a set while the option is a `DRAFT`. The server computes each line in cents, rounding half up, with discounts never above the line.
+  - Transitions: `/propose` (needs an item), `/revise` and `/cancel` (discarding a draft, with a reason that is stored and never audited).
+  - Changes need a grant covering the plan's practice; a location grant only reads.
+  - Every plan carries "Accepting this plan is not consent to treatment."
+- **In-clinic response:** `…/record-response` (`treatmentplan.send`) opens a hand-off on the staff member's registered device.
+  - The token is stored as a hash, lives 15 idle minutes and 60 at most, dies with the staff session, reaches only `/handoff`, and opening another revokes it.
+  - `GET /handoff` shows the patient the option, its estimated total and the attestations. `POST /handoff/plan-response` records the decision, the typed name and the exact attestation shown.
+  - Accepting declines the consultation's other shown options as a system transition (`SIBLING_ACCEPTED`); drafts stay drafts.
+  - Audit rows name the staff member who opened the hand-off, with `handoffId`, never the patient's name. `POST /handoffs/{id}/end` lets the opener take the device back.
+- **Spec §6.3:** opening a hand-off takes no `Idempotency-Key`, since a hashed token cannot be replayed; a retry revokes the open one.
+- **Tests:** the plan rules, the hand-off lifecycle and its token boundaries, and the generated authorization and cross-tenant cases for the new routes.
+
 ## 2026-10-08: `source-map-js` patched
 
 - **Dependencies:** a pnpm override moves PostCSS's `source-map-js` to 1.2.2, fixing GHSA-68fv-2mgg-jv7q (high), which OSV-Scanner reported on CI run 123. It is a build-time dependency of the admin portal and the design prototype.

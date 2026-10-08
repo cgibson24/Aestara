@@ -2935,6 +2935,674 @@
         "additionalProperties": false,
         "description": "DRAFT protocols only; views are replaced as a set."
       },
+      "TreatmentPlan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "patientId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "consultationId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "practiceId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "providerUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "optionLabel": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TreatmentPlanStatus"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TreatmentPlanItem"
+            }
+          },
+          "subtotal": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "discountTotal": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "estimatedTotal": {
+            "type": "object",
+            "properties": {
+              "amount": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9]\\d*)\\.\\d{2}$",
+                "example": "1250.00"
+              },
+              "currency": {
+                "$ref": "#/components/schemas/Currency"
+              }
+            },
+            "required": [
+              "amount",
+              "currency"
+            ],
+            "additionalProperties": false,
+            "description": "Before any tax; an estimate, not a bill."
+          },
+          "financingReference": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "proposedDate": {
+            "$ref": "#/components/schemas/DateOnly"
+          },
+          "response": {
+            "$ref": "#/components/schemas/TreatmentPlanResponse"
+          },
+          "cancelledAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "cancellationReason": {
+            "type": "string"
+          },
+          "notConsentNotice": {
+            "type": "string",
+            "description": "Always \"Accepting this plan is not consent to treatment.\""
+          },
+          "createdById": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "id",
+          "patientId",
+          "practiceId",
+          "title",
+          "status",
+          "items",
+          "subtotal",
+          "discountTotal",
+          "estimatedTotal",
+          "notConsentNotice",
+          "createdById",
+          "createdAt",
+          "updatedAt",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "TreatmentPlanStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "PROPOSED",
+          "SENT_TO_PATIENT",
+          "VIEWED",
+          "ACCEPTED",
+          "DECLINED",
+          "EXPIRED",
+          "SCHEDULED",
+          "COMPLETED",
+          "CANCELLED"
+        ]
+      },
+      "TreatmentPlanItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "treatmentId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "treatmentName": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "providerUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "description": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "string"
+          },
+          "unitPrice": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "discountAmount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "lineTotal": {
+            "type": "object",
+            "properties": {
+              "amount": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9]\\d*)\\.\\d{2}$",
+                "example": "1250.00"
+              },
+              "currency": {
+                "$ref": "#/components/schemas/Currency"
+              }
+            },
+            "required": [
+              "amount",
+              "currency"
+            ],
+            "additionalProperties": false,
+            "description": "quantity × unit price, rounded half up to cents, less the discount."
+          },
+          "notes": {
+            "type": "string"
+          },
+          "proposedDate": {
+            "$ref": "#/components/schemas/DateOnly"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "treatmentId",
+          "treatmentName",
+          "quantity",
+          "unitPrice",
+          "discountAmount",
+          "lineTotal",
+          "sortOrder"
+        ],
+        "additionalProperties": false
+      },
+      "TreatmentPlanResponse": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/TreatmentPlanResponseSource"
+          },
+          "respondedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "signerName": {
+            "type": "string",
+            "description": "IN_CLINIC: the name the patient typed."
+          },
+          "attestation": {
+            "type": "string",
+            "description": "IN_CLINIC: the exact text shown."
+          },
+          "handoffId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "acceptedSiblingId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "SIBLING_ACCEPTED: the option that was accepted.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          }
+        },
+        "required": [
+          "source",
+          "respondedAt"
+        ],
+        "additionalProperties": false
+      },
+      "TreatmentPlanResponseSource": {
+        "type": "string",
+        "enum": [
+          "IN_CLINIC",
+          "PATIENT_APP",
+          "SIBLING_ACCEPTED"
+        ]
+      },
+      "TreatmentPlanCreate": {
+        "type": "object",
+        "properties": {
+          "consultationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Creates an option of this consultation, in its practice, with the next free letter.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          },
+          "practiceId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Required without a consultation.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "optionLabel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "providerUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "notes": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "proposedDate": {
+            "$ref": "#/components/schemas/DateOnly"
+          },
+          "financingReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "A reference only; no payment is processed."
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false,
+        "description": "Creates a DRAFT option."
+      },
+      "TreatmentPlanUpdate": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "optionLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "providerUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "proposedDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "financingReference": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "additionalProperties": false,
+        "description": "Only a DRAFT changes."
+      },
+      "TreatmentPlanItemsPut": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TreatmentPlanItemInput"
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "Replaces the items of a DRAFT, in order."
+      },
+      "TreatmentPlanItemInput": {
+        "type": "object",
+        "properties": {
+          "treatmentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "An active treatment of the catalog.",
+            "example": "0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f"
+          },
+          "area": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "providerUserId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d{0,7})(\\.\\d{1,2})?$",
+            "description": "Default \"1\".",
+            "example": "1.5"
+          },
+          "unitPrice": {
+            "type": "object",
+            "properties": {
+              "amount": {
+                "type": "string",
+                "pattern": "^(0|[1-9]\\d{0,9})\\.\\d{2}$"
+              },
+              "currency": {
+                "$ref": "#/components/schemas/Currency"
+              }
+            },
+            "required": [
+              "amount",
+              "currency"
+            ],
+            "additionalProperties": false,
+            "description": "Default: the treatment's default price."
+          },
+          "discountAmount": {
+            "type": "object",
+            "properties": {
+              "amount": {
+                "type": "string",
+                "pattern": "^(0|[1-9]\\d{0,9})\\.\\d{2}$"
+              },
+              "currency": {
+                "$ref": "#/components/schemas/Currency"
+              }
+            },
+            "required": [
+              "amount",
+              "currency"
+            ],
+            "additionalProperties": false,
+            "description": "Default 0; never above the line amount."
+          },
+          "notes": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "proposedDate": {
+            "$ref": "#/components/schemas/DateOnly"
+          }
+        },
+        "required": [
+          "treatmentId"
+        ],
+        "additionalProperties": false
+      },
+      "TreatmentPlanCancel": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Why the option is discarded or cancelled. Stored, never logged or audited."
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "HandoffSession": {
+        "type": "object",
+        "properties": {
+          "handoffId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/HandoffPurpose"
+          },
+          "token": {
+            "type": "string",
+            "description": "Sent as `Authorization: Bearer` to the /handoff routes only. Shown once; never stored by the server."
+          },
+          "absoluteExpiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "idleTimeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "handoffId",
+          "purpose",
+          "token",
+          "absoluteExpiresAt",
+          "idleTimeoutSeconds"
+        ],
+        "additionalProperties": false
+      },
+      "HandoffPurpose": {
+        "type": "string",
+        "enum": [
+          "CONSENT_SIGNING",
+          "PLAN_RESPONSE"
+        ]
+      },
+      "HandoffOpen": {
+        "type": "object",
+        "properties": {
+          "identityConfirmed": {
+            "type": "boolean",
+            "description": "Must be true: the staff member checked the patient's identity against the name and date of birth shown."
+          }
+        },
+        "required": [
+          "identityConfirmed"
+        ],
+        "additionalProperties": false
+      },
+      "HandoffView": {
+        "type": "object",
+        "properties": {
+          "handoffId": {
+            "$ref": "#/components/schemas/Uuid"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/HandoffPurpose"
+          },
+          "patient": {
+            "type": "object",
+            "properties": {
+              "firstName": {
+                "type": "string"
+              },
+              "lastName": {
+                "type": "string"
+              },
+              "dateOfBirth": {
+                "$ref": "#/components/schemas/DateOnly"
+              }
+            },
+            "required": [
+              "firstName",
+              "lastName",
+              "dateOfBirth"
+            ],
+            "additionalProperties": false
+          },
+          "plan": {
+            "type": "object",
+            "properties": {
+              "optionLabel": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HandoffPlanItem"
+                }
+              },
+              "estimatedTotal": {
+                "$ref": "#/components/schemas/Money"
+              },
+              "notConsentNotice": {
+                "type": "string",
+                "description": "Always \"Accepting this plan is not consent to treatment.\""
+              },
+              "attestations": {
+                "type": "object",
+                "properties": {
+                  "ACCEPTED": {
+                    "type": "string"
+                  },
+                  "DECLINED": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ACCEPTED",
+                  "DECLINED"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "title",
+              "items",
+              "estimatedTotal",
+              "notConsentNotice",
+              "attestations"
+            ],
+            "additionalProperties": false
+          },
+          "absoluteExpiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "handoffId",
+          "purpose",
+          "patient",
+          "absoluteExpiresAt"
+        ],
+        "additionalProperties": false,
+        "description": "What the hand-off is scoped to, as the patient sees it."
+      },
+      "HandoffPlanItem": {
+        "type": "object",
+        "properties": {
+          "treatmentName": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "string"
+          },
+          "lineTotal": {
+            "$ref": "#/components/schemas/Money"
+          }
+        },
+        "required": [
+          "treatmentName",
+          "quantity",
+          "lineTotal"
+        ],
+        "additionalProperties": false
+      },
+      "HandoffPlanResponseResult": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "ACCEPTED",
+              "DECLINED"
+            ]
+          },
+          "respondedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "declinedSiblingIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Other options of the consultation declined with it."
+          }
+        },
+        "required": [
+          "decision",
+          "respondedAt",
+          "declinedSiblingIds"
+        ],
+        "additionalProperties": false
+      },
+      "HandoffPlanResponseRequest": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "ACCEPTED",
+              "DECLINED"
+            ]
+          },
+          "signerName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The name the patient typed."
+          },
+          "attestation": {
+            "type": "string",
+            "description": "The exact attestation text shown for the decision."
+          }
+        },
+        "required": [
+          "decision",
+          "signerName",
+          "attestation"
+        ],
+        "additionalProperties": false
+      },
       "TreatmentCategory": {
         "type": "object",
         "properties": {
@@ -11220,6 +11888,1059 @@
           },
           "428": {
             "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/treatment-plans": {
+      "get": {
+        "operationId": "listTreatmentPlans",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "The patient's plan options, newest first, optionally of one consultation or status.",
+        "description": "Permission: `treatmentplan.create` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Page size, 1–100. Default 25."
+            },
+            "required": false,
+            "description": "Page size, 1–100. Default 25.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand."
+            },
+            "required": false,
+            "description": "Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand.",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": false,
+            "description": "Resource identifier (UUID).",
+            "name": "consultationId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/TreatmentPlanStatus"
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TreatmentPlan"
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "nextCursor": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "hasMore"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Cursor pagination state. nextCursor is present when hasMore is true."
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTreatmentPlan",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "Create a DRAFT option, of a consultation (next free letter) or standalone.",
+        "description": "Permission: `treatmentplan.create` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TreatmentPlanCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TreatmentPlan"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/treatment-plans/{planId}": {
+      "get": {
+        "operationId": "getTreatmentPlan",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "One option with its items and totals.",
+        "description": "Permission: `treatmentplan.create` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "planId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TreatmentPlan"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateTreatmentPlan",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "Edit a DRAFT option.",
+        "description": "Permission: `treatmentplan.edit` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "planId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TreatmentPlanUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TreatmentPlan"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/treatment-plans/{planId}/items": {
+      "put": {
+        "operationId": "putTreatmentPlanItems",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "Replace a DRAFT's items; the server computes every line and total.",
+        "description": "Permission: `treatmentplan.edit` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "planId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TreatmentPlanItemsPut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TreatmentPlan"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/treatment-plans/{planId}/propose": {
+      "post": {
+        "operationId": "proposeTreatmentPlan",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "DRAFT → PROPOSED; needs at least one item.",
+        "description": "Permission: `treatmentplan.edit` (organization scope). Audit: TREATMENT_PLAN_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "planId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TreatmentPlan"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/treatment-plans/{planId}/revise": {
+      "post": {
+        "operationId": "reviseTreatmentPlan",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "PROPOSED → DRAFT, to change an option before the patient responds.",
+        "description": "Permission: `treatmentplan.edit` (organization scope). Audit: TREATMENT_PLAN_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "planId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TreatmentPlan"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/treatment-plans/{planId}/cancel": {
+      "post": {
+        "operationId": "cancelTreatmentPlan",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "Discard a DRAFT, or cancel a SCHEDULED plan, with a reason.",
+        "description": "Permission: `treatmentplan.edit` (organization scope). Audit: TREATMENT_PLAN_STATUS_CHANGED. Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "planId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TreatmentPlanCancel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TreatmentPlan"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/patients/{patientId}/treatment-plans/{planId}/record-response": {
+      "post": {
+        "operationId": "openTreatmentPlanResponse",
+        "tags": [
+          "Treatment plans"
+        ],
+        "summary": "Open the in-clinic hand-off in which the patient accepts or declines a PROPOSED option. Revokes a hand-off still open for it.",
+        "description": "Permission: `treatmentplan.send` (organization scope). Denials are audited as ACCESS_DENIED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "patientId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "planId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffOpen"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HandoffSession"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error412"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/handoff": {
+      "get": {
+        "operationId": "getHandoff",
+        "tags": [
+          "Hand-off"
+        ],
+        "summary": "What the hand-off is scoped to, as the patient sees it.",
+        "description": "Authorized by an in-clinic hand-off token (Bearer); a staff access token is refused.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HandoffView"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/handoff/plan-response": {
+      "post": {
+        "operationId": "recordHandoffPlanResponse",
+        "tags": [
+          "Hand-off"
+        ],
+        "summary": "The patient accepts or declines the option, with the typed name and the attestation shown. Accepting declines the consultation's other shown options. Ends the hand-off.",
+        "description": "Authorized by an in-clinic hand-off token (Bearer); a staff access token is refused. Audit: TREATMENT_PLAN_STATUS_CHANGED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffPlanResponseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HandoffPlanResponseResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/handoffs/{handoffId}/end": {
+      "post": {
+        "operationId": "endHandoff",
+        "tags": [
+          "Hand-off"
+        ],
+        "summary": "The staff member who opened the hand-off takes the device back; the token stops working.",
+        "description": "Any signed-in session; acts on the caller's own account.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ClientRequestId"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "required": true,
+            "description": "Resource identifier (UUID).",
+            "name": "handoffId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
           },
           "500": {
             "$ref": "#/components/responses/Error500"

@@ -73,6 +73,14 @@ async function world(
   const exportId = await fx.export(organizationId, patientId, photography.photoId, admin.userId);
   const documentId = await fx.document(organizationId, patientId, admin.userId);
   const catalog = await fx.treatmentCatalog(organizationId);
+  const planId = await fx.treatmentPlan(
+    organizationId,
+    patientId,
+    practiceId,
+    consultationId,
+    catalog.treatmentId,
+    admin.userId,
+  );
   return {
     admin,
     member,
@@ -98,6 +106,8 @@ async function world(
       exportId,
       documentId,
       ...catalog,
+      planId,
+      handoffId: uuidv7(),
     },
   };
 }

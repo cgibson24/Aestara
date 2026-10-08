@@ -150,6 +150,19 @@ import {
   OrganizationSettingPut,
 } from "./settings.ts";
 import {
+  HandoffOpen,
+  HandoffPlanResponseRequest,
+  HandoffPlanResponseResult,
+  HandoffSession,
+  HandoffView,
+  TreatmentPlan,
+  TreatmentPlanCancel,
+  TreatmentPlanCreate,
+  TreatmentPlanItemsPut,
+  TreatmentPlanListQuery,
+  TreatmentPlanUpdate,
+} from "./treatment-plans.ts";
+import {
   MfaResetRequest,
   MfaResetResult,
   PermissionInfo,
@@ -184,6 +197,11 @@ export type EndpointAuth =
   /** Any valid session; the operation only touches the caller's own account. */
   | { readonly kind: "session" }
   /**
+   * An in-clinic hand-off token in `Authorization: Bearer` (UD-31; ADR-0029): it
+   * reaches only these routes, and a staff access token never does.
+   */
+  | { readonly kind: "handoff" }
+  /**
    * A permission, evaluated per request from the caller's grants (never from the
    * token). `orPermissions` lists alternatives that also admit the caller; the
    * handler then applies the rule that needs one of them specifically.
@@ -213,6 +231,7 @@ export interface EndpointDefinition {
     | "Consultations"
     | "Documents"
     | "Treatment plans"
+    | "Hand-off"
     | "Audit"
     | "Settings"
     | "Health";
@@ -261,6 +280,8 @@ const SetParams = z.strictObject({ patientId: Uuid, setId: Uuid });
 const AnnotationParams = z.strictObject({ patientId: Uuid, photoId: Uuid, annotationId: Uuid });
 const ExportParams = z.strictObject({ patientId: Uuid, exportId: Uuid });
 const DocumentParams = z.strictObject({ patientId: Uuid, documentId: Uuid });
+const PlanParams = z.strictObject({ patientId: Uuid, planId: Uuid });
+const HandoffParam = z.strictObject({ handoffId: Uuid });
 
 const perm = (permission: string, ...scopes: PermissionScope[]): EndpointAuth => ({
   kind: "permission",
@@ -291,6 +312,7 @@ const permAny = (permission: string, ...orPermissions: string[]): EndpointAuth =
   scopes: ["organization"],
 });
 const SESSION: EndpointAuth = { kind: "session" };
+const HANDOFF: EndpointAuth = { kind: "handoff" };
 const PUBLIC: EndpointAuth = { kind: "public" };
 
 export const ENDPOINTS = [
@@ -1075,6 +1097,174 @@ export const ENDPOINTS = [
     notFound: "PHOTOGRAPHY_PROTOCOL_NOT_FOUND",
     audit: ["CONFIGURATION_CHANGED"],
     errors: [409],
+  },
+  // ---- Treatment plans (spec §6.3 "Treatment plans & estimates", §5.4.3; UD-14; ADR-0028 K4-04 to K4-07, ADR-0029) ----
+  {
+    operationId: "listTreatmentPlans",
+    method: "GET",
+    path: "/patients/{patientId}/treatment-plans",
+    tag: "Treatment plans",
+    summary: "The patient's plan options, newest first, optionally of one consultation or status.",
+    auth: perm("treatmentplan.create"),
+    params: PatientParam,
+    query: TreatmentPlanListQuery,
+    response: { status: 200, shape: "collection", schema: TreatmentPlan },
+    notFound: "PATIENT_NOT_FOUND",
+    patientData: true,
+  },
+  {
+    operationId: "createTreatmentPlan",
+    method: "POST",
+    path: "/patients/{patientId}/treatment-plans",
+    tag: "Treatment plans",
+    summary: "Create a DRAFT option, of a consultation (next free letter) or standalone.",
+    auth: perm("treatmentplan.create"),
+    params: PatientParam,
+    body: TreatmentPlanCreate,
+    idempotency: "required",
+    response: { status: 201, shape: "resource", schema: TreatmentPlan, etag: true },
+    notFound: "PATIENT_NOT_FOUND",
+    patientData: true,
+    errors: [409],
+  },
+  {
+    operationId: "getTreatmentPlan",
+    method: "GET",
+    path: "/patients/{patientId}/treatment-plans/{planId}",
+    tag: "Treatment plans",
+    summary: "One option with its items and totals.",
+    auth: perm("treatmentplan.create"),
+    params: PlanParams,
+    response: { status: 200, shape: "resource", schema: TreatmentPlan, etag: true },
+    notFound: "TREATMENT_PLAN_NOT_FOUND",
+    patientData: true,
+  },
+  {
+    operationId: "updateTreatmentPlan",
+    method: "PATCH",
+    path: "/patients/{patientId}/treatment-plans/{planId}",
+    tag: "Treatment plans",
+    summary: "Edit a DRAFT option.",
+    auth: perm("treatmentplan.edit"),
+    params: PlanParams,
+    body: TreatmentPlanUpdate,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: TreatmentPlan, etag: true },
+    notFound: "TREATMENT_PLAN_NOT_FOUND",
+    patientData: true,
+    errors: [409],
+  },
+  {
+    operationId: "putTreatmentPlanItems",
+    method: "PUT",
+    path: "/patients/{patientId}/treatment-plans/{planId}/items",
+    tag: "Treatment plans",
+    summary: "Replace a DRAFT's items; the server computes every line and total.",
+    auth: perm("treatmentplan.edit"),
+    params: PlanParams,
+    body: TreatmentPlanItemsPut,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: TreatmentPlan, etag: true },
+    notFound: "TREATMENT_PLAN_NOT_FOUND",
+    patientData: true,
+    errors: [409],
+  },
+  {
+    operationId: "proposeTreatmentPlan",
+    method: "POST",
+    path: "/patients/{patientId}/treatment-plans/{planId}/propose",
+    tag: "Treatment plans",
+    summary: "DRAFT → PROPOSED; needs at least one item.",
+    auth: perm("treatmentplan.edit"),
+    params: PlanParams,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: TreatmentPlan, etag: true },
+    notFound: "TREATMENT_PLAN_NOT_FOUND",
+    audit: ["TREATMENT_PLAN_STATUS_CHANGED"],
+    patientData: true,
+    errors: [409],
+  },
+  {
+    operationId: "reviseTreatmentPlan",
+    method: "POST",
+    path: "/patients/{patientId}/treatment-plans/{planId}/revise",
+    tag: "Treatment plans",
+    summary: "PROPOSED → DRAFT, to change an option before the patient responds.",
+    auth: perm("treatmentplan.edit"),
+    params: PlanParams,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: TreatmentPlan, etag: true },
+    notFound: "TREATMENT_PLAN_NOT_FOUND",
+    audit: ["TREATMENT_PLAN_STATUS_CHANGED"],
+    patientData: true,
+    errors: [409],
+  },
+  {
+    operationId: "cancelTreatmentPlan",
+    method: "POST",
+    path: "/patients/{patientId}/treatment-plans/{planId}/cancel",
+    tag: "Treatment plans",
+    summary: "Discard a DRAFT, or cancel a SCHEDULED plan, with a reason.",
+    auth: perm("treatmentplan.edit"),
+    params: PlanParams,
+    body: TreatmentPlanCancel,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: TreatmentPlan, etag: true },
+    notFound: "TREATMENT_PLAN_NOT_FOUND",
+    audit: ["TREATMENT_PLAN_STATUS_CHANGED"],
+    patientData: true,
+    errors: [409],
+  },
+  {
+    operationId: "openTreatmentPlanResponse",
+    method: "POST",
+    path: "/patients/{patientId}/treatment-plans/{planId}/record-response",
+    tag: "Treatment plans",
+    summary:
+      "Open the in-clinic hand-off in which the patient accepts or declines a PROPOSED option. Revokes a hand-off still open for it.",
+    auth: perm("treatmentplan.send"),
+    params: PlanParams,
+    body: HandoffOpen,
+    ifMatch: "required",
+    response: { status: 201, shape: "resource", schema: HandoffSession },
+    notFound: "TREATMENT_PLAN_NOT_FOUND",
+    patientData: true,
+    errors: [409],
+  },
+  // ---- In-clinic hand-off (spec §6.3 "In-clinic hand-off"; UD-31; ADR-0028 K4-13, ADR-0029) ----
+  {
+    operationId: "getHandoff",
+    method: "GET",
+    path: "/handoff",
+    tag: "Hand-off",
+    summary: "What the hand-off is scoped to, as the patient sees it.",
+    auth: HANDOFF,
+    response: { status: 200, shape: "resource", schema: HandoffView },
+  },
+  {
+    operationId: "recordHandoffPlanResponse",
+    method: "POST",
+    path: "/handoff/plan-response",
+    tag: "Hand-off",
+    summary:
+      "The patient accepts or declines the option, with the typed name and the attestation shown. Accepting declines the consultation's other shown options. Ends the hand-off.",
+    auth: HANDOFF,
+    body: HandoffPlanResponseRequest,
+    idempotency: "required",
+    response: { status: 200, shape: "resource", schema: HandoffPlanResponseResult },
+    audit: ["TREATMENT_PLAN_STATUS_CHANGED"],
+    errors: [409],
+  },
+  {
+    operationId: "endHandoff",
+    method: "POST",
+    path: "/handoffs/{handoffId}/end",
+    tag: "Hand-off",
+    summary: "The staff member who opened the hand-off takes the device back; the token stops working.",
+    auth: SESSION,
+    params: HandoffParam,
+    response: { status: 204, shape: "none" },
+    notFound: "HANDOFF_NOT_FOUND",
   },
   // ---- Treatment catalog (spec §6.3 "Treatment plans & estimates"; ADR-0028 K4-03, ADR-0029) ----
   {

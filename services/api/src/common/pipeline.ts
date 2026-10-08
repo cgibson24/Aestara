@@ -32,6 +32,7 @@ import { type EvaluationScope, SessionLoader } from "../auth/session-loader.ts";
 import { AccessTokens } from "../auth/tokens.ts";
 import { CONFIG, type Config } from "../config.ts";
 import { Database, type Tx } from "../db/database.ts";
+import { HandoffsService, parseHandoffToken } from "../handoffs/handoffs.service.ts";
 import type { AuthContext, RequestContext } from "./context.ts";
 import { ApiError, notFound } from "./errors.ts";
 import { Idempotency } from "./idempotency.ts";
@@ -64,6 +65,7 @@ export class OperationPipeline implements NestInterceptor {
     private readonly catalog: Catalog,
     private readonly idempotency: Idempotency,
     private readonly audit: AuditWriter,
+    private readonly handoffs: HandoffsService,
     @Inject(CONFIG) private readonly config: Config,
   ) {}
 
@@ -93,6 +95,9 @@ export class OperationPipeline implements NestInterceptor {
       (op.auth.kind === "token" && op.auth.token === "challenge-or-session" && bearer !== undefined);
     const claims = usesSession && bearer !== undefined ? await this.tokens.verify(bearer) : undefined;
     if (usesSession && claims === undefined) throw new ApiError("UNAUTHENTICATED");
+    // A hand-off token reaches only hand-off routes (ADR-0029); it is never a JWT.
+    const handoffToken = op.auth.kind === "handoff" ? parseHandoffToken(bearer) : undefined;
+    if (op.auth.kind === "handoff" && handoffToken === undefined) throw new ApiError("UNAUTHENTICATED");
 
     // 2. Validate.
     ctx.params = op.params ? (parseInput(op.params, req.params ?? {}) as Record<string, string>) : {};
@@ -125,16 +130,25 @@ export class OperationPipeline implements NestInterceptor {
     }
 
     let result: OperationResult | undefined;
-    if (claims === undefined) {
+    if (claims === undefined && handoffToken === undefined) {
       result = (await handler()) as OperationResult | undefined;
     } else {
       // 4. Open the request transaction in the right scope.
-      const scope = this.evaluationScope(op, claims.org);
+      const org = handoffToken?.organizationId ?? claims?.org;
+      const scope = handoffToken !== undefined ? "organization" : this.evaluationScope(op, org);
       const inTx = async (tx: Tx): Promise<OperationResult | undefined> => {
         ctx.tx = tx;
         try {
-          // 5. Session and grants.
-          const auth = await this.sessions.load(tx, claims, scope);
+          // 5. Session and grants, or the hand-off and its opener without permissions.
+          let auth: AuthContext;
+          if (handoffToken !== undefined) {
+            const opened = await this.handoffs.authenticate(tx, handoffToken);
+            auth = opened.auth;
+            ctx.handoff = opened.handoff;
+          } else {
+            if (claims === undefined) throw new Error("unreachable: no claims and no hand-off");
+            auth = await this.sessions.load(tx, claims, scope);
+          }
           ctx.auth = auth;
           // 6. Authorize.
           await this.authorize(op, ctx, auth, tx);
@@ -156,8 +170,8 @@ export class OperationPipeline implements NestInterceptor {
       };
       try {
         result =
-          scope === "organization" && claims.org !== undefined
-            ? await this.db.tenant(claims.org, inTx)
+          scope === "organization" && org !== undefined
+            ? await this.db.tenant(org, inTx)
             : scope === "platform"
               ? await this.db.platformTx(inTx)
               : await this.db.identity(inTx);
