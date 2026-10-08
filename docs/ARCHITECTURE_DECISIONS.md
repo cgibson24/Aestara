@@ -923,3 +923,22 @@ Status values:
     - the practice's own templates and education content;
     - the estimate wording and the export purposes (`LAYER_4_KICKOFF.md` §3).
   - Bringing minors into scope later needs a new ADR and a schema change.
+
+## ADR-0029
+
+**Layer 4 implementation decisions**
+
+- **Status:** Adopted (delegated), 2026-10-08. Implementation choices inside ADR-0028, recorded as each Layer 4 micro-prompt lands.
+- **Context:** ADR-0028 fixes what Layer 4 does; the api, the worker, the database and the clients still need concrete shapes for it.
+- **Decision, database (M4.1):**
+  - Three migrations, as in Layers 2 and 3:
+    - `20261008100000_layer4_tables`, generated from the schema promoted through Layer 4. It also adds the forward links `PhotoSession.procedureId` and `PhotoPermission.evidenceConsentAssignmentId` and the audit action `PROCEDURE_STATUS_CHANGED`.
+    - `20261008100100_layer4_constraints`: the LAYER 4 fragment of `constraints.sql`, verbatim.
+    - `20261008100200_layer4_security`.
+  - Every Layer 4 table is under forced Row-Level Security. `aestara_app` deletes only the items of a plan still in `DRAFT`, which are replaced as a set; the trigger refuses any other. Signatures are insert-only. No new database role in M4.1; the export job's worker access arrives with M4.9.
+  - Ownership:
+    - `TreatmentPlan` is practice-owned without a location, so a LOCATION grant reads plans but never changes them.
+    - `Procedure` is practice-owned with an optional location.
+    - Plan items and estimates follow their plan, and the service scopes their writes by the plan's practice.
+    - The catalog and the education library are organization-owned, changed only through an organization-wide grant.
+    - Consent templates, assignments, signatures, hand-offs, content assignments, instructions and exports are organization-owned patient or configuration data.

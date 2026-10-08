@@ -5804,7 +5804,8 @@
           "SECURITY_CREDENTIAL_CHANGED",
           "ORGANIZATION_SWITCHED",
           "CONSULTATION_NOTE_FINALIZED",
-          "DOCUMENT_ADDED"
+          "DOCUMENT_ADDED",
+          "PROCEDURE_STATUS_CHANGED"
         ]
       },
       "OrganizationSetting": {

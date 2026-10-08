@@ -162,7 +162,7 @@ Each row is one micro-prompt (M-number = layer.sequence). **Kickoff** lists the 
 |---|---|
 | M4.1 | Treatment catalog (categories, treatments) + admin UI |
 | M4.2 | Treatment plans A/B/C, items, server totals, state machine |
-| M4.3 | Estimates (frozen snapshot + PDF), invoice references |
+| M4.3 | Estimates (frozen snapshot + PDF); invoice references move to Layer 10 (ADR-0028 K4-02) |
 | M4.4 | Procedures |
 | M4.5 | Consent template builder (admin web; the 13 block types) + versioning/publishing |
 | M4.6 | Consent assignment + staff-assisted in-clinic signing + immutable snapshot + SHA-256 |

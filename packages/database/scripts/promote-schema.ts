@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The highest layer whose tables exist in packages/database. */
-export const PROMOTED_THROUGH_LAYER = 3;
+export const PROMOTED_THROUGH_LAYER = 4;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..", "..");

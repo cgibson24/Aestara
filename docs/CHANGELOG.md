@@ -2,6 +2,13 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-08: Layer 4 database (M4.1; ADR-0029)
+
+- The Layer 4 migrations create the 16 Layer 4 tables, the forward links from photo sessions and media permissions, and `PROCEDURE_STATUS_CHANGED`. The constraints migration is the LAYER 4 fragment of `constraints.sql` verbatim.
+- Every new table is under forced Row-Level Security. Only a draft plan's items can be deleted.
+- The database suite runs 238 checks on the real migrations, with no drift.
+- `docs/DEVELOPMENT_ROADMAP.md` M4.3 no longer lists invoice references, which move to Layer 10 (ADR-0028 K4-02).
+
 ## 2026-10-08: Layer 4 kickoff confirmed (ADR-0028)
 
 - The owner confirmed every recommendation K4-01 to K4-27 ("adopt all"), with minors out of scope. ADR-0028 records them.
