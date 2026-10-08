@@ -17,6 +17,7 @@ import { queryClient } from "./api/queries.ts";
 import { AuthProvider, useAuth } from "./auth/session.tsx";
 import { AccountPage } from "./pages/Account.tsx";
 import { AuditPage } from "./pages/Audit.tsx";
+import { CatalogPage } from "./pages/Catalog.tsx";
 import { ConfigurationPage } from "./pages/Configuration.tsx";
 import { ProtocolsPage } from "./pages/Protocols.tsx";
 import {
@@ -35,6 +36,7 @@ const NAV = [
   { to: "/roles", label: "Roles", permission: "role.read" },
   { to: "/audit", label: "Audit log", permission: "audit.read" },
   { to: "/protocols", label: "Photo protocols", permission: "practice.manage" },
+  { to: "/catalog", label: "Treatment catalog", permission: "practice.manage" },
   { to: "/configuration", label: "Configuration", permission: "configuration.manage" },
 ] as const;
 
@@ -141,6 +143,11 @@ const routeTree = rootRoute.addChildren([
       getParentRoute: () => portalRoute,
       path: "/protocols",
       component: guarded("practice.manage", ProtocolsPage),
+    }),
+    createRoute({
+      getParentRoute: () => portalRoute,
+      path: "/catalog",
+      component: guarded("practice.manage", CatalogPage),
     }),
     createRoute({
       getParentRoute: () => portalRoute,

@@ -2,6 +2,24 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-08: `source-map-js` patched
+
+- **Dependencies:** a pnpm override moves PostCSS's `source-map-js` to 1.2.2, fixing GHSA-68fv-2mgg-jv7q (high), which OSV-Scanner reported on CI run 123. It is a build-time dependency of the admin portal and the design prototype.
+
+## 2026-10-08: Treatment catalog (M4.1; ADR-0029)
+
+- **API:** `/treatment-categories` and `/treatments`.
+  - Read with `treatmentplan.create` or `practice.manage`; changed only through an organization-wide `practice.manage` grant.
+  - Codes are unique, and prices are USD `Money`, never negative.
+  - A category never moves under its own subtree, and is not retired while active entries sit under it.
+  - Nothing is deleted; every change writes `CONFIGURATION_CHANGED` with field names only.
+- **Concurrency:** catalog edits take `If-Match`, so both tables gain a `version` column (migration `20261008100300_layer4_catalog_versions`); spec §6.1.7 lists the catalog.
+- **Admin portal:** a Treatment catalog module. It shows the category tree with each category's treatments, creates and edits both, and retires and reactivates entries with a confirmation.
+- **Tests:**
+  - api tests for the catalog rules;
+  - the generated authorization and cross-tenant cases for the six routes;
+  - a Playwright scenario against the real api.
+
 ## 2026-10-08: Layer 4 database (M4.1; ADR-0029)
 
 - The Layer 4 migrations create the 16 Layer 4 tables, the forward links from photo sessions and media permissions, and `PROCEDURE_STATUS_CHANGED`. The constraints migration is the LAYER 4 fragment of `constraints.sql` verbatim.

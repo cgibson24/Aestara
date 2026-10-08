@@ -978,7 +978,7 @@ Error messages never contain stack traces, SQL, storage keys or cross-tenant exi
 
 #### 6.1.7 Concurrency: ETag / If-Match [B §20.3]
 
-Concurrently editable resources (patient, consultation, note, treatment plan, template draft, protocol, annotation, settings, appointment) return `ETag: "v{version}"`. Every `PATCH` or state-changing action on them **requires** `If-Match`.
+Concurrently editable resources (patient, consultation, note, treatment plan, treatment catalog entry [ADR-0029], template draft, protocol, annotation, settings, appointment) return `ETag: "v{version}"`. Every `PATCH` or state-changing action on them **requires** `If-Match`.
 
 - A stale version returns `412 VERSION_CONFLICT` with the current version in `details`. The client must re-fetch and re-apply; the server never silently merges.
 - A missing `If-Match` returns `428 PRECONDITION_REQUIRED`.

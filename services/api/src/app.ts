@@ -58,6 +58,8 @@ import { ProtocolsService } from "./photos/protocols.service.ts";
 import { ConfigurationController } from "./settings/configuration.controller.ts";
 import { ConfigurationService } from "./settings/configuration.service.ts";
 import { SettingsController } from "./settings/settings.controller.ts";
+import { TreatmentCatalogController } from "./treatments/catalog.controller.ts";
+import { TreatmentCatalogService } from "./treatments/catalog.service.ts";
 import { RolesController } from "./users/roles.controller.ts";
 import { UsersController } from "./users/users.controller.ts";
 import { UsersService } from "./users/users.service.ts";
@@ -83,6 +85,7 @@ class AppModule {
         AnnotationsController,
         ConsultationsController,
         ConfigurationController,
+        TreatmentCatalogController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -118,6 +121,7 @@ class AppModule {
         NotesService,
         HistoryService,
         ConfigurationService,
+        TreatmentCatalogService,
         OfflineAuditService,
         OperationPipeline,
       ],

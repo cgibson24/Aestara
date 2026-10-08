@@ -30,6 +30,16 @@ import {
   BeforeAfterSetUpdate,
 } from "./before-after.ts";
 import {
+  Treatment,
+  TreatmentCategory,
+  TreatmentCategoryCreate,
+  TreatmentCategoryListQuery,
+  TreatmentCategoryUpdate,
+  TreatmentCreate,
+  TreatmentListQuery,
+  TreatmentUpdate,
+} from "./catalog.ts";
+import {
   EffectiveOfflineCachePolicy,
   FeatureFlag,
   FeatureFlagPut,
@@ -202,6 +212,7 @@ export interface EndpointDefinition {
     | "Photography"
     | "Consultations"
     | "Documents"
+    | "Treatment plans"
     | "Audit"
     | "Settings"
     | "Health";
@@ -1062,6 +1073,81 @@ export const ENDPOINTS = [
     ifMatch: "required",
     response: { status: 200, shape: "resource", schema: PhotographyProtocol, etag: true },
     notFound: "PHOTOGRAPHY_PROTOCOL_NOT_FOUND",
+    audit: ["CONFIGURATION_CHANGED"],
+    errors: [409],
+  },
+  // ---- Treatment catalog (spec §6.3 "Treatment plans & estimates"; ADR-0028 K4-03, ADR-0029) ----
+  {
+    operationId: "listTreatmentCategories",
+    method: "GET",
+    path: "/treatment-categories",
+    tag: "Treatment plans",
+    summary: "The organization's treatment categories, active and retired.",
+    auth: permAny("treatmentplan.create", "practice.manage"),
+    query: TreatmentCategoryListQuery,
+    response: { status: 200, shape: "collection", schema: TreatmentCategory },
+  },
+  {
+    operationId: "createTreatmentCategory",
+    method: "POST",
+    path: "/treatment-categories",
+    tag: "Treatment plans",
+    summary: "Create a category, optionally under an active parent. Needs an organization-wide grant.",
+    auth: perm("practice.manage"),
+    body: TreatmentCategoryCreate,
+    response: { status: 201, shape: "resource", schema: TreatmentCategory, etag: true },
+    audit: ["CONFIGURATION_CHANGED"],
+  },
+  {
+    operationId: "updateTreatmentCategory",
+    method: "PATCH",
+    path: "/treatment-categories/{id}",
+    tag: "Treatment plans",
+    summary: "Rename, move, reorder, retire or reactivate a category. Needs an organization-wide grant.",
+    auth: perm("practice.manage"),
+    params: IdParam,
+    body: TreatmentCategoryUpdate,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: TreatmentCategory, etag: true },
+    notFound: "TREATMENT_CATEGORY_NOT_FOUND",
+    audit: ["CONFIGURATION_CHANGED"],
+    errors: [409],
+  },
+  {
+    operationId: "listTreatments",
+    method: "GET",
+    path: "/treatments",
+    tag: "Treatment plans",
+    summary: "The organization's treatments, optionally of one category or status.",
+    auth: permAny("treatmentplan.create", "practice.manage"),
+    query: TreatmentListQuery,
+    response: { status: 200, shape: "collection", schema: Treatment },
+  },
+  {
+    operationId: "createTreatment",
+    method: "POST",
+    path: "/treatments",
+    tag: "Treatment plans",
+    summary: "Create a treatment in an active category. Needs an organization-wide grant.",
+    auth: perm("practice.manage"),
+    body: TreatmentCreate,
+    response: { status: 201, shape: "resource", schema: Treatment, etag: true },
+    audit: ["CONFIGURATION_CHANGED"],
+    errors: [409],
+  },
+  {
+    operationId: "updateTreatment",
+    method: "PATCH",
+    path: "/treatments/{id}",
+    tag: "Treatment plans",
+    summary:
+      "Edit, move, retire or reactivate a treatment. It is never deleted. Needs an organization-wide grant.",
+    auth: perm("practice.manage"),
+    params: IdParam,
+    body: TreatmentUpdate,
+    ifMatch: "required",
+    response: { status: 200, shape: "resource", schema: Treatment, etag: true },
+    notFound: "TREATMENT_NOT_FOUND",
     audit: ["CONFIGURATION_CHANGED"],
     errors: [409],
   },

@@ -2,6 +2,7 @@ export * from "./annotations.ts";
 export * from "./audit.ts";
 export * from "./auth.ts";
 export * from "./before-after.ts";
+export * from "./catalog.ts";
 export * from "./configuration.ts";
 export * from "./consultations.ts";
 export * from "./documents.ts";

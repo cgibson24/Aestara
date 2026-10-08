@@ -26,6 +26,8 @@ export interface ResourceRefs {
   annotationId: string;
   exportId: string;
   documentId: string;
+  treatmentCategoryId: string;
+  treatmentId: string;
 }
 
 let n = 0;
@@ -42,6 +44,8 @@ export function pathFor(e: EndpointDefinition, refs: ResourceRefs): string {
     audit: refs.auditEventId,
     auth: e.path.includes("/sessions/") ? refs.sessionId : refs.factorId,
     "photography-protocols": refs.protocolId,
+    "treatment-categories": refs.treatmentCategoryId,
+    treatments: refs.treatmentId,
   };
   const key = e.path.startsWith("/feature-flags")
     ? "photography.ghostOverlay"
@@ -160,6 +164,10 @@ export function bodyFor(e: EndpointDefinition, refs: ResourceRefs): Record<strin
     updatePatientConcern: { description: `Fixture concern ${u}` },
     createMedicalHistoryEntry: { category: "ALLERGY", description: "Fixture allergy" },
     updateMedicalHistoryEntry: { description: `Fixture entry ${u}` },
+    createTreatmentCategory: { name: `Category ${u}` },
+    updateTreatmentCategory: { name: `Category ${u}` },
+    createTreatment: { categoryId: refs.treatmentCategoryId, name: `Treatment ${u}` },
+    updateTreatment: { name: `Treatment ${u}` },
     putFeatureFlag: { enabled: false },
     putPracticeSetting: { value: { maxPatients: 10, maxAgeDays: 3 } },
     createRetentionPolicy: {

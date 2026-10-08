@@ -104,3 +104,42 @@ export const retentionQuery = queryOptions({
   queryFn: async () =>
     unwrap(await api.GET("/retention-policies", { params: { query: { limit: 100 } } })).data,
 });
+
+/** Every page of a catalog collection: an organization's catalog is small, but never cut off at one page. */
+async function allPages<T>(
+  fetchPage: (
+    cursor: string | undefined,
+  ) => Promise<{ data: T[]; page: { hasMore: boolean; nextCursor?: string } }>,
+): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < 50; i++) {
+    const res = await fetchPage(cursor);
+    items.push(...res.data);
+    if (!res.page.hasMore || res.page.nextCursor === undefined) return items;
+    cursor = res.page.nextCursor;
+  }
+  return items;
+}
+
+export const treatmentCategoriesQuery = queryOptions({
+  queryKey: ["treatment-categories"],
+  queryFn: () =>
+    allPages(async (cursor) =>
+      unwrap(
+        await api.GET("/treatment-categories", {
+          params: { query: { limit: 100, ...(cursor ? { cursor } : {}) } },
+        }),
+      ),
+    ),
+});
+
+export const treatmentsQuery = queryOptions({
+  queryKey: ["treatments"],
+  queryFn: () =>
+    allPages(async (cursor) =>
+      unwrap(
+        await api.GET("/treatments", { params: { query: { limit: 100, ...(cursor ? { cursor } : {}) } } }),
+      ),
+    ),
+});

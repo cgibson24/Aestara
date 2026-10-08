@@ -988,6 +988,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/treatment-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's treatment categories, active and retired.
+         * @description Permission: `treatmentplan.create` (organization scope).
+         */
+        get: operations["listTreatmentCategories"];
+        put?: never;
+        /**
+         * Create a category, optionally under an active parent. Needs an organization-wide grant.
+         * @description Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        post: operations["createTreatmentCategory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/treatment-categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename, move, reorder, retire or reactivate a category. Needs an organization-wide grant.
+         * @description Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        patch: operations["updateTreatmentCategory"];
+        trace?: never;
+    };
+    "/treatments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's treatments, optionally of one category or status.
+         * @description Permission: `treatmentplan.create` (organization scope).
+         */
+        get: operations["listTreatments"];
+        put?: never;
+        /**
+         * Create a treatment in an active category. Needs an organization-wide grant.
+         * @description Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        post: operations["createTreatment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/treatments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit, move, retire or reactivate a treatment. It is never deleted. Needs an organization-wide grant.
+         * @description Permission: `practice.manage` (organization scope). Audit: CONFIGURATION_CHANGED.
+         */
+        patch: operations["updateTreatment"];
+        trace?: never;
+    };
     "/patients/{patientId}/photo-sessions": {
         parameters: {
             query?: never;
@@ -3089,6 +3177,109 @@ export interface components {
              */
             practiceId?: string | null;
             views?: components["schemas"]["ProtocolViewInput"][];
+        };
+        TreatmentCategory: {
+            id: components["schemas"]["Uuid"];
+            name: string;
+            /**
+             * Format: uuid
+             * @description Absent for a top-level category.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            parentId?: string;
+            sortOrder: number;
+            status: components["schemas"]["OperationalStatus"];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+            version: number;
+        };
+        /** @description Creates an ACTIVE category. */
+        TreatmentCategoryCreate: {
+            name: string;
+            /**
+             * Format: uuid
+             * @description An active category of the organization.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            parentId?: string;
+            /** @description Default 0; lower first. */
+            sortOrder?: number;
+        };
+        TreatmentCategoryUpdate: {
+            name?: string;
+            /**
+             * Format: uuid
+             * @description null makes the category top-level.
+             */
+            parentId?: string | null;
+            sortOrder?: number;
+            /**
+             * @description INACTIVE retires the category: refused while it has active treatments or subcategories. ACTIVE reactivates it under an active parent.
+             * @enum {string}
+             */
+            status?: "ACTIVE" | "INACTIVE";
+        };
+        Treatment: {
+            id: components["schemas"]["Uuid"];
+            categoryId: components["schemas"]["Uuid"];
+            name: string;
+            /** @description Unique in the organization when present. */
+            code?: string;
+            description?: string;
+            /** @description The pricing unit, such as "syringe" or "area". */
+            unitLabel?: string;
+            /** @description Prefills a plan item, which can change it (ADR-0028 K4-03). */
+            defaultUnitPrice?: {
+                /** @example 450.00 */
+                amount: string;
+                currency: components["schemas"]["Currency"];
+            };
+            status: components["schemas"]["OperationalStatus"];
+            createdAt: components["schemas"]["Timestamp"];
+            updatedAt: components["schemas"]["Timestamp"];
+            version: number;
+        };
+        /** @description Creates an ACTIVE treatment. */
+        TreatmentCreate: {
+            /**
+             * Format: uuid
+             * @description An active category of the organization.
+             * @example 0192f7c4-5b1e-7c3a-9d2f-6a1b2c3d4e5f
+             */
+            categoryId: string;
+            name: string;
+            code?: string;
+            description?: string;
+            unitLabel?: string;
+            defaultUnitPrice?: components["schemas"]["CatalogPrice"];
+        };
+        /** @description A default unit price in USD, never negative. */
+        CatalogPrice: {
+            /** @example 450.00 */
+            amount: string;
+            currency: components["schemas"]["Currency"];
+        };
+        TreatmentUpdate: {
+            /**
+             * Format: uuid
+             * @description Moves the treatment to another active category.
+             */
+            categoryId?: string;
+            name?: string;
+            code?: string | null;
+            description?: string | null;
+            unitLabel?: string | null;
+            /** @description A default unit price in USD, never negative. */
+            defaultUnitPrice?: {
+                /** @example 450.00 */
+                amount: string;
+                currency: components["schemas"]["Currency"];
+            } | null;
+            /**
+             * @description INACTIVE retires the treatment; plans and procedures keep pointing at it. ACTIVE reactivates it in an active category.
+             * @enum {string}
+             */
+            status?: "ACTIVE" | "INACTIVE";
         };
         PhotoSession: {
             id: components["schemas"]["Uuid"];
@@ -6536,6 +6727,255 @@ export interface operations {
                 content: {
                     "application/json": {
                         data: components["schemas"]["PhotographyProtocol"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listTreatmentCategories: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                status?: components["schemas"]["OperationalStatus"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentCategory"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createTreatmentCategory: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreatmentCategoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentCategory"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    updateTreatmentCategory: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreatmentCategoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TreatmentCategory"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            412: components["responses"]["Error412"];
+            428: components["responses"]["Error428"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    listTreatments: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1–100. Default 25. */
+                limit?: number;
+                /** @description Opaque, signed, expiring cursor from page.nextCursor. Never build one by hand. */
+                cursor?: string;
+                /** @description Resource identifier (UUID). */
+                categoryId?: components["schemas"]["Uuid"];
+                status?: components["schemas"]["OperationalStatus"];
+            };
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Treatment"][];
+                        /** @description Cursor pagination state. nextCursor is present when hasMore is true. */
+                        page: {
+                            nextCursor?: string;
+                            hasMore: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    createTreatment: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreatmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Treatment"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            401: components["responses"]["Error401"];
+            403: components["responses"]["Error403"];
+            409: components["responses"]["Error409"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    updateTreatment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Optional client correlation ID. Logged, never trusted. */
+                "X-Client-Request-Id"?: components["parameters"]["ClientRequestId"];
+                /** @description The resource ETag, e.g. "v7" (spec §6.1.7). */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Resource identifier (UUID). */
+                id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreatmentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Treatment"];
                     };
                 };
             };

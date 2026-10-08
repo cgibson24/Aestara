@@ -287,6 +287,24 @@ export class Fixtures {
   }
 
   /** An uploaded clinical PDF with one available version. */
+  /** A category and one treatment in it (ADR-0028 K4-03). */
+  async treatmentCatalog(
+    organizationId: string,
+  ): Promise<{ treatmentCategoryId: string; treatmentId: string }> {
+    const treatmentCategoryId = uuidv7();
+    const treatmentId = uuidv7();
+    await this.api.db.query(
+      `INSERT INTO "TreatmentCategory" (id, "organizationId", name, "updatedAt") VALUES ($1, $2, 'Injectables', now())`,
+      [treatmentCategoryId, organizationId],
+    );
+    await this.api.db.query(
+      `INSERT INTO "Treatment" (id, "organizationId", "categoryId", name, "defaultUnitPrice", "updatedAt")
+       VALUES ($1, $2, $3, 'Lip filler', 450, now())`,
+      [treatmentId, organizationId, treatmentCategoryId],
+    );
+    return { treatmentCategoryId, treatmentId };
+  }
+
   async document(organizationId: string, patientId: string, userId: string): Promise<string> {
     const objectId = uuidv7();
     const documentId = uuidv7();

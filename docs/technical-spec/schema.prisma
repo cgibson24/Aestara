@@ -1073,6 +1073,7 @@ model TreatmentCategory {
   status         OperationalStatus @default(ACTIVE)
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  version        Int               @default(1)
 
   organization Organization        @relation(fields: [organizationId], references: [id])
   parent       TreatmentCategory?  @relation("TreatmentCategoryTree", fields: [organizationId, parentId], references: [organizationId, id], onDelete: Restrict)
@@ -1098,6 +1099,7 @@ model Treatment {
   status             OperationalStatus   @default(ACTIVE)
   createdAt          DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  version            Int                 @default(1)
 
   category            TreatmentCategory   @relation(fields: [organizationId, categoryId], references: [organizationId, id])
   procedures          Procedure[]

@@ -2,7 +2,8 @@
 // invitation, enroll an authenticator, sign in with it, invite a colleague
 // with a role, see it in the audit log, sign out and back in, and confirm the
 // refresh cookie restores the session while the access token never persists;
-// then author a photo protocol and change the Layer 2 configuration.
+// then author a photo protocol, change the Layer 2 configuration and build the
+// treatment catalog (M4.1).
 import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { Authenticator } from "../../../services/api/scripts/totp.ts";
@@ -207,6 +208,51 @@ test("changes a feature, a practice's offline policy and records a retention pol
   const row = page.getByRole("row", { name: /Clinical photo/ });
   await expect(row).toContainText("3650 days");
   await expect(row).toContainText("Archive");
+});
+
+// Layer 4 (M4.1, ADR-0028 K4-03, ADR-0029): an empty catalog, a category tree
+// with a priced treatment, and retiring that refuses to hide active entries.
+test("builds the treatment catalog and retires entries", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("link", { name: "Treatment catalog" }).click();
+  await expect(page.getByRole("heading", { name: "Treatment catalog" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "The catalog is empty" })).toBeVisible();
+
+  await page.getByRole("button", { name: "New category" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Injectables");
+  await page.getByRole("button", { name: "Save category" }).click();
+  const detail = page.getByRole("article");
+  await expect(detail.getByRole("heading", { name: "Injectables" })).toBeVisible();
+
+  await detail.getByRole("button", { name: "Add a subcategory" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Fillers");
+  await expect(page.getByLabel("Inside")).toHaveValue(/.+/);
+  await page.getByRole("button", { name: "Save category" }).click();
+  await expect(detail.getByText("In Injectables")).toBeVisible();
+
+  await detail.getByRole("button", { name: "Add a treatment" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Lip filler");
+  await page.getByLabel("Code").fill("LIP-1");
+  await page.getByLabel("Pricing unit").fill("syringe");
+  await page.getByLabel("Default unit price (USD)").fill("450");
+  await page.getByRole("button", { name: "Save treatment" }).click();
+  const row = detail.getByRole("row", { name: /Lip filler/ });
+  await expect(row).toContainText("$450.00");
+  await expect(row).toContainText("LIP-1");
+
+  // A category with an active treatment cannot be retired; the server says why.
+  await detail.getByRole("button", { name: "Retire category" }).click();
+  await detail.getByRole("group").getByRole("button", { name: "Retire" }).click();
+  await expect(detail.getByRole("alert")).toContainText("Retire or move this category's active treatments");
+
+  await row.getByRole("button", { name: "Retire treatment" }).click();
+  await row.getByRole("group").getByRole("button", { name: "Retire" }).click();
+  await expect(detail.getByRole("heading", { name: "No treatments here" })).toBeVisible();
+  await page.getByLabel("Show retired entries").check();
+  await expect(detail.getByRole("row", { name: /Lip filler/ })).toContainText("Retired");
+
+  await page.getByRole("link", { name: "Audit log" }).click();
+  await expect(page.getByRole("cell", { name: /Configuration changed/i }).first()).toBeVisible();
 });
 
 test("adds a passkey and signs in with it", async ({ page }) => {

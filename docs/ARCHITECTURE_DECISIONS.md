@@ -942,3 +942,20 @@ Status values:
     - Plan items and estimates follow their plan, and the service scopes their writes by the plan's practice.
     - The catalog and the education library are organization-owned, changed only through an organization-wide grant.
     - Consent templates, assignments, signatures, hand-offs, content assignments, instructions and exports are organization-owned patient or configuration data.
+- **Decision, treatment catalog (M4.1):**
+  - **Routes:** `GET/POST /treatment-categories`, `PATCH /treatment-categories/{id}`, `GET/POST /treatments` and `PATCH /treatments/{id}` (spec §6.3).
+    - Reading needs `treatmentplan.create` or `practice.manage`, so the administrators who manage the catalog can see it.
+    - Changing needs `practice.manage` through an organization-wide grant (K4-03, K4-22). A practice-scoped grant answers `403 PERMISSION_DENIED`.
+    - Edits take `If-Match`, as every `PATCH` does: both tables gain a `version` column (migration `20261008100300_layer4_catalog_versions`), and spec §6.1.7 lists the catalog.
+  - **Categories:**
+    - A category has a name, an optional parent in the same organization, a sort order and a status.
+    - A parent must be active, and a category is never placed under itself or one of its own subcategories (`422 VALIDATION_FAILED`, `CATEGORY_CYCLE`).
+    - Retiring a category that still has active treatments or active subcategories answers `409 CONFLICT`: retire those first, so nothing active hides under a retired category.
+    - Reactivating needs an active parent.
+  - **Treatments:**
+    - A treatment has a category (active when the treatment is created, moved or reactivated), a name, an optional code unique in the organization (`409 CONFLICT`), and an optional description and pricing-unit label.
+    - Its optional default unit price is `Money` in USD, never negative.
+    - The simulation category is not accepted before Layer 8.
+    - Retiring and reactivating are status changes; nothing is deleted.
+  - **Audit:** every change writes `CONFIGURATION_CHANGED` with the change (`CREATED`, `UPDATED`, `RETIRED`, `REACTIVATED`) and the names of the changed fields, never their values.
+  - **Admin portal:** a Treatment catalog module for holders of `practice.manage`. It lists the categories as a tree with their treatments, creates and edits both, and retires and reactivates them, with the five view states and a Playwright test against the real api (ADR-0022).
