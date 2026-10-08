@@ -84,13 +84,21 @@ for h in headers:
     region = re.sub(rf"^{re.escape(h)} ", "", region, flags=re.M)
 bible_entities = re.findall(r"\b([A-Z][A-Za-z]+)\b", region)
 check("B19 entity count is 70", len(bible_entities) == 70, f"parsed {len(bible_entities)}")
-missing = [e for e in bible_entities if e not in models]
-check("B19 every entity exists as a Prisma model", not missing, f"missing: {missing}")
+# Bible entities an owner decision leaves unmodelled; spec 5.2 keeps their row
+# with layer "—" and says so.
+NOT_MODELLED = {"Quote": "ADR-0028 K4-01"}
+missing = [e for e in bible_entities if e not in models and e not in NOT_MODELLED]
+check("B19 every entity exists as a Prisma model (or is recorded as not modelled)", not missing,
+      f"missing: {missing}")
+stale = [e for e in NOT_MODELLED if e in models or not re.search(
+    rf"^\| {e} \| Not modelled: .*{re.escape(NOT_MODELLED[e])}.* \| — \|$", S, re.M)]
+check("Unmodelled Bible entities are absent from the schema and marked in spec 5.2", not stale,
+      f"check: {stale}")
 missing = [e for e in bible_entities if not re.search(rf"^\| (✚ )?{e} \|", S, re.M)]
 check("B19 every entity appears in spec entity catalog (5.2)", not missing, f"missing: {missing}")
 catalog = set(re.findall(r"^\| (?:✚ )?([A-Z][A-Za-z]+) \| ", section(S, "### 5.2 Entity catalog", "### 5.3"), re.M)) - {"Entity"}
-check("Spec catalog lists exactly the Prisma models", catalog == models,
-      f"only in spec: {sorted(catalog - models)}; only in schema: {sorted(models - catalog)}")
+check("Spec catalog lists exactly the Prisma models", catalog == models | set(NOT_MODELLED),
+      f"only in spec: {sorted(catalog - models - set(NOT_MODELLED))}; only in schema: {sorted(models - catalog)}")
 additions = models - set(bible_entities)
 marked = set(re.findall(r"^\| ✚ ([A-Z][A-Za-z]+) \|", S, re.M))
 check("Every non-Bible table is marked as an addition (✚)", additions == marked,
@@ -174,8 +182,9 @@ event_like = {e for e in audit_cols if e.split("_")[0] in {
     "USER", "ROLE", "INTEGRATION", "DATA", "SECURITY", "ACCESS", "MEDIA", "BEFORE", "SIMILAR", "AI",
     "TREATMENT", "DOCUMENT", "CONTENT", "INSTRUCTION", "APPOINTMENT", "TELEHEALTH", "CONFIGURATION"}}
 event_like -= {"PHOTO_ANNOTATED"} if "PHOTO_ANNOTATED" in enums["AuditAction"] else set()
+error_codes = set(re.findall(r"`([A-Z_]+)`", section(S, "### 6.2 Error code catalog", "### 6.3")))
 unknown = sorted(e for e in event_like if e not in enums["AuditAction"] and not e.endswith("_NOT_FOUND")
-                 and e not in {"PATIENT_APP", "SIGNED_CONSENT", "SENT_TO_PATIENT",
+                 and e not in error_codes and e not in {"PATIENT_APP", "SIGNED_CONSENT", "SENT_TO_PATIENT",
                                "RELEASED_TO_PATIENT", "READY_FOR_PROVIDER_REVIEW", "REQUEST_RETAKE",
                                "DISPLAY_PREVIEW", "INVALID_STATE_TRANSITION", "SOCIAL_MEDIA", "PAID_ADVERTISING",
                                "IN_PROGRESS", "ACCESS_DENIED", "BEFORE_AFTER_ORDER"})

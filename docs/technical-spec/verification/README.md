@@ -4,8 +4,8 @@ These checks back the verification report in `docs/TECHNICAL_SPECIFICATION.md` �
 
 | Script | What it proves |
 |---|---|
-| `check_traceability.py` | Every canonical list in the Bible is represented in the spec and schema (58 checks) |
-| `run_schema_checks.sh` | The schema validates, applies to an empty PostgreSQL, and the database rejects every forbidden operation: the per-layer fragments in `behavior/` (145 checks, including the V7 `MATCH SIMPLE` audit) |
+| `check_traceability.py` | Every canonical list in the Bible is represented in the spec and schema (59 checks) |
+| `run_schema_checks.sh` | The schema validates, applies to an empty PostgreSQL, and the database rejects every forbidden operation: the per-layer fragments in `behavior/` (209 checks, including the V7 `MATCH SIMPLE` audit) |
 | `check_docs.py` | The Bible §31/§35 documentation pack is complete; every `spec §`/Bible `§` reference, relative link and anchor resolves; no placeholder markers |
 | `export_bible.py` | Generates `docs/SOFTWARE_PRODUCTION_BIBLE.md` verbatim from the PDF; `--check` fails on drift |
 
@@ -71,6 +71,8 @@ The behaviour suite in `behavior/` tries each violation the Bible forbids and as
 - cross-patient before/after
 - editing originals
 - editing signed consents
+- skipping a step of the plan, consent or procedure machine
+- assigning unpublished content
 - rewriting audit
 - a second active model version
 - releasing an unapproved simulation

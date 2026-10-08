@@ -483,7 +483,7 @@ Each is a gap in the sources, not a decided control. Closed items keep their row
 | 11 | Closed at the Layer 1 kickoff: third-party GitHub Actions are pinned to commit SHAs in M1.2 (SR-SCI-15; ADR-0018 K-21) | T13.2 | Closed (ADR-0018 K-21) |
 | 12 | How CI authenticates to AWS for deployments (GitHub OIDC with per-environment roles is the proposed baseline) | T13.8 | Before the first deployment, with the AWS accounts ([`DEPLOYMENT.md`](DEPLOYMENT.md), [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
 | 13 | Human access to production AWS and the database owner role: the break-glass design that spec §10.4 requires (approval, session recording, audit; no standing access) | T14.3, T14.4 | Before the first deployment ([`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
-| 14 | Anchoring consent snapshot hashes in the WORM audit copy | AC-07 | Layer 4 kickoff |
+| 14 | Closed at the Layer 4 kickoff: `CONSENT_COMPLETED` carries the snapshot's SHA-256 and the WORM audit copy archives every audit row, so each hash is anchored outside the database without a new mechanism (ADR-0028 K4-15) | AC-07 | Closed (ADR-0028 K4-15) |
 | 15 | Burned-in AI label on patient-visible simulation images | AC-09 | Layer 8 kickoff |
 | 16 | Denial-of-service protection beyond AWS WAF (AWS Shield Advanced is the named candidate) | T1.5 | Production readiness ([`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) open items) |
 | 17 | Rules for raw SQL in application code | T3.2 | Layer 1 (M1.1) |

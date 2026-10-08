@@ -849,3 +849,77 @@ Status values:
   - **No full-screen screen over the workspace (F-70):** inside the workspace, which is itself full screen, a photo opened for annotation and a before/after set are pushed onto the workspace's navigation stack; the profile's Before/After tab still opens a set full screen. On iPad, SwiftUI builds a full-screen screen presented from another full-screen screen again whenever its traits change: on every text-size change of an accessibility audit (the lifecycle trace showed the annotation screen rebuilt eight times in one audit, its presenter untouched) and when a sheet opens over it (the export sheet closed as it opened). The workspace itself, presented once, was never rebuilt.
   - **State of an opened photo or set:** the step or list that opens it owns what its screen shows and edits: the photo's layers, its loaded preview and the drawing in progress, or the set, its previews, the viewing mode and an alignment in progress. A screen built again keeps all of it and fetches nothing again. Debug builds record screens appearing and disappearing in the device log for this diagnosis.
 - **Consequences:** M3.8's summary generator satisfies `CURRENT_SUMMARY`.
+
+## ADR-0028
+
+**Layer 4 kickoff decisions**
+
+- **Status:** Accepted, 2026-10-08. The owner accepted Layer 3 on 2026-10-07, then confirmed every recommendation in [`LAYER_4_KICKOFF.md`](LAYER_4_KICKOFF.md) ("adopt all"). That includes the minors recommendation: minors are out of scope for the first production build. The spec is corrected to match before any Layer 4 code (Bible §0).
+- **Context:** the roadmap requires the Layer 4 decisions (UD-11, UD-14, UD-23, UD-31) to be confirmed before implementation. It also requires resolving the findings carried to Layer 4 (F-38 to F-43, F-65), the documentation pack's Layer 4 open items and the Node.js re-evaluation of ADR-0026 K3-24.
+- **Decision:** K4-01 to K4-27 as written in `LAYER_4_KICKOFF.md` §2:
+  - **Plans, estimates and procedures:**
+    - K4-01: estimates only; `Quote` is not modelled (UD-11).
+    - K4-02: `InvoiceReference` moves to Layer 10, created by practice-system adapters; Layer 4 keeps the plan's free-text `financingReference`.
+    - K4-03: an organization-wide catalog of categories and treatments. It is managed with `practice.manage` at organization scope and read with `treatmentplan.create`. Codes are optional and unique; treatments are retired, never deleted; nothing is seeded.
+    - K4-04: options per consultation take the next free letter. The server computes totals: line = quantity × price, rounded half-up to cents, less a discount that never exceeds it. Amounts are USD decimal strings, and every plan says that accepting a plan is not consent to treatment.
+    - K4-05: the Layer 4 plan machine, with `DRAFT → CANCELLED` (discard) and `PROPOSED → DRAFT` (`/revise`) added. `/send`, `VIEWED` and expiry arrive in Layer 5. Only a `DRAFT` changes; a trigger enforces the table and the frozen content.
+    - K4-06: the in-clinic response through `POST …/{planId}/record-response` (`treatmentplan.send`), attested by the patient in a hand-off. The plan stores the source `IN_CLINIC`, the attestation text, the typed name and the hand-off (UD-14).
+    - K4-07: accepting an option declines the shown options of the same consultation in the same transaction. This is a system transition, `SIBLING_ACCEPTED`; drafts stay drafts (F-40).
+    - K4-08: `/schedule` creates one `PLANNED` procedure per item with `procedure.manage`. `/complete` needs every procedure closed and at least one done; `/cancel` takes a reason and cancels open procedures (F-42).
+    - K4-09: procedures follow the spec §5.4.10 machine, enforced by a trigger, with `PROCEDURE_STATUS_CHANGED`. They have no dose, product or lot fields. `PhotoSession.procedureId` arrives with them.
+    - K4-10: estimates are issued for a `PROPOSED`, `ACCEPTED` or `SCHEDULED` plan. A new one supersedes the previous; a void needs a reason. The PDF is rendered with PDFKit and Inter as a `Document` of type `ESTIMATE`.
+  - **Consents:**
+    - K4-11: the 13 blocks with their required flags. `IMAGE` and `VIDEO_ACKNOWLEDGMENT` blocks point at published education media. A version has one patient signature block and at most one provider and one witness block. `contentHash` is the SHA-256 of the RFC 8785 canonical blocks and signature flags. No shipped templates.
+    - K4-12: the whole spec §5.4.4 table is enforced by a trigger, with `DRAFT → VOIDED` added to discard a draft. Signing without the required responses answers `422 CONSENT_INCOMPLETE` (F-43).
+    - K4-13: the staff-assisted hand-off is a hashed token for one consent or one plan response, bound to the staff session and device. It lasts 15 minutes idle and 60 at most. Dedicated `/handoff` routes serve it, and the staff identity confirmation is stored. Audit rows name the staff member who opened it, actor type `USER`, with `metadata.handoffId`. Exit is through the biometric gate or password and code, and revokes the token (UD-31, F-41).
+    - K4-14: signatures are vector strokes or a typed name, stored write-once as a JSON `SIGNATURE` object; there is no upload.
+    - K4-15: the snapshot is a PDF `Document` of type `SIGNED_CONSENT`. `signedSnapshotHash` equals `DocumentVersion.sha256`, checked by a trigger. `CONSENT_COMPLETED` carries the hash, which the WORM copy anchors (THREAT_MODEL.md item 14). Downloads last 10 minutes and write `DOCUMENT_VIEWED`.
+    - K4-16: a void takes a reason of at most 500 characters, which is never audited. Voiding a consent that a current grant cites answers `409 CONSENT_IS_EVIDENCE`. The old consent becomes `SUPERSEDED` when its replacement completes. Minors are out of scope: `422 PATIENT_IS_MINOR`, no `GUARDIAN` role (UD-23, F-38).
+  - **Education and instructions:**
+    - K4-17: an organization-wide library of the nine types. Each version records its source and licence, which publishing requires. One media file per version: MP4 ≤ 200 MiB, JPEG or PNG ≤ 20 MiB, PDF ≤ 50 MiB, scanned.
+    - K4-18: assignments and instructions use only published versions, enforced by a trigger. Instructions use pre-op or post-op content. Release arrives in Layer 5 with `consultation.edit`. The engagement states per content type are decided at the Layer 5 kickoff (F-42, F-65).
+    - K4-19: `SIGNED_CONSENT` evidence, and only it, cites a `COMPLETE` consent of the same patient.
+  - **Platform:**
+    - K4-20: the workspace gains education, treatment plans, consents, instructions and next step. The summary adds plans, consents, education and instructions.
+    - K4-21: patient data exports are requested in the admin portal with `data.export`. Each needs a purpose and step-up, and a user may request at most 5 per hour. The worker builds a ZIP into the exports bucket, which expires after 7 days; download URLs last 10 minutes. Organization-wide exports are not in Layer 4.
+    - K4-22: plans, estimates and procedures are practice-owned. A consent takes the practice of its linked record, else it is patient-level. The catalog and the library are organization-wide. A LOCATION grant reads plans but never changes them.
+    - K4-23: the spec §7.3 Layer 4 events, with the corrections listed under it, and one new action, `PROCEDURE_STATUS_CHANGED` (F-39).
+    - K4-24: nothing in Layer 4 works offline.
+    - K4-25: four admin-portal modules: catalog, consent templates, education, exports.
+    - K4-26: the `TreatmentPlans` and `Education` iOS modules, and the consent half of `DocumentsConsent`, with their tests.
+    - K4-27: Node.js 24 stays through Layer 4; Node 26 is re-evaluated at the Layer 5 kickoff.
+  - **Delegated baselines confirmed:** UD-11 (as K4-01), UD-14 (as K4-06, K4-07), UD-23 (as K4-16) and UD-31 (as K4-13).
+- **Spec and schema changes made under this ADR:**
+  - **Spec §2.1:** Node.js re-evaluation moves to the Layer 5 kickoff (K4-27).
+  - **Spec §4.4:** `/schedule` maps to `procedure.manage`; the in-clinic response to `treatmentplan.send`.
+  - **Spec §5.2:** the Layer 4 entity rules. `Quote` keeps a row saying it is not modelled, so the Bible's entity list stays traceable. `InvoiceReference` moves to Layer 10, and the `PatientHandoff` addition joins.
+  - **Spec §5.4.3, §5.4.4, §5.4.10:** the revise, discard, in-clinic and sibling rows; the scheduling and completion rules; the draft-discard row and the hand-off note; the procedure, estimate, export and content-assignment rules. One clarification follows from the table: a patient signature given in `VIEWED` passes through `IN_PROGRESS` in the same transaction [P].
+  - **Spec §5.5, §5.8:** the Layer 4 integrity rules (behaviour checks F13–F42, J1–J34); the Layer 4 table list.
+  - **Spec §6.2, §6.3:** three error codes (`CONSENT_INCOMPLETE`, `CONSENT_IS_EVIDENCE`, `PATIENT_IS_MINOR`). The endpoint rows add `/revise`, `/record-response`, estimate void, procedure `/schedule`, the hand-off group (`/handoff`, `/handoffs/{id}/end`) and the export patient match. `/send` and instruction `/release` are marked Layer 5, and the corrected audit columns are in place.
+  - **Spec §7.3, §8, §9.1, §10.2:** `PROCEDURE_STATUS_CHANGED` and the Layer 4 audit rules; Layer 4 offline; the Layer 4 row; UD-11, UD-14, UD-23 and UD-31 confirmed.
+  - **Schema:**
+    - `Quote` and `QuoteStatus` removed.
+    - `TreatmentPlan` gains the response fields (`responseSource`, enum `TreatmentPlanResponseSource`; `responseHandoffId`, `responseAttestation`, `responseSignerName`, `acceptedSiblingId`) and its cancellation fields.
+    - `TreatmentPlanItem.quantity` defaults to 1 and is required.
+    - `Procedure` gains its cancellation fields; `Estimate` gains `supersededAt` and its void fields.
+    - `ConsentAssignment` gains `replacesAssignmentId`; `ConsentSignature` gains `handoffId`.
+    - The new `PatientHandoff` table, with enums `HandoffPurpose` and `HandoffEndReason`.
+    - `EducationContentVersion` gains `source` and `license`.
+    - `DataExportJob.purpose` becomes enum `DataExportPurpose`, with `purposeNote`.
+    - `AuditAction` gains `PROCEDURE_STATUS_CHANGED`.
+  - **`constraints.sql`:**
+    - The Layer 4 fragment gains the plan, procedure, consent and export machines and the frozen plan content. It adds the line-total and USD checks, one accepted option per consultation, completion after procedures, and the estimate rules.
+    - Consents are prepared from published versions of current templates, with their supersession and void rules and the snapshot hash match.
+    - It adds the hand-off checks, published-only assignments and instructions, the education publishing check, the export checks and no-delete triggers.
+    - `PhotoPermission_evidence_chk` is re-created, with a trigger requiring a `COMPLETE` consent.
+    - The Layer 5 fragment re-creates the plan edges with the patient-app rows.
+  - **Verification:** `check_traceability.py` records `Quote` as not modelled and excludes the §6.2 error codes from the audit-name check.
+- **Consequences:**
+  - The Layer 4 tables of spec §5.8 are created by the Layer 4 migrations, starting at M4.1.
+  - The admin portal gains four modules, and the iOS `TreatmentPlans` and `Education` modules are built.
+  - The worker gains the export job, and Terraform's exports bucket and malware scan are used for the first time.
+  - Before first clinical use, three reviews are needed:
+    - legal review of the in-clinic electronic signature (ESIGN, UETA, state rules);
+    - the practice's own templates and education content;
+    - the estimate wording and the export purposes (`LAYER_4_KICKOFF.md` §3).
+  - Bringing minors into scope later needs a new ADR and a schema change.

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Version | 1.0 |
-| Status | **Proposed, 2026-10-07; awaiting the owner's confirmation.** Nothing of Layer 4 is built before it. |
+| Status | **Confirmed by the owner, 2026-10-08** ("adopt all", minors out of scope); recorded as [ADR-0028](ARCHITECTURE_DECISIONS.md#adr-0028). |
 | Authority | Bible §0.1, §4.3 (profile tabs), §5.1 (consultation sequence), §7.1, §11 (plans, estimates, procedures), §12 (documents, consents, instructions, education), §17.1 (admin modules), §21.1, §22 (audit, export), §23 (offline), §27.2, §29 (Layer 4), §30, §33, §36; ADR-0001, ADR-0018, ADR-0022 to ADR-0027 |
 | Normative sources | spec §4.4–4.6, §5.2 (Documents, consents, instructions & education; Commercial & configuration; the Layer 4 rows of Provider & patient and Scheduling & consultation), §5.4.3, §5.4.4, §5.4.10, §5.5, §5.8, §6.2, §6.3 (Treatment plans & estimates; Documents, consents…; Consent templates & content; exports), §6.6.6, §7.3, §8, §10.2 (UD-11, UD-14, UD-23, UD-31); [CONSENT_ARCHITECTURE.md](CONSENT_ARCHITECTURE.md); [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) Step 7; [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) §5.3 |
 
@@ -245,13 +245,13 @@ Layer 4 is built and proven locally and in CI; nothing is deployed.
 
 | Needed | Before | Item |
 |---|---|---|
-| Whether minors are in scope (recommendation: no) | M4.6 | K4-16, F-38 |
+| Whether minors are in scope: decided 2026-10-08, out of scope | Done | K4-16, F-38 |
 | Legal review that the in-clinic electronic signature process meets ESIGN, UETA and the practice's state rules: identity confirmation, attestation text, the signed snapshot, and voiding | First clinical use | K4-13 to K4-16 |
 | The practice's own consent templates and education content, written or licensed by the practice and reviewed by its clinical lead | First clinical use | K4-11, K4-17 |
 | The estimate wording ("estimate, not a bill", "amounts before tax") and the export purposes reviewed by the practice's billing and privacy leads | First clinical use | K4-10, K4-21 |
 | The open items of the earlier kickoffs (AWS accounts, Apple team, pilot metrics, repository visibility, the device camera check) | As listed there | F-32, F-33, F-56, F-59, F-69 |
 
-## 4. After confirmation
+## 4. After confirmation (done 2026-10-08)
 
 1. The confirmed decisions are recorded as ADR-0028, with a `CHANGELOG.md` entry.
 2. The spec, schema, `constraints.sql` and the documentation pack are corrected under change control:

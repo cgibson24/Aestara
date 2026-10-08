@@ -131,7 +131,7 @@ Versions were checked against the npm registry and nodejs.org on **2026-09-25**.
 
 | Area | Choice | Version | Source | Why |
 |---|---|---|---|---|
-| Runtime | Node.js **24 LTS "Krypton"** | 24.x | [B §31] "current supported LTS" | Active LTS today, supported to April 2028. Node 26 enters Active LTS in late October 2026; kept on 24 through Layer 3 and re-evaluated at the Layer 4 kickoff [ADR-0023 K2-22, ADR-0026 K3-24]. |
+| Runtime | Node.js **24 LTS "Krypton"** | 24.x | [B §31] "current supported LTS" | Active LTS today, supported to April 2028. Node 26 enters Active LTS in late October 2026; kept on 24 through Layer 4 and re-evaluated at the Layer 5 kickoff [ADR-0023 K2-22, ADR-0026 K3-24, ADR-0028 K4-27]. |
 | Language | TypeScript | **6.0.x** | [B §25.1] | NestJS 12's CLI ships TypeScript ~6.0. TypeScript 7.0 (native compiler) is out but not yet supported by the NestJS toolchain (decorator metadata). Adopt 7.x when NestJS supports it. |
 | Monorepo | **pnpm workspaces** + Turborepo | pnpm 12.x, turbo 2.x | [B §31] pnpm · [P] Turborepo | Turborepo adds cached, dependency-aware task runs across ~15 packages. It is optional and can be removed without changing structure. |
 | API framework | **NestJS 12** on the **Fastify** adapter | @nestjs/core 12.1 | [B §25.1] NestJS · [P] Fastify | Nest gives modules, guards and interceptors that map directly onto authz/audit/tenancy. Fastify gives lower latency and schema-first request handling. |
@@ -373,7 +373,9 @@ Assignments (`UserRole`) carry an explicit **scope**: `PLATFORM` (SUPER_ADMIN on
 | Read consultations, notes, medical history, concerns | `consultation.create` |
 | Read treatment plans; read the treatment catalog | `treatmentplan.create` |
 | Read message threads (staff), download attachments, mark read | `message.send` **and** thread participation |
-| Read appointments; schedule an accepted plan (`/schedule`) | `appointment.manage` |
+| Read appointments | `appointment.manage` |
+| Schedule an accepted plan (`/schedule`, which creates its procedures); Layer 6 adds appointment links, which also need `appointment.manage` | `procedure.manage` [ADR-0028 K4-08] |
+| Record a patient's in-clinic plan response (opens the hand-off) | `treatmentplan.send` [ADR-0028 K4-06] |
 | Read photography protocols | `photo.capture` or `photo.view` |
 | Create before/after sets; queue automatic registration | `photo.view` (non-destructive; originals untouched) |
 | Adjust manual registration; tag photos | `photo.annotate` |
@@ -567,11 +569,11 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | Appointment | §15.1 fields incl. timezone, source system, external ID | Location must belong to the practice (3-column FK); `endsAt > startsAt`; integration source needs mapping | 6 ³ |
 | Consultation | §5 workflow container | State machine §5.4.1 (trigger); content frozen in review and once closed; completion records the release decision [ADR-0026 K3-01, K3-02, K3-04] | 3 |
 | ConsultationNote | Clinical notes (offline-draftable) | `FINAL` ⇔ `finalizedAt`; FINAL immutable; corrections are addenda (`correctsNoteId`, a FINAL note of the same consultation) [UD-15, ADR-0026 K3-07] | 3 |
-| Procedure | Planned/performed procedure ("Procedures" tab) | Optional link to the accepted plan item (1:1) | 4 |
-| Treatment | Org treatment/procedure catalog | Unique `(organizationId, code)`; maps to simulation category | 4 |
-| TreatmentCategory | Catalog hierarchy | Self-FK within tenant | 4 |
-| TreatmentPlan | One option (Plan A/B/C) | State machine §5.4.3; server-computed totals ≥ 0 | 4 |
-| TreatmentPlanItem | Line: treatment, area, provider, qty, price, discount | Amount CHECKs | 4 |
+| Procedure | Planned/performed procedure ("Procedures" tab) | Optional link to the accepted plan item (1:1); machine §5.4.10 (trigger); a time when `SCHEDULED`, performer and time when `COMPLETED`, a reason when `CANCELLED`; no dose, product or lot fields [ADR-0028 K4-08, K4-09] | 4 |
+| Treatment | Org treatment/procedure catalog | Unique `(organizationId, code)`, code optional; optional default price; retired (`INACTIVE`), never deleted; nothing seeded; the simulation category is set from Layer 8 [ADR-0028 K4-03] | 4 |
+| TreatmentCategory | Catalog hierarchy | Self-FK within tenant; retired, never deleted [ADR-0028 K4-03] | 4 |
+| TreatmentPlan | One option (Plan A/B/C) | State machine §5.4.3 (trigger); only a `DRAFT` changes; server-computed totals ≥ 0 in USD; one accepted option per consultation; the response records its source (in clinic, with the hand-off, attestation and typed name; or a sibling's acceptance); cancelling needs a reason; never deleted [UD-14; ADR-0028 K4-04 to K4-08] | 4 |
+| TreatmentPlanItem | Line: treatment, area, provider, qty, price, discount | Amount CHECKs; changes only while the plan is `DRAFT` (trigger) [ADR-0028 K4-04] | 4 |
 | ✚ AppointmentType | Practice-configurable appointment types (§15.1 "appointment type") | `isTelehealth` flag | 6 |
 | ✚ ConsultationConcern | Concerns selected for a consultation (§5.1) | Same-patient composite FKs | 3 |
 
@@ -613,20 +615,21 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 | ✚ SimulationVersionSource | Source asset IDs per generation (§9.4, §34.2 #23) | Same-patient composite FK | 8 |
 | ✚ CaseLibraryEntry | Consented historical case in the organization's library (§10; shared across the org's practices per D-01, never across organizations) | `practiceId` records the originating practice for filtering; authorized by a MediaRelease (revoking it withdraws the entry) | 9 |
 
-#### Documents, consents, instructions & education (9 + 1)
+#### Documents, consents, instructions & education (9 + 2)
 
 | Entity | Purpose | Key relations & rules | Layer |
 |---|---|---|---|
-| ConsentTemplate | Template identity | — | 4 |
-| ConsentTemplateVersion | Builder blocks (§12.1); publish freezes content | One open DRAFT; published immutable; `contentHash` | 4 |
-| ConsentAssignment | Consent issued to a patient (§12.4 state machine) | `COMPLETE` needs snapshot + hash; executed = frozen | 4 |
-| ConsentSignature | Patient / provider / witness signature | Append-only; idempotency key; one per role | 4 |
-| Document | Patient document (summary, signed consent, upload, …) | Release timestamp gates patient visibility; Layer 3 types: consultation summary and uploaded clinical PDF [ADR-0026 K3-16, K3-17] | 3–4 |
+| ConsentTemplate | Template identity | Organization-wide or one practice; a retired template takes no new assignments [ADR-0028 K4-11, K4-22] | 4 |
+| ConsentTemplateVersion | Builder blocks (§12.1); publish freezes content | One open DRAFT; published immutable; `contentHash` = SHA-256 of the blocks and signature flags in RFC 8785 canonical JSON [ADR-0028 K4-11] | 4 |
+| ConsentAssignment | Consent issued to a patient (§12.4 state machine) | Machine §5.4.4 (trigger); prepared from a `PUBLISHED` version of a current template; signed responses frozen; `COMPLETE` needs the `SIGNED_CONSENT` snapshot, whose SHA-256 is the stored hash; executed = frozen; not voided while a current media permission cites it [UD-23; ADR-0028 K4-12, K4-15, K4-16] | 4 |
+| ConsentSignature | Patient / provider / witness signature | Append-only; idempotency key; one per role; vector strokes or a typed name, stored as a JSON signature object (no image upload); a patient signature names its hand-off [ADR-0028 K4-14] | 4 |
+| Document | Patient document (summary, signed consent, upload, …) | Release timestamp gates patient visibility; Layer 3 types: consultation summary and uploaded clinical PDF [ADR-0026 K3-16, K3-17]; Layer 4 adds signed consents and estimates [ADR-0028 K4-10, K4-15] | 3–4 |
 | DocumentVersion | Immutable file version + SHA-256 | Immutable | 3–4 |
-| PatientInstruction | Versioned instruction by procedure **or** consultation | Acknowledgment separate from clinical completion | 4 |
-| EducationContent | Org content library item (original or licensed content only) | — | 4 |
-| ContentAssignment | Assigned/opened/viewed/completed/acknowledged tracking (§12.5) | — | 4 |
-| ✚ EducationContentVersion | Versioned content (Layer 4 "versioned … content") | One open DRAFT; published frozen | 4 |
+| PatientInstruction | Versioned instruction by procedure **or** consultation | A `PUBLISHED` pre-op or post-op instruction version (trigger); acknowledgment separate from clinical completion; released to the patient from Layer 5 [ADR-0028 K4-18] | 4 |
+| EducationContent | Org content library item (original or licensed content only) | Organization-wide; the nine Bible types [ADR-0028 K4-17] | 4 |
+| ContentAssignment | Assigned/opened/viewed/completed/acknowledged tracking (§12.5) | A `PUBLISHED` version (trigger); Layer 4 records the assignment and its presentation in a consultation, the patient's states arrive in Layer 5 [ADR-0028 K4-18] | 4 |
+| ✚ EducationContentVersion | Versioned content (Layer 4 "versioned … content") | One open DRAFT; published frozen; publishing needs the source and licence [ADR-0028 K4-17] | 4 |
+| ✚ PatientHandoff | Locked hand-off of the provider device to the patient, for in-clinic signing or a plan response (§11.1, §12.3) | Hashed token scoped to one consent or one plan option, tied to the staff session and device; 15 minutes idle, 60 at most; the staff member confirms the patient's identity [UD-31; ADR-0028 K4-13] | 4 |
 
 #### Communication (6)
 
@@ -656,14 +659,14 @@ The complete, validated draft lives in **[`technical-spec/schema.prisma`](techni
 
 | Entity | Purpose | Key relations & rules | Layer |
 |---|---|---|---|
-| Estimate | Frozen priced snapshot of a plan (not a ledger, §11.3) | Frozen once issued | 4 |
-| Quote | **[UD-11]** proposed shape only | — | 4 |
-| InvoiceReference | Pointer to an external invoice | Unique per external system/ID | 4 |
+| Estimate | Frozen priced snapshot of a plan (not a ledger, §11.3) | Frozen once issued; issued only for a `PROPOSED`, `ACCEPTED` or `SCHEDULED` plan; one `ISSUED` per plan; voiding needs a reason; PDF as a Document of type `ESTIMATE` [ADR-0028 K4-10] | 4 |
+| Quote | Not modelled: estimates only [UD-11] | A later, separately approved billing scope may add a quote that references an estimate [ADR-0028 K4-01] | — |
+| InvoiceReference | Pointer to an external invoice | Unique per external system/ID; created by practice-system adapters, never typed by staff [ADR-0028 K4-02] | 10 |
 | FeatureFlag | Platform/org/practice flag; never bypasses authz (§26) | Unique `(key, org, practice)` incl. NULLs | 2 |
 | PracticeSetting | Typed practice settings | Keys registered in code | 2 |
 | ✚ OrganizationSetting | Org-level policy (MFA, session, MRN, primary-practice rule) | Keys registered in code | 1 |
 | ✚ RetentionPolicy | Policy-driven retention per record category (§22.3) | No hard-coded default; DELETE needs a period | 2 |
-| ✚ DataExportJob | Async, audited, status-visible export (§22.4) | Result object + download count | 4 |
+| ✚ DataExportJob | Async, audited, status-visible export (§22.4) | One patient in Layer 4; purpose (`OTHER` needs a note); machine §5.4.10 (trigger); result object + download count [ADR-0028 K4-21] | 4 |
 
 ### 5.3 Core relationship overview
 
@@ -765,22 +768,29 @@ The other steps (protocol selection, capture, quality review, education, plans, 
 |---|---|---|---|---|
 | — | DRAFT | create | treatmentplan.create | B |
 | DRAFT | PROPOSED | `/propose` | treatmentplan.edit | B |
-| PROPOSED | SENT_TO_PATIENT | `/send` | treatmentplan.send | B |
-| SENT_TO_PATIENT | VIEWED | patient opens it in the portal | patient (link) | B |
-| VIEWED | ACCEPTED / DECLINED | patient responds in the portal | patient (link) | B |
-| VIEWED | EXPIRED | system at `expiresAt` | system | B |
-| SENT_TO_PATIENT | EXPIRED | system at `expiresAt` (never opened) | system | P |
-| ACCEPTED | SCHEDULED | `/schedule` (links appointment/procedure) | appointment.manage | B |
-| SCHEDULED | COMPLETED / CANCELLED | `/complete`, `/cancel` | treatmentplan.edit | B |
-| PROPOSED | ACCEPTED / DECLINED | staff-recorded in-clinic response | treatmentplan.send | **UD-14** |
+| PROPOSED | DRAFT | `/revise`: change an option before the patient responds | treatmentplan.edit | P [ADR-0028 K4-05] |
+| DRAFT | CANCELLED | `/cancel` with a reason: discard a draft (nothing is deleted) | treatmentplan.edit | P [ADR-0028 K4-05] |
+| PROPOSED | SENT_TO_PATIENT | `/send` (Layer 5) | treatmentplan.send | B |
+| SENT_TO_PATIENT | VIEWED | patient opens it in the portal (Layer 5) | patient (link) | B |
+| VIEWED | ACCEPTED / DECLINED | patient responds in the portal (Layer 5) | patient (link) | B |
+| VIEWED | EXPIRED | system at `expiresAt` (Layer 5) | system | B |
+| SENT_TO_PATIENT | EXPIRED | system at `expiresAt` (never opened; Layer 5) | system | P |
+| PROPOSED | ACCEPTED / DECLINED | staff-recorded in-clinic response: the patient chooses and types their name in a hand-off (`IN_CLINIC`) | treatmentplan.send | **UD-14** [ADR-0028 K4-06] |
+| PROPOSED (from Layer 5 also SENT_TO_PATIENT, VIEWED) | DECLINED | system, in the transaction that accepts another option of the same consultation (`SIBLING_ACCEPTED`) | system | **UD-14** [ADR-0028 K4-07] |
+| ACCEPTED | SCHEDULED | `/schedule`: creates one `PLANNED` procedure per item (Layer 6 adds appointment links) | procedure.manage | B [ADR-0028 K4-08] |
+| SCHEDULED | COMPLETED | `/complete`: every linked procedure `COMPLETED` or `CANCELLED`, at least one `COMPLETED` | treatmentplan.edit | B [ADR-0028 K4-08] |
+| SCHEDULED | CANCELLED | `/cancel` with a reason; cancels the plan's open procedures with it | treatmentplan.edit | B [ADR-0028 K4-08] |
 
 Acceptance is **not** medical authorization or consent [B §11.1]. The API response and patient UI say so, and consent is always a separate `ConsentAssignment`.
+
+Every transition writes `TREATMENT_PLAN_STATUS_CHANGED`; a sibling's decline has actor type `SYSTEM`, and an in-clinic response records its channel, never the patient's name. Only a `DRAFT` plan's fields and items change. A database trigger enforces the table and the frozen content, and at most one option of a consultation is `ACCEPTED`, `SCHEDULED` or `COMPLETED`. A plan without a consultation has no siblings. Drafts are never declined by a sibling's acceptance: the patient never saw them. The Layer 5 rows join the trigger in Layer 5 [ADR-0028 K4-05 to K4-08].
 
 #### 5.4.4 Consent [B §12.3–12.4, Appendix A]
 
 | From | To | Trigger | Permission | Audit | Src |
 |---|---|---|---|---|---|
-| — | DRAFT | prepare assignment from a PUBLISHED template version | consent.assign | CONSENT_STATUS_CHANGED | B |
+| — | DRAFT | prepare assignment from the latest PUBLISHED version of a current template | consent.assign | CONSENT_STATUS_CHANGED | B |
+| DRAFT | VOIDED | `/void` with a reason: discard a draft (never shown to the patient, never deleted) | consent.void | CONSENT_VOIDED | P [ADR-0028 K4-12] |
 | DRAFT | ASSIGNED | `/assign` (issue to patient) | consent.assign | CONSENT_ASSIGNED | B |
 | ASSIGNED | VIEWED | patient opens it | patient (link) | CONSENT_VIEWED | B |
 | VIEWED | IN_PROGRESS | first acknowledgment/field saved | patient (link) | CONSENT_STATUS_CHANGED | B |
@@ -790,8 +800,10 @@ Acceptance is **not** medical authorization or consent [B §11.1]. The API respo
 | SIGNED_BY_PROVIDER | COMPLETE | all required signatures present; immutable PDF snapshot + SHA-256 generated | system | CONSENT_COMPLETED | B |
 | SIGNED_BY_PATIENT | COMPLETE | the version requires no provider signature, and any required witness signature is present (covers witness-only consents) | system | CONSENT_COMPLETED | P |
 | COMPLETE | VOIDED | `/void` with reason, per policy | consent.void | CONSENT_VOIDED | B |
-| COMPLETE | SUPERSEDED | new assignment replaces it | consent.assign | CONSENT_STATUS_CHANGED | B |
-| ASSIGNED … SIGNED_BY_PROVIDER | VOIDED | withdrawn before completion | consent.void | CONSENT_VOIDED | **UD-23** |
+| COMPLETE | SUPERSEDED | the replacement prepared by `/supersede` completes (same transaction) | consent.assign | CONSENT_STATUS_CHANGED | B [ADR-0028 K4-16] |
+| ASSIGNED … SIGNED_BY_PROVIDER | VOIDED | withdrawn before completion, with a reason | consent.void | CONSENT_VOIDED | **UD-23** [ADR-0028 K4-16] |
+
+In Layer 4 the patient's rows happen in the in-clinic hand-off that a holder of `consent.assign` opens (`ASSIGNED`, `VIEWED` or `IN_PROGRESS`); from Layer 5 also in the patient app [UD-31; ADR-0028 K4-13]. Their audit rows name the staff member who opened the hand-off (actor type `USER`) with `metadata.handoffId`. A patient signature given in `VIEWED`, with no response saved, passes through `IN_PROGRESS` in the same transaction [P]. A patient signature without every required response answers `422 CONSENT_INCOMPLETE`. A void reason is at most 500 characters and is stored, never audited or logged; voiding a consent that a current media-permission grant cites as evidence answers `409 CONSENT_IS_EVIDENCE`. If a replacement is voided before it completes, the consent it would replace stays `COMPLETE`. Preparing a consent for a patient under 18 on that day answers `422 PATIENT_IS_MINOR`: minors are out of scope [ADR-0028 K4-16]. A database trigger enforces this whole table [ADR-0028 K4-12].
 
 #### 5.4.5 Photo permission [B §7.2, Appendix A]
 
@@ -833,11 +845,11 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 | PhotographyProtocol | `DRAFT → ACTIVE` (`/activate`; activating a successor retires its predecessor in the same transaction) · `ACTIVE → RETIRED` (`/retire`) · `DRAFT → RETIRED` (discard a draft). No deletes. Fields and views frozen once not `DRAFT` (trigger); only `ACTIVE` protocols start sessions [ADR-0023 K2-10] |
 | AIJob | `QUEUED → RUNNING → SUCCEEDED \| FAILED \| TIMED_OUT`; `QUEUED \| RUNNING → CANCELLED` |
 | PhotoRequest | `OPEN → SUBMITTED → COMPLETED`; `OPEN → CANCELLED \| EXPIRED` |
-| Procedure | `PLANNED → SCHEDULED → COMPLETED`; `PLANNED \| SCHEDULED → CANCELLED` |
+| Procedure | Created `PLANNED` · `PLANNED → SCHEDULED → COMPLETED` · `PLANNED \| SCHEDULED → CANCELLED`. `SCHEDULED` needs a time, `COMPLETED` a performer and time, `CANCELLED` a reason; closed procedures are frozen; each transition writes `PROCEDURE_STATUS_CHANGED`. Enforced by a trigger [ADR-0028 K4-09] |
 | Template / content version | `DRAFT → PUBLISHED → RETIRED` (DB-enforced forward-only, F4, R7) |
-| Estimate | `DRAFT → ISSUED → SUPERSEDED \| VOID` (DB-enforced forward-only, R8–R9) |
-| DataExportJob | `REQUESTED → RUNNING → COMPLETED \| FAILED`; `COMPLETED → EXPIRED`; `REQUESTED → CANCELLED` |
-| ContentAssignment | `ASSIGNED → OPENED → VIEWED → COMPLETED → ACKNOWLEDGED` (states from [B §12.5]; ordering P) |
+| Estimate | `DRAFT → ISSUED → SUPERSEDED \| VOID` (DB-enforced forward-only, R8–R9). Issuing supersedes the previous `ISSUED` estimate of the plan in the same transaction; `VOID` needs a reason [ADR-0028 K4-10] |
+| DataExportJob | `REQUESTED → RUNNING → COMPLETED \| FAILED`; `COMPLETED → EXPIRED` (7 days after completion); `REQUESTED → CANCELLED`. Enforced by a trigger [ADR-0028 K4-21] |
+| ContentAssignment | `ASSIGNED → OPENED → VIEWED → COMPLETED → ACKNOWLEDGED` (states from [B §12.5]; ordering P). Layer 4 creates `ASSIGNED` only; which patient states apply to which content type is decided at the Layer 5 kickoff [ADR-0028 K4-18] |
 
 ### 5.5 Integrity rules enforced in the database (`constraints.sql`)
 
@@ -859,8 +871,16 @@ Revocation blocks future use for that purpose immediately and emits `photo_permi
 | Media release covers exactly one asset, pins ≥ 1 permission version (deferred constraint trigger); only revocation may change; pins append-only | CHECK + triggers | D10, R15–R17 |
 | Model identity and versions immutable; one active rollout; rollouts deactivate-only; same-model versions | Triggers + partial unique + composite FK | E1–E5, R10–R13 |
 | Simulation sources same patient; provenance and parameters immutable; approvals append-only by a same-org provider; release completeness | Composite FKs + triggers + CHECK | E6–E15, R14, R18 |
-| Published templates frozen; forward-only status; one draft | Triggers + partial unique | F1–F6 |
+| Published templates frozen; forward-only status; one draft; a hash in hex | Triggers + partial unique + CHECK | F1–F6, F13 |
 | Executed consents frozen and never reopened; snapshot + hash required; same-patient snapshot | Triggers + CHECK + composite FK | F7–F12, R5–R6 |
+| Consent status follows the whole §5.4.4 table; created `DRAFT` from a `PUBLISHED` version of a current template; keeps its patient and version; signed responses frozen; the snapshot is a `SIGNED_CONSENT` version whose SHA-256 is the stored hash; one open replacement, of a `COMPLETE` consent of the same template; supersession needs the completed replacement; not voided while a current grant cites it; a void reason of at most 500 characters; never deleted | Triggers + CHECKs + partial unique | F14–F19, F25–F26, F30–F37 |
+| Hand-off: one target matching its purpose; at most 60 minutes; bound to the opener's session and device; ended once with a reason, then frozen; a signature names a hand-off of its own consent | CHECKs + triggers | F20–F24 |
+| `SIGNED_CONSENT` media-permission evidence, and only it, cites a `COMPLETE` consent of the same patient | CHECK + composite FK + trigger | F27–F29 |
+| Education: publishing needs the source and licence; assignments and instructions point at `PUBLISHED` versions, instructions at pre-op or post-op content | CHECK + triggers | F38–F42 |
+| Treatment plan status follows the §5.4.3 rows of the built layers; created `DRAFT`; only a `DRAFT` changes, with its items; USD, and a line total of quantity × price less a discount that never exceeds it; one accepted option per consultation; the response records its source and never changes; completion needs its procedures closed; cancelling needs a reason; never deleted | Triggers + CHECKs + partial unique | J1–J15, J18, J22–J26 |
+| Procedure status follows §5.4.10; time, performer and reason by state; closed procedures frozen; never deleted | Triggers + CHECKs | J16–J17, J19–J21 |
+| Estimates issued only for a `PROPOSED`, `ACCEPTED` or `SCHEDULED` plan; one `ISSUED` per plan; void needs a reason | Trigger + partial unique + CHECK | J27–J30 |
+| Patient export: one patient; `OTHER` needs a note; created `REQUESTED`; status follows §5.4.10 | CHECKs + triggers | J31–J34 |
 | Issued estimates and published content forward-only | Triggers | R7–R9 |
 | Photo session: capturer required (non-import), location implies practice | CHECKs | R1–R3 |
 | Audit and login ledgers append-only (no UPDATE, DELETE or TRUNCATE) | Triggers (+ DB grants in deployment) | G1–G4, B7–B8 |
@@ -894,13 +914,13 @@ The **whole** schema is designed now so later layers can't force a redesign. **T
 | 1 | Organization, Practice, Location, User, UserCredential, UserToken ⁱ, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, IdempotencyKey ⁱ, OrganizationSetting ⁱ |
 | 2 | StorageObject, PhotographyProtocol, PhotographyProtocolView, PhotoSession, PatientPhoto, PhotoDerivative, PhotoTag, PhotoPermission, MediaRelease, MediaReleasePermission, OutboxEvent, FeatureFlag, PracticeSetting, RetentionPolicy, AIJob ⁱⁱ |
 | 3 | Consultation, ConsultationNote, ConsultationConcern, PatientConcern, PatientMedicalHistory, PhotoAnnotation, BeforeAfterSet, Document, DocumentVersion |
-| 4 | TreatmentCategory, Treatment, TreatmentPlan, TreatmentPlanItem, Procedure, Estimate, Quote, InvoiceReference, ConsentTemplate, ConsentTemplateVersion, ConsentAssignment, ConsentSignature, EducationContent, EducationContentVersion, ContentAssignment, PatientInstruction, DataExportJob |
+| 4 | TreatmentCategory, Treatment, TreatmentPlan, TreatmentPlanItem, Procedure, Estimate, ConsentTemplate, ConsentTemplateVersion, ConsentAssignment, ConsentSignature, PatientHandoff, EducationContent, EducationContentVersion, ContentAssignment, PatientInstruction, DataExportJob (+ `PhotoSession.procedureId` FK) |
 | 5 | PatientUserLink, PhotoRequest, MessageThread, ThreadParticipant, Message, MessageAttachment, Notification |
 | 6 | AppointmentType, Appointment, TelehealthSession |
 | 7 | AIModel, AIModelVersion, AIModelRollout, AIValidationRecord (+ `AIJob.modelVersionId` FK) |
 | 8 | Simulation, SimulationVersion, SimulationVersionSource, SimulationParameter, SimulationApproval |
 | 9 | CaseLibraryEntry, SimilarCaseMatch, OutcomeMeasurement |
-| 10 | Integration, IntegrationMapping, EMRSyncEvent, IntegrationDeadLetter |
+| 10 | Integration, IntegrationMapping, EMRSyncEvent, IntegrationDeadLetter, InvoiceReference |
 
 ⁱ Beyond the literal Bible §32 scope, justified [P]: `UserToken` because staff invitations, password reset and MFA challenges need single-use, hashed, expiring tokens [B §21.1] (ADR-0018 K-09, K-15); `IdempotencyKey` because patient creation must be retry-safe [B §20.3, §23.3]; `OrganizationSetting` because the MFA/session policy and the "primary practice optional/required by deployment policy" rule [B §4.2, §21.1] are Layer 1 behavior. ⁱⁱ `AIJob` is the generic job record. Layer 2 creates it for image derivatives (job type `IMAGE_DERIVATIVE`, image processing, no model; ADR-0023 K2-06), Layer 3 uses it for automatic before/after registration [B §34.1 #17], and Layer 7 adds the model FK.
 
@@ -1013,12 +1033,15 @@ Keys are scoped per actor and retained **7 days** [P], long enough to cover the 
 | 409 | `IDEMPOTENCY_IN_PROGRESS` / `IDEMPOTENCY_KEY_REUSED` | §6.1.8 |
 | 409 | `CONFLICT` | Unique constraint (e.g. MRN already in use) |
 | 409 | `SYNC_CONFLICT` | Integration data conflicts with local edits [B §15.3, §18.4] |
+| 409 | `CONSENT_IS_EVIDENCE` | Voiding a consent that a current media-permission grant cites as evidence; record a new permission version first [ADR-0028 K4-16] |
 | 412 | `VERSION_CONFLICT` | `If-Match` stale |
 | 413 | `PAYLOAD_TOO_LARGE` | Upload exceeds limit |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | File type not allowed |
 | 422 | `UPLOAD_VERIFICATION_FAILED` | Size/checksum mismatch on completion |
 | 422 | `COMPLETION_PRECONDITIONS_NOT_MET` | `/complete` with a §5.4.1 precondition unmet; `details.unmet` names each one [ADR-0026 K3-03] |
 | 422 | `INCOMPATIBLE_VIEWS` | A before/after set from photos of different views (view key and pose target) [ADR-0026 K3-11] |
+| 422 | `CONSENT_INCOMPLETE` | A patient signature without every required response; `details.missing` lists the block IDs [ADR-0028 K4-12] |
+| 422 | `PATIENT_IS_MINOR` | Preparing a consent for a patient under 18 on that day: minors are out of scope [ADR-0028 K4-16] |
 | 422 | `BEFORE_AFTER_ORDER` | A before/after set whose before photo is not the earlier one [ADR-0026 K3-11] |
 | 422 | `REQUIRED_VIEWS_MISSING` | Completing a photo session with required views missing, without `acknowledgeMissingRequiredViews`; `details.viewKeys` [ADR-0023 K2-13] |
 | 422 | `INPUT_QUALITY_INSUFFICIENT` | AI input fails quality checks; `details.reasons` holds actionable codes (e.g. `LIGHTING_TOO_DARK`) [B §34.2 #24] |
@@ -1164,14 +1187,18 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 
 | Method & path | Purpose | Perm | Idem | Audit | L |
 |---|---|---|---|---|---|
-| `GET …/treatment-plans` · `GET …/{planId}` | List/view options A/B/C | treatmentplan.create (read) | – | – | 4 |
-| `POST …/treatment-plans` | Create DRAFT option | treatmentplan.create | R | – | 4 |
-| `PATCH …/{planId}` · `PUT …/{planId}/items` | Edit plan & items; server recomputes totals (If-Match) | treatmentplan.edit | – | – | 4 |
-| `POST …/{planId}/propose` · `/send` | DRAFT → PROPOSED → SENT_TO_PATIENT | treatmentplan.edit / treatmentplan.send | – | TREATMENT_PLAN_STATUS_CHANGED* | 4 |
-| `POST …/{planId}/schedule` · `/complete` · `/cancel` | Post-acceptance transitions | appointment.manage / treatmentplan.edit | – | TREATMENT_PLAN_STATUS_CHANGED* | 4 |
-| `POST …/{planId}/estimates` · `GET …/estimates` | Issue frozen estimate (+ PDF) | treatmentplan.edit | R | – | 4 |
-| `GET/POST /patients/{pid}/procedures` · `PATCH …/{id}` · `POST …/{id}/complete` · `/cancel` | Procedures | procedure.manage* | R (create) | – | 4 |
-| `GET/POST /treatment-categories` · `PATCH …/{id}` · `GET/POST /treatments` · `PATCH …/{id}` | Treatment/procedure catalog [B §17.1] | treatmentplan.create (read) / practice.manage | – | CONFIGURATION_CHANGED* | 4 |
+| `GET …/treatment-plans` · `GET …/{planId}` | List/view options A/B/C; every plan DTO says that accepting a plan is not consent to treatment [ADR-0028 K4-04] | treatmentplan.create (read) | – | – | 4 |
+| `POST …/treatment-plans` | Create a DRAFT option, from a consultation (next free letter) or from the profile | treatmentplan.create | R | – | 4 |
+| `PATCH …/{planId}` · `PUT …/{planId}/items` | Edit a DRAFT plan & items; server recomputes totals, USD decimal strings (If-Match) | treatmentplan.edit | – | – | 4 |
+| `POST …/{planId}/propose` · `/revise` | DRAFT → PROPOSED; PROPOSED → DRAFT [ADR-0028 K4-05] | treatmentplan.edit | – | TREATMENT_PLAN_STATUS_CHANGED* | 4 |
+| `POST …/{planId}/record-response` | Open the in-clinic response hand-off for a PROPOSED option, after the staff member confirms the patient's identity; the patient responds through `/handoff/plan-response` [UD-14; ADR-0028 K4-06] | treatmentplan.send | R | – | 4 |
+| `POST …/{planId}/send` | PROPOSED → SENT_TO_PATIENT | treatmentplan.send | – | TREATMENT_PLAN_STATUS_CHANGED* | 5 |
+| `POST …/{planId}/schedule` | ACCEPTED → SCHEDULED; creates one PLANNED procedure per item [ADR-0028 K4-08] | procedure.manage* | R | TREATMENT_PLAN_STATUS_CHANGED* | 4 |
+| `POST …/{planId}/complete` · `/cancel` | SCHEDULED → COMPLETED (procedures closed, else `409 INVALID_STATE_TRANSITION` listing them); DRAFT or SCHEDULED → CANCELLED with a reason, cancelling open procedures [ADR-0028 K4-08] | treatmentplan.edit | – | TREATMENT_PLAN_STATUS_CHANGED* (+ PROCEDURE_STATUS_CHANGED*) | 4 |
+| `POST …/{planId}/estimates` · `GET …/estimates` | Issue a frozen estimate for a PROPOSED, ACCEPTED or SCHEDULED plan, superseding the previous one; its PDF is a Document of type `ESTIMATE` downloaded with `document.read` [ADR-0028 K4-10] | treatmentplan.edit / treatmentplan.create (read) | R | DOCUMENT_ADDED* | 4 |
+| `POST …/estimates/{estimateId}/void` | Void with a reason (stored, never audited) | treatmentplan.edit | – | – | 4 |
+| `GET/POST /patients/{pid}/procedures` · `PATCH …/{id}` · `POST …/{id}/schedule` · `/complete` · `/cancel` | Procedures: §5.4.10 machine; no dose fields [ADR-0028 K4-09] | procedure.manage* | R (create) | PROCEDURE_STATUS_CHANGED* (transitions) | 4 |
+| `GET/POST /treatment-categories` · `PATCH …/{id}` · `GET/POST /treatments` · `PATCH …/{id}` | Treatment/procedure catalog, organization-wide [B §17.1; ADR-0028 K4-03] | treatmentplan.create (read) / practice.manage (organization scope) | – | CONFIGURATION_CHANGED* | 4 |
 
 #### Documents, consents, instructions, education (`/patients/{pid}/documents`, ✚ `…/consents`, ✚ `…/instructions`, ✚ `…/content-assignments`) [B §12]
 
@@ -1182,15 +1209,29 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | `POST …/{docId}/access-urls` | Signed download | document.read* | – | DOCUMENT_VIEWED* | 3 |
 | `POST …/{docId}/release` | Release to patient app | document.manage* | – | DOCUMENT_RELEASED* | 5 |
 | `GET …/consents` · `GET …/{consentId}` | List/view assignments | consent.assign (read) | – | – | 4 |
-| `POST …/consents` | Prepare (DRAFT) from a published template version | consent.assign | R | – | 4 |
+| `POST …/consents` | Prepare (DRAFT) from the latest published version of a current template, optionally linked to a consultation, plan or procedure of the patient; `422 PATIENT_IS_MINOR` [ADR-0028 K4-12, K4-16] | consent.assign | R | CONSENT_STATUS_CHANGED* | 4 |
 | `POST …/{consentId}/assign` | Issue to patient | consent.assign | – | CONSENT_ASSIGNED | 4 |
-| `POST …/{consentId}/signatures` | Provider or witness signature (signature image upload + attestation) | consent.sign.provider (provider) / consent.assign (witness) | **R** | CONSENT_SIGNED (+ CONSENT_COMPLETED) | 4 |
-| `POST …/{consentId}/patient-signing` | **Staff-assisted in-clinic signing:** opens a short-lived, consent-scoped hand-off session on the provider device for the patient to review, respond and sign; exiting requires staff re-authentication [UD-31] | consent.assign | R | CONSENT_VIEWED / CONSENT_SIGNED | 4 |
-| `POST …/{consentId}/void` | Void with reason | consent.void | – | CONSENT_VOIDED | 4 |
-| `POST …/{consentId}/supersede` | Replace with a new assignment | consent.assign | R | – | 4 |
-| `POST …/{consentId}/access-urls` | Signed snapshot download | consent.assign | – | – | 4 |
-| `GET/POST …/instructions` · `POST …/instructions/{id}/release` · `POST …/{id}/clinical-complete` | Instructions by procedure/consultation | content.read / consultation.edit | R (create) | INSTRUCTION_ASSIGNED* | 4 |
-| `GET/POST …/content-assignments` · `POST …/{id}/presented` | Education assignment / presented in consultation | content.read | R (create) | CONTENT_ASSIGNED* | 4 |
+| `POST …/{consentId}/signatures` | Provider or witness signature: vector strokes or a typed name, with the attestation shown; no upload [ADR-0028 K4-14] | consent.sign.provider (provider) / consent.assign (witness) | **R** | CONSENT_SIGNED (+ CONSENT_COMPLETED) | 4 |
+| `POST …/{consentId}/patient-signing` | **Staff-assisted in-clinic signing:** opens a short-lived, consent-scoped hand-off on the provider device (`ASSIGNED`, `VIEWED` or `IN_PROGRESS`), after the staff member confirms the patient's identity; the patient reviews, responds and signs through `/handoff`; exiting requires staff re-authentication [UD-31; ADR-0028 K4-13] | consent.assign | R | – | 4 |
+| `POST …/{consentId}/void` | Void with a reason (≤ 500 characters, never audited): a draft, a consent before completion, or a COMPLETE one; `409 CONSENT_IS_EVIDENCE` [ADR-0028 K4-16] | consent.void | – | CONSENT_VOIDED | 4 |
+| `POST …/{consentId}/supersede` | Prepare the replacement of a COMPLETE consent from the template's latest published version; the old one becomes SUPERSEDED when the replacement completes [ADR-0028 K4-16] | consent.assign | R | CONSENT_STATUS_CHANGED* | 4 |
+| `POST …/{consentId}/access-urls` | Signed snapshot download (10 minutes) [ADR-0028 K4-15] | consent.assign | – | DOCUMENT_VIEWED* | 4 |
+| `GET/POST …/instructions` · `POST …/{id}/clinical-complete` | Instructions by procedure/consultation, from a published pre-op or post-op instruction version; clinical completion records who and when [ADR-0028 K4-18] | content.read / consultation.edit | R (create) | INSTRUCTION_ASSIGNED* | 4 |
+| `POST …/instructions/{id}/release` | Release to the patient app [ADR-0028 K4-18] | consultation.edit | – | – | 5 |
+| `GET/POST …/content-assignments` · `POST …/{id}/presented` | Education assignment of a published version, optionally to a consultation or procedure / presented in consultation [ADR-0028 K4-18] | content.read | R (create) | CONTENT_ASSIGNED* | 4 |
+
+#### ✚ In-clinic hand-off (`/handoff`, `/handoffs`) [B §11.1, §12.3; UD-31]
+
+Routes under `/handoff` accept only a hand-off token (opened by `…/patient-signing` or `…/record-response`), and a hand-off token can call nothing else; the staff session cannot call them. The token is stored hashed, ends 15 minutes after the last activity and at most 60 minutes after opening, and is revoked when the patient signs or responds, or staff exit. Each audit row names the staff member who opened the hand-off (actor type `USER`) with `metadata.handoffId` [ADR-0028 K4-13].
+
+| Method & path | Purpose | Perm | Idem | Audit | L |
+|---|---|---|---|---|---|
+| `GET /handoff` | What the hand-off is scoped to: the consent (blocks and saved responses) or the plan option (items, estimated total, "accepting this plan is not consent to treatment"), with the patient's name | hand-off token | – | – | 4 |
+| `POST /handoff/viewed` | ASSIGNED → VIEWED | hand-off token (consent) | – | CONSENT_VIEWED | 4 |
+| `PUT /handoff/responses` | Save responses (If-Match); the first moves VIEWED → IN_PROGRESS | hand-off token (consent) | – | CONSENT_STATUS_CHANGED* (first) | 4 |
+| `POST /handoff/signature` | Patient signature: vector strokes or a typed name, with the attestation shown; `422 CONSENT_INCOMPLETE`; ends the hand-off [ADR-0028 K4-14] | hand-off token (consent) | **R** | CONSENT_SIGNED (+ CONSENT_COMPLETED) | 4 |
+| `POST /handoff/plan-response` | ACCEPTED or DECLINED with the name the patient typed and the attestation shown; declines the sibling options; ends the hand-off [UD-14; ADR-0028 K4-06, K4-07] | hand-off token (plan) | **R** | TREATMENT_PLAN_STATUS_CHANGED* | 4 |
+| `POST /handoffs/{handoffId}/end` | Staff take the device back after the biometric gate, or step-up where biometrics are unavailable; revokes the token | the staff member who opened it | – | – | 4 |
 
 #### Consent templates (`/consent-templates`) & content (`/content`) [B §12, §17.1, §20.2]
 
@@ -1198,9 +1239,9 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 |---|---|---|---|---|
 | `GET /consent-templates` · `POST /consent-templates` · `GET …/{tid}` | Templates | consent.assign (read) / consent.template.manage | – | 4 |
 | `POST …/{tid}/versions` · `PATCH …/{tid}/versions/{vid}` | New DRAFT version / edit draft blocks (If-Match) | consent.template.manage | – | 4 |
-| `POST …/{tid}/versions/{vid}/publish` · `POST …/{tid}/retire` | Publish (freezes, hashes) / retire | consent.template.manage | CONSENT_TEMPLATE_PUBLISHED* | 4 |
+| `POST …/{tid}/versions/{vid}/publish` · `POST …/{tid}/retire` | Publish (freezes; SHA-256 of the RFC 8785 canonical blocks and signature flags) / retire (no new assignments) [ADR-0028 K4-11] | consent.template.manage | CONSENT_TEMPLATE_PUBLISHED* | 4 |
 | `GET /content` · `POST /content` · `GET …/{id}` | Education library | content.read / content.manage | – | 4 |
-| `POST /content/{id}/versions` · `PATCH …/versions/{vid}` · `POST …/versions/{vid}/publish` · `POST …/media-uploads` | Versioned content + media | content.manage | CONFIGURATION_CHANGED* | 4 |
+| `POST /content/{id}/versions` · `PATCH …/versions/{vid}` · `POST …/versions/{vid}/publish` · `POST …/media-uploads` | Versioned content + one media file per version (MP4 ≤ 200 MiB, JPEG or PNG ≤ 20 MiB, PDF ≤ 50 MiB; write-once, scanned); publishing needs the source and licence [ADR-0028 K4-17] | content.manage (organization scope) | CONFIGURATION_CHANGED* | 4 |
 
 #### Appointments (`/patients/{pid}/appointments`, ✚ `/appointments`, ✚ `/appointment-types`) & telehealth (`/telehealth`) [B §15, §16]
 
@@ -1238,8 +1279,9 @@ Comparison modes (side-by-side, swipe, cross-fade, blink, overlay, synchronized 
 | `POST /integrations/{id}/dead-letters/{dlId}/replay` · `/discard` | Operate on dead letters | integration.manage | R | – | 10 |
 | `GET /audit/events` · `GET /audit/events/{id}` | Filter by actor, patientId, action, resource, time; tenant-scoped | audit.read | – | – | 1 |
 | `POST /audit/offline-events` | Replay view events recorded while offline (batch; original timestamps; `metadata.offline = true`) [P] | authenticated (events limited to the caller's own actions on resources it may read) | **R** | PATIENT_VIEWED / PHOTO_VIEWED | 2 |
-| `POST /exports` · `GET /exports/{id}` | Request patient/data export; visible job status | data.export* | **R** | DATA_EXPORT_REQUESTED | 4 |
-| `POST /exports/{id}/access-urls` | Download export | data.export* | – | DATA_EXPORT_DOWNLOADED* | 4 |
+| `POST /exports/patient-match` | Find the patient by ID or MRN (in the body) and show their name and date of birth to confirm [ADR-0028 K4-21] | data.export* | – | PATIENT_VIEWED | 4 |
+| `POST /exports` · `GET /exports/{id}` | Request one patient's export with a purpose, after step-up, at most 5 per user per hour; visible job status [ADR-0028 K4-21] | data.export* | **R** | DATA_EXPORT_REQUESTED | 4 |
+| `POST /exports/{id}/access-urls` | Download the export (10 minutes, step-up; counted) | data.export* | – | DATA_EXPORT_DOWNLOADED* | 4 |
 | `GET /ai-models` · `GET /ai-models/{id}/versions` | Registry visibility | ai.model.read* | – | – | 7 |
 | `POST /ai-models/{id}/rollouts` | Activate/deactivate/rollback version (platform or org) | ai.model.manage* | R | AI_MODEL_ROLLOUT_CHANGED* | 7 |
 | `GET/PUT /settings/organization/{key}` | Organization policy settings (MFA, sessions, primary-practice rule) (If-Match) | configuration.manage* | – | CONFIGURATION_CHANGED* | 1 |
@@ -1472,12 +1514,14 @@ This section is an outline. Layer 0 expands it into `SECURITY_REQUIREMENTS.md` a
 | MEDIA_RELEASED · MEDIA_RELEASE_REVOKED | Release and revocation tracking [B §7] |
 | SIMILAR_CASES_SHOWN | "Records which historical cases were shown" [B §10] |
 | AI_MODEL_ROLLOUT_CHANGED | Never silently replace a model [B §9.7] |
-| TREATMENT_PLAN_STATUS_CHANGED · APPOINTMENT_STATUS_CHANGED · TELEHEALTH_STATUS_CHANGED | Lifecycle traceability |
+| TREATMENT_PLAN_STATUS_CHANGED · PROCEDURE_STATUS_CHANGED · APPOINTMENT_STATUS_CHANGED · TELEHEALTH_STATUS_CHANGED | Lifecycle traceability; procedures are traced as plans are [ADR-0028 K4-23] |
 | CONSENT_TEMPLATE_PUBLISHED · DOCUMENT_RELEASED · CONTENT_ASSIGNED · INSTRUCTION_ASSIGNED · INSTRUCTION_ACKNOWLEDGED | Versioned documents and patient-facing release [B §12, §13.2] |
 | INTEGRATION_CONFIG_CHANGED · CONFIGURATION_CHANGED | Admin changes [B §17.2] |
 | DATA_EXPORT_DOWNLOADED | "Export generation **and download** are audited" [B §22.4] |
 | SECURITY_CREDENTIAL_CHANGED | Password changed or reset, second factor enrolled or removed, admin MFA reset. Details give the factor type and the action, never a secret [B §21.1, §22.1] [ADR-0018 K-04] |
 | ORGANIZATION_SWITCHED | The session's active organization changed; every later event carries the new tenant [B §22.2] [ADR-0018 K-04] |
+
+**Layer 4 rules [ADR-0028 K4-23]:** preparing and superseding a consent write `CONSENT_STATUS_CHANGED`; downloading a signed consent writes `DOCUMENT_VIEWED`; the estimate PDF and the consent snapshot write `DOCUMENT_ADDED`; `CONSENT_COMPLETED` carries the snapshot's SHA-256, which the WORM copy anchors outside the database [ADR-0028 K4-15]; actions in a hand-off name the staff member who opened it. Metadata never holds consent text, responses, signatures, names, notes, reasons or prices [B §22.2].
 
 **Event contents [B §22.2]:** actor (type, user or service), organization, resource type and ID, action, outcome, timestamp, request ID, session and device, IP/user agent, `patientId` (identifier only, enabling per-patient access reports), and non-clinical metadata.
 
@@ -1535,6 +1579,8 @@ Detailed in the Layer 0 `INFRASTRUCTURE.md`, `DEPLOYMENT.md` and `TESTING_STRATE
 
 **Consultation work offline [ADR-0026 K3-06]:** drafting notes (creating and editing one's own drafts), annotating cached photos and capturing photos into a session linked to a consultation are queued. Creating a consultation, every transition, finalizing a note, the summary, before/after sets, registration, export and document upload need the connection. The patient cache adds each cached patient's non-final consultations with their concerns and notes, and the medical history, under the same policy.
 
+**Layer 4 work offline [ADR-0028 K4-24]:** none. Plans, estimates, procedures, consents, signatures, education and instructions need the connection; signatures and completion need real-time authorization and are never queued. Their workspace steps say so when offline.
+
 **Mutation queue rules [B §23.3] [P]:**
 
 1. Each queued operation stores: `operationId` (UUIDv7, sent as `Idempotency-Key`), a client-generated resource `id` for creates, the target resource `version` for updates (`If-Match`), and the payload, all in the encrypted local store.
@@ -1560,7 +1606,7 @@ From Layer 2 onward, each layer is kicked off with the Bible §33 feature-prompt
 | 1 | Identity, tenancy, patient core, audit, idempotency, organization settings | auth, organizations, practices, locations, users, roles, permissions, patients, audit, organization settings | Bible §32 acceptance 1–15; cross-tenant suite; separation-of-duties tests; DB behavior suite (Layer 1 fragment) |
 | 2 | Storage, protocols, sessions, photos, derivatives, tags, permissions, releases (+ pins), outbox, flags, practice settings, retention | photography, protocols, photo-permissions, media-releases, feature-flags, practice settings, retention-policies, offline audit replay | Original immutability, checksum verification, permission independence, release pinning |
 | 3 | Consultations, notes, concerns, history, annotations, before/after, documents, jobs (registration) | consultations, annotations, before-after (incl. auto-registration), documents, timeline | Bible §34.1 #12–21; §5.1 completion preconditions |
-| 4 | Catalog, plans, procedures, estimates, consents, content, instructions, exports | treatment-plans, procedures, treatments, consents (incl. staff-assisted patient signing, UD-31), consent-templates, content, instructions, exports | Consent snapshot/hash, template versioning, plan state machine; the patient-facing flow is testable in-clinic (staff-assisted signing, staff-recorded plan response UD-14), and via the portal in Layer 5 [B §29] |
+| 4 | Catalog, plans, procedures, estimates, consents, hand-offs, content, instructions, exports | treatment-plans, procedures, treatments, consents (incl. staff-assisted patient signing, UD-31), hand-off, consent-templates, content, instructions, exports | Consent snapshot/hash, template versioning, plan state machine; the patient-facing flow is testable in-clinic (staff-assisted signing, staff-recorded plan response UD-14), and via the portal in Layer 5 [B §29] |
 | 5 | Patient links, photo requests, messaging, notifications | portal/*, message-threads, devices, notifications | Portal visibility rules (§4.7), no PHI in push |
 | 6 | Appointment types, appointments, telehealth | appointments, telehealth | Appointment + telehealth state machines |
 | 7 | AI registry, rollouts, jobs, validation | ai-models, internal AI contracts | Versioned jobs with provenance; rollback |
@@ -1651,10 +1697,10 @@ Bible §35's documentation pack adds these files. They are seeded here as well:
 | UD-15 | Final notes | Immutable; corrections as addenda · **confirmed ADR-0026 K3-07** | L3 |
 | UD-28 | Consultation P transitions | §5.4.1 P rows · **confirmed ADR-0026 K3-01** | L3 |
 | UD-33 | Completion preconditions | §5.4.1 table · **confirmed ADR-0026 K3-03** | L3 |
-| UD-11 | Estimate vs Quote | Estimate = frozen priced snapshot; Quote = formal offer referencing an estimate (drop if unused) | L4 |
-| UD-14 | In-clinic plan acceptance | Staff-recorded with patient attestation; sibling options auto-decline | L4 |
-| UD-23 | Pre-completion void; minors | Pre-completion void with reason; GUARDIAN signer if minors are in scope | L4 |
-| UD-31 | Staff-assisted in-clinic signing | Yes (consent-scoped hand-off, staff re-auth to exit) | L4 |
+| UD-11 | Estimate vs Quote | Estimate = frozen priced snapshot; Quote = formal offer referencing an estimate (drop if unused) · **confirmed ADR-0028 K4-01: estimates only, Quote not modelled** | L4 |
+| UD-14 | In-clinic plan acceptance | Staff-recorded with patient attestation; sibling options auto-decline · **confirmed ADR-0028 K4-06, K4-07** | L4 |
+| UD-23 | Pre-completion void; minors | Pre-completion void with reason; GUARDIAN signer if minors are in scope · **confirmed ADR-0028 K4-16: minors out of scope, no GUARDIAN role** | L4 |
+| UD-31 | Staff-assisted in-clinic signing | Yes (consent-scoped hand-off, staff re-auth to exit) · **confirmed ADR-0028 K4-13** | L4 |
 | UD-08 | Patient login across organizations | One identity, per-org links, no cross-org view; proxy access deferred | L5 |
 | UD-20 | PATIENT_APP grant for own media in portal | Required (applies §7.3 uniformly) | L5 |
 | UD-30 | Portal visibility of procedures/appointments/telehealth | §4.7 rows; everything else deny-by-default | L5 |

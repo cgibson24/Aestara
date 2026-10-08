@@ -13,7 +13,7 @@ This document explains Aestara's relational design: conventions, the domain mode
 
 ## 1. Scope and status
 
-- **Design size:** 88 tables (the 70 entities of [B §19] plus 18 supporting tables), 83 enums, 281 foreign keys (spec §5, §5.2; `schema.prisma`). The Layer 1 kickoff added the `UserToken` supporting table and its 3 foreign keys (ADR-0018).
+- **Design size:** 88 tables (69 of the 70 entities of [B §19] plus 19 supporting tables), 87 enums, 293 foreign keys (spec §5, §5.2; `schema.prisma`). The Layer 1 kickoff added the `UserToken` supporting table and its 3 foreign keys (ADR-0018); the Layer 4 kickoff left `Quote` unmodelled and added the `PatientHandoff` supporting table (ADR-0028 K4-01, K4-13).
 - **Where it lives now:** the complete design is in `docs/technical-spec/`. `packages/database` holds the tables built so far: the 21 Layer 1 tables since M1.1, in migrations applied by Prisma Migrate. Its `prisma/schema.prisma` is generated from the design, so the two cannot drift (section 8).
 - **Entity catalog:** every table's purpose, key rules and layer are in spec §5.2. This document does not repeat that catalog.
 - **Verification:** `prisma validate`, the full schema plus every `constraints.sql` fragment applied to an empty PostgreSQL, and the behavior suite run in CI on PostgreSQL 18 (section 11).
@@ -683,15 +683,14 @@ erDiagram
 - `IdempotencyKey` stores an outcome reference, never a response body, so PHI is not duplicated (spec §6.1.8).
 - Integration tables are described in [EMR_INTEGRATIONS.md](EMR_INTEGRATIONS.md).
 
-### 3.9 Commercial and configuration (Layers 1, 2, 4)
+### 3.9 Commercial and configuration (Layers 1, 2, 4, 10)
 
 ```mermaid
 erDiagram
   TreatmentPlan ||--o{ Estimate : "priced snapshot"
-  Estimate ||--o{ Quote : "offer, UD-11"
   Document |o--o{ Estimate : "PDF"
-  TreatmentPlan |o--o{ InvoiceReference : "external invoice"
-  Procedure |o--o{ InvoiceReference : "external invoice"
+  TreatmentPlan |o--o{ InvoiceReference : "external invoice, Layer 10"
+  Procedure |o--o{ InvoiceReference : "external invoice, Layer 10"
   Organization |o--o{ FeatureFlag : "organization override"
   Practice |o--o{ FeatureFlag : "practice override"
   Practice ||--o{ PracticeSetting : "settings"
@@ -899,13 +898,13 @@ The whole schema is designed now; each table is created only by the layer that u
 | 1 | 21: Organization, Practice, Location, User, UserCredential, UserToken, Membership, Role, Permission, RolePermission, UserRole, Device, Session, LoginEvent, ProviderProfile, StaffProfile, Patient, PatientContact, AuditEvent, IdempotencyKey, OrganizationSetting | Extension `unaccent`; the three trigger functions; system role key uniqueness; `UserRole` scope shape, no self-assignment, one active assignment; credential shape; session checks; `LoginEvent` failure reason and append-only; `UserToken` shape, expiry and single use; `AuditEvent` append-only; patient search keys (ADR-0020) |
 | 2 | 14: StorageObject, PhotographyProtocol, PhotographyProtocolView, PhotoSession, PatientPhoto, PhotoDerivative, PhotoTag, PhotoPermission, MediaRelease, MediaReleasePermission, OutboxEvent, FeatureFlag, PracticeSetting, RetentionPolicy | Write-once storage; original and derivative immutability; session capturer and location checks; permission versioning; release subject and pin rules; flag scope; retention period. `PhotoPermission` evidence may not be `SIGNED_CONSENT` yet |
 | 3 | 10: Consultation, ConsultationNote, ConsultationConcern, PatientConcern, PatientMedicalHistory, PhotoAnnotation, BeforeAfterSet, Document, DocumentVersion, AIJob | Consultation status checks; FINAL notes; before/after distinct photos and registration; `DocumentVersion` immutable. **Re-created:** `MediaRelease_single_subject_chk` (adds before/after sets) |
-| 4 | 17: TreatmentCategory, Treatment, TreatmentPlan, TreatmentPlanItem, Procedure, Estimate, Quote, InvoiceReference, ConsentTemplate, ConsentTemplateVersion, ConsentAssignment, ConsentSignature, EducationContent, EducationContentVersion, ContentAssignment, PatientInstruction, DataExportJob | Amount checks; estimate, template, content and consent freezing and forward-only edges; signatures append-only; instruction context; export completion. **Re-created:** `PhotoPermission_evidence_chk` (`SIGNED_CONSENT` must name the consent) |
-| 5 | 7: PatientUserLink, PhotoRequest, MessageThread, ThreadParticipant, Message, MessageAttachment, Notification | Message `sentAt` and `failedAt` checks |
+| 4 | 16: TreatmentCategory, Treatment, TreatmentPlan, TreatmentPlanItem, Procedure, Estimate, ConsentTemplate, ConsentTemplateVersion, ConsentAssignment, ConsentSignature, PatientHandoff, EducationContent, EducationContentVersion, ContentAssignment, PatientInstruction, DataExportJob (+ `PhotoSession.procedureId` FK) | Amount checks and line totals; the plan, procedure, consent and export machines; plan content frozen unless `DRAFT`; one accepted option per consultation; estimate, template, content and consent freezing and forward-only edges; snapshot hash match; supersession and void rules; hand-off shape and session binding; published-only assignments; signatures append-only; instruction context; no deletes (ADR-0028). **Re-created:** `PhotoPermission_evidence_chk` (`SIGNED_CONSENT`, and only it, names a consent, which must be `COMPLETE`) |
+| 5 | 7: PatientUserLink, PhotoRequest, MessageThread, ThreadParticipant, Message, MessageAttachment, Notification | Message `sentAt` and `failedAt` checks. **Re-created:** `TreatmentPlan_status_edges` (adds the patient-app rows) |
 | 6 | 3: AppointmentType, Appointment, TelehealthSession | Time range; cancellation; `sourceSystem` may not be `INTEGRATION` yet |
 | 7 | 4: AIModel, AIModelVersion, AIModelRollout, AIValidationRecord (+ `AIJob.modelVersionId` FK) | Model and version immutability; one active rollout; deactivate-only rollouts; validation subject and tenant checks |
 | 8 | 5: Simulation, SimulationVersion, SimulationVersionSource, SimulationParameter, SimulationApproval | Version provenance and completion immutability; parameter single value and append-only; release completeness; approvals append-only. **Re-created:** `MediaRelease_single_subject_chk` (adds simulations), `AIValidationRecord_subject_chk`, `AIValidationRecord_tenant_chk` |
 | 9 | 3: CaseLibraryEntry, SimilarCaseMatch, OutcomeMeasurement | None; library scope is enforced by composite FKs |
-| 10 | 4: Integration, IntegrationMapping, EMRSyncEvent, IntegrationDeadLetter | **Re-created:** `Appointment_integration_source_chk` (integration appointments must carry `integrationId` and `externalId`) |
+| 10 | 5: Integration, IntegrationMapping, EMRSyncEvent, IntegrationDeadLetter, InvoiceReference | **Re-created:** `Appointment_integration_source_chk` (integration appointments must carry `integrationId` and `externalId`) |
 
 Appointment tables may be created in Layer 3 if consultations need scheduling links earlier (spec §5.2 note). The traceability check verifies that all 88 tables sit in exactly one layer and that no required FK points at a later layer (spec §11.2).
 
@@ -1007,7 +1006,7 @@ Details: [technical-spec/verification/README.md](technical-spec/verification/REA
 | Patient identities in `User` | `User` has no RLS (spec §4.1). Patient-kind users arrive in Layer 5, and their contact fields are more sensitive than staff ones; review their protection there | Layer 5 |
 | Custom roles (UD-07) | System roles only in Layer 1 (ADR-0018 K-02). `UserRole.roleId` references `Role(id)` alone, so before custom roles are enabled `UserRole` gets a composite key that stops one organization's custom role being assigned in another | When custom roles are enabled |
 | Final notes (UD-15) | Confirmed (ADR-0026 K3-07): immutable and never deleted; corrections are addenda (`correctsNoteId`) | Layer 3 kickoff |
-| Estimate versus quote (UD-11) | `Quote` is a proposed shape; drop if unused | Layer 4 |
+| Estimate versus quote (UD-11) | Confirmed (ADR-0028 K4-01): estimates only; `Quote` is not modelled, and `InvoiceReference` moves to Layer 10 (K4-02) | Layer 4 kickoff |
 | Retention defaults and legal hold (UD-24) | No automated deletion without a customer policy; re-confirmed in ADR-0018 and ADR-0023 K2-19: policies are recorded, `DELETE` waits for legal hold, no retention job runs before production readiness | Production readiness (roadmap step 14) |
 | Case-library permission and de-identification (UD-10) | Baseline: `EDUCATION` grant plus de-identified display derivative | Layer 9 |
 | `AuditEvent` / `LoginEvent` partitioning | Planned for the ~100-practice tier | Scale review |

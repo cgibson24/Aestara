@@ -2,6 +2,25 @@
 
 All material changes to the architecture, contracts and repository. Newest first. Entries reference ADRs in `ARCHITECTURE_DECISIONS.md`.
 
+## 2026-10-08: Layer 4 kickoff confirmed (ADR-0028)
+
+- The owner confirmed every recommendation K4-01 to K4-27 ("adopt all"), with minors out of scope. ADR-0028 records them.
+- **Spec:**
+  - The plan, consent, procedure, estimate and export rules (§5.2, §5.4.3, §5.4.4, §5.4.10, §5.5).
+  - The Layer 4 tables (§5.8): `Quote` is not modelled; `InvoiceReference` moves to Layer 10; `PatientHandoff` is added.
+  - Three error codes (§6.2): `CONSENT_INCOMPLETE`, `CONSENT_IS_EVIDENCE` and `PATIENT_IS_MINOR`.
+  - The Layer 4 endpoint rows, including `/revise`, `/record-response` and the hand-off routes (§6.3).
+  - `PROCEDURE_STATUS_CHANGED` (§7.3); Layer 4 offline (§8); UD-11, UD-14, UD-23 and UD-31 confirmed (§10.2).
+- **Design schema and `constraints.sql`:**
+  - The plan response and cancellation fields; the hand-off table; the education source and licence; the export purpose.
+  - The plan, procedure, consent and export machines as triggers; the published-only assignments; the snapshot hash match; the `SIGNED_CONSENT` evidence check.
+  - 81 Layer 4 behaviour checks (209 in all).
+- **Documentation pack:**
+  - `CONSENT_ARCHITECTURE.md` and `WORKFLOWS.md`: their Layer 4 open items are decided.
+  - `DATABASE_SCHEMA.md`, `AUTHORIZATION_RBAC.md` and `THREAT_MODEL.md` (item 14 closed) are updated to match.
+  - F-38 to F-43 and F-65 are resolved in `ACCEPTANCE_CRITERIA.md` §5.3.
+- M4.1 (treatment catalog) starts.
+
 ## 2026-10-07: Layer 4 kickoff proposed
 
 - `LAYER_4_KICKOFF.md` proposes K4-01 to K4-27: one recommendation for each Layer 4 decision (UD-11 estimates only and no quote, UD-14 the in-clinic response with patient attestation and sibling declines, UD-23 void and minors, UD-31 the staff-assisted hand-off), each finding carried to Layer 4 (F-38 to F-43, F-65), the Layer 4 open items in the documentation pack, and the Node.js re-evaluation scheduled by ADR-0026 K3-24 (stay on Node 24 through Layer 4).

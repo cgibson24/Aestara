@@ -264,25 +264,26 @@ Preconditions and rules:
 
 | | |
 |---|---|
-| Actors | Create and edit: SURGEON_PHYSICIAN, NURSE_INJECTOR_AESTHETICIAN, CONSULTANT (`treatmentplan.create`, `treatmentplan.edit`). Send and record an in-clinic response: SURGEON_PHYSICIAN, CONSULTANT (`treatmentplan.send`). Schedule: `appointment.manage`. Patient responds in the portal |
+| Actors | Create and edit: SURGEON_PHYSICIAN, NURSE_INJECTOR_AESTHETICIAN, CONSULTANT (`treatmentplan.create`, `treatmentplan.edit`). Send and record an in-clinic response: SURGEON_PHYSICIAN, CONSULTANT (`treatmentplan.send`). Schedule into procedures: `procedure.manage` (Layer 6 adds appointment links with `appointment.manage`). Patient responds in a hand-off in clinic (Layer 4) or in the portal (Layer 5) |
 | Delivered in | Layer 4 (M4.1–M4.4); portal view, accept and decline in Layer 5 (M5.5) |
 | States | Treatment Plan (diagram 17.3), spec §5.4.3. `Estimate`: `DRAFT → ISSUED → SUPERSEDED \| VOID`, forward-only in the database |
-| Audit events | `TREATMENT_PLAN_STATUS_CHANGED` [P] (the Bible's minimum list names no plan events) |
+| Audit events | `TREATMENT_PLAN_STATUS_CHANGED` [P] (the Bible's minimum list names no plan events); `PROCEDURE_STATUS_CHANGED` [P]; `DOCUMENT_ADDED` [P] for the estimate PDF (ADR-0028 K4-23) |
 | Offline | Not an offline-capable operation (spec §6.1.8, §8) |
 
 Steps:
 
-1. Create the plan options (Plan A, B, C [B §11.1]; no maximum is specified) as `DRAFT`, with items: treatment, area, provider, description, quantity, price, discount, notes, proposed date [B §11.1]. The server computes totals; clients never submit them.
-2. `/propose`. Issue an estimate for an option as needed: a frozen priced snapshot with a PDF. Financing is a reference only [B §11.3].
-3. `/send`. The patient opens the plan in the portal (`VIEWED`) and accepts or declines it with `Idempotency-Key`; unanswered plans expire at `expiresAt`.
-4. In clinic, staff may record the patient's response from `PROPOSED` with patient attestation (UD-14).
-5. `/schedule` links the accepted plan to a procedure (Layer 4) or an appointment (Layer 6); then `/complete` or `/cancel`.
+1. Create the plan options as `DRAFT` (Plan A, B, C [B §11.1]; options of one consultation take the next free letter, which the provider can rename; no maximum), with items from the organization's catalog: treatment, area, provider, description, quantity, price, discount, notes, proposed date [B §11.1]. The server computes totals in USD; clients never submit them (ADR-0028 K4-03, K4-04).
+2. `/propose`; `/revise` returns an option to `DRAFT` before the patient responds, and `/cancel` discards a draft with a reason (K4-05). Issue an estimate for a `PROPOSED`, `ACCEPTED` or `SCHEDULED` option as needed: a frozen priced snapshot with a PDF, superseding the previous one (K4-10). Financing is a reference only [B §11.3].
+3. In clinic (Layer 4), `/record-response` opens a hand-off scoped to the option: the patient sees its items, its estimated total and "Accepting this plan is not consent to treatment", chooses accept or decline and types their name (UD-14; K4-06).
+4. From Layer 5, `/send`: the patient opens the plan in the portal (`VIEWED`) and accepts or declines it with `Idempotency-Key`; unanswered plans expire at `expiresAt`.
+5. Accepting one option declines the other options of the same consultation that the patient was shown, in the same transaction (system, `SIBLING_ACCEPTED`); drafts stay drafts (K4-07).
+6. `/schedule` creates one `PLANNED` procedure per item (Layer 6 adds appointment links); `/complete` once every procedure is closed and at least one done, or `/cancel` with a reason, which cancels the open procedures (K4-08).
 
 Rules:
 
 - Acceptance is not medical authorization or consent. The API response and the patient UI say so, and consent is always a separate `ConsentAssignment` [B §11.1].
 - There is no ledger, claims or payment processing [B §11.3].
-- The UD-14 baseline also says sibling options auto-decline when one is accepted; the transitions that implement it are not in spec §5.4.3 (section 18).
+- Procedures carry no dose, product or lot fields and nothing is computed for them: the platform never recommends dosing or treatment [B §30] (K4-09).
 
 ---
 
@@ -299,15 +300,15 @@ Rules:
 Steps [B §12.3]:
 
 1. Author a template in a `DRAFT` version from the 13 block types (spec §6.6.6); publishing freezes it and records its content hash.
-2. Prepare an assignment (`DRAFT`) from a `PUBLISHED` version, optionally linked to a consultation, procedure or plan.
+2. Prepare an assignment (`DRAFT`) from the latest `PUBLISHED` version of a current template, optionally linked to a consultation, procedure or plan; a patient under 18 answers `422 PATIENT_IS_MINOR` (ADR-0028 K4-16). An unused draft is discarded by voiding it with a reason.
 3. `/assign` issues it to the patient (`ASSIGNED`).
 4. The patient opens it (`VIEWED`) and saves the first acknowledgment or field (`IN_PROGRESS`).
-5. With every required acknowledgment present, the patient signs (`SIGNED_BY_PATIENT`, `Idempotency-Key` required).
+5. With every required response present, the patient signs (`SIGNED_BY_PATIENT`, `Idempotency-Key` required); otherwise `422 CONSENT_INCOMPLETE` lists what is missing.
 6. The provider signs when the version requires it (`SIGNED_BY_PROVIDER`). A required witness signature may be recorded at any point before completion.
-7. The system generates the immutable signed snapshot (PDF) and its SHA-256, then moves to `COMPLETE`.
-8. Later, per policy: `/void` with a reason, or `/supersede` with a new assignment.
+7. With the last required signature, the same transaction generates the immutable signed snapshot (PDF) and its SHA-256 and moves to `COMPLETE` (K4-15).
+8. Later: `/void` with a reason (refused with `409 CONSENT_IS_EVIDENCE` while a current media-permission grant cites the consent), or `/supersede`, whose replacement supersedes the old consent when it completes (K4-16).
 
-Staff-assisted in-clinic signing (UD-31 baseline) lets the patient sign on the provider's device before the patient app exists (Layer 4):
+Staff-assisted in-clinic signing (UD-31, ADR-0028 K4-13) lets the patient sign on the provider's device before the patient app exists (Layer 4):
 
 ```mermaid
 sequenceDiagram
@@ -315,21 +316,21 @@ sequenceDiagram
   participant App as Provider device
   participant API as api
   actor Pat as Patient in clinic
-  Staff->>App: open the assigned consent, start hand-off
+  Staff->>App: open the assigned consent, confirm the patient's identity
   App->>API: patient-signing request with Idempotency-Key, consent.assign
-  API-->>App: short-lived session scoped to this one consent
+  API-->>App: hashed-at-rest token for this one consent (15 minutes idle, 60 at most)
   App->>Pat: device handed to the patient
   Pat->>App: review, required acknowledgments, signature
-  App->>API: responses and patient signature within the hand-off session
-  API-->>App: CONSENT_VIEWED and CONSENT_SIGNED recorded
+  App->>API: responses and patient signature through the hand-off routes
+  API-->>App: CONSENT_VIEWED and CONSENT_SIGNED recorded, naming the staff member who opened the hand-off
   Pat->>Staff: device handed back
-  Staff->>App: staff re-authentication required to exit the hand-off
+  Staff->>App: Face ID or Touch ID, or password and code, to exit; the token is revoked
 ```
 
 Rules:
 
 - Executed documents never change when a template is edited [B §12.2]. `COMPLETE` requires the snapshot and hash, and executed consents are frozen and cannot be reopened (enforced by the database, verified F8–F12, R5–R6).
-- Withdrawal before completion is allowed with a reason (UD-23 baseline); a guardian signer applies if minors are in scope.
+- Withdrawal before completion is allowed with a reason (UD-23). Minors are out of scope, so there is no guardian signer (ADR-0028 K4-16).
 - Clinical consent never implies any media permission. A signed consent can be the evidence (`SIGNED_CONSENT`) for a `PhotoPermission` version, but each category is still its own row [B §7.1].
 - Detail: [CONSENT_ARCHITECTURE.md](CONSENT_ARCHITECTURE.md).
 
@@ -339,7 +340,7 @@ Rules:
 
 | | |
 |---|---|
-| Actors | Author content: ORGANIZATION_ADMIN, PRACTICE_ADMIN within scope (`content.manage`). Assign education and instructions: `content.read` holders (clinical roles and admins). Clinically complete an instruction: `consultation.edit`. Patient engages in the portal |
+| Actors | Author content: holders of `content.manage` at organization scope, since the library is organization-wide (ADR-0028 K4-17). Assign education and instructions: `content.read` holders (clinical roles and admins), from `PUBLISHED` versions only (K4-18). Clinically complete an instruction, and from Layer 5 release it: `consultation.edit`. Patient engages in the portal |
 | Delivered in | Layer 4 (M4.7–M4.8); patient engagement in Layer 5 |
 | States | `EducationContentVersion`: `DRAFT → PUBLISHED → RETIRED`. `ContentAssignment`: `ASSIGNED → OPENED → VIEWED → COMPLETED → ACKNOWLEDGED` (states from [B §12.5], ordering P, spec §5.4.10). `PatientInstruction` uses timestamps: released, acknowledged, clinically completed |
 | Audit events | `CONTENT_ASSIGNED`, `INSTRUCTION_ASSIGNED`, `INSTRUCTION_ACKNOWLEDGED` [P] |
@@ -546,7 +547,10 @@ stateDiagram-v2
   VIEWED --> EXPIRED : system at expiresAt
   SENT_TO_PATIENT --> EXPIRED : system at expiresAt, P
   PROPOSED --> ACCEPTED : staff-recorded in clinic, UD-14
-  PROPOSED --> DECLINED : staff-recorded in clinic, UD-14
+  PROPOSED --> DECLINED : staff-recorded in clinic or sibling accepted, UD-14
+  SENT_TO_PATIENT --> DECLINED : sibling accepted, UD-14
+  PROPOSED --> DRAFT : revise, P
+  DRAFT --> CANCELLED : discard, P
   ACCEPTED --> SCHEDULED : schedule
   SCHEDULED --> COMPLETED : complete
   SCHEDULED --> CANCELLED : cancel
@@ -558,6 +562,7 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> DRAFT : prepare from a PUBLISHED version
   DRAFT --> ASSIGNED : assign
+  DRAFT --> VOIDED : discard, P
   ASSIGNED --> VIEWED : patient opens
   VIEWED --> IN_PROGRESS : first acknowledgment saved
   IN_PROGRESS --> SIGNED_BY_PATIENT : patient signature
@@ -567,7 +572,7 @@ stateDiagram-v2
   SIGNED_BY_PROVIDER --> COMPLETE : snapshot and SHA-256
   SIGNED_BY_PATIENT --> COMPLETE : no provider signature required, P
   COMPLETE --> VOIDED : void
-  COMPLETE --> SUPERSEDED : new assignment replaces it
+  COMPLETE --> SUPERSEDED : replacement completes
   ASSIGNED --> VOIDED : withdrawn, UD-23
   VIEWED --> VOIDED : withdrawn, UD-23
   IN_PROGRESS --> VOIDED : withdrawn, UD-23
@@ -659,12 +664,12 @@ stateDiagram-v2
 | Offline consultation transitions | Decided: no transition is queued offline; notes are drafted, cached photos annotated and photos captured (ADR-0026 K3-06) | Layer 3 kickoff |
 | Release-decision precondition | Decided: `Consultation.releaseDecision`; Layer 3 completion confirms `NOTHING_TO_RELEASE` (ADR-0026 K3-04) | Layer 3 kickoff |
 | UD-28, UD-33 | Confirmed (ADR-0026 K3-01, K3-03) | Layer 3 kickoff |
-| UD-14 sibling auto-decline | Siblings in `DRAFT` or `SENT_TO_PATIENT` have no transition to `DECLINED` in spec §5.4.3, and no system actor row exists | Layer 4 |
-| Plan scheduling before Layer 6 | `/schedule` "links appointment/procedure"; appointments exist only from Layer 6 | Layer 4 |
-| Staff-assisted signing actors | Spec §5.4.4 lists only "patient (link)" for patient transitions; the hand-off session (UD-31) is described only in spec §6.3. `ConsentSignature.signerUserId` is documented as `NULL` for a non-user witness, but a Layer 4 patient has no user account yet | Layer 4 (UD-31) |
-| Instruction release permission | Spec §6.3 groups the release endpoint with `content.read` / `consultation.edit` without saying which applies | Layer 4 (UD-16) |
-| Content version status for assignment | Spec §5.4.4 requires a `PUBLISHED` version for consents; it does not say whether education and instruction assignments may reference only `PUBLISHED` content versions, and the database does not check it | Layer 4 (M4.7–M4.8) |
-| UD-23, UD-31, UD-11 | Pre-completion void and minors; staff-assisted signing; estimate versus quote | Layer 4 |
+| UD-14 sibling auto-decline | Decided: shown options (`PROPOSED`, from Layer 5 also `SENT_TO_PATIENT` and `VIEWED`) decline as a system transition, `SIBLING_ACCEPTED`; drafts stay drafts (ADR-0028 K4-07) | Layer 4 kickoff |
+| Plan scheduling before Layer 6 | Decided: `/schedule` creates the procedures with `procedure.manage`; Layer 6 adds appointment links (ADR-0028 K4-08) | Layer 4 kickoff |
+| Staff-assisted signing actors | Decided: hand-off actions name the staff member who opened it (actor type `USER`, `metadata.handoffId`); the patient signature has no `signerUserId` and records the patient's name; spec §5.4.4 says so (ADR-0028 K4-13) | Layer 4 kickoff |
+| Instruction release permission | Decided: `consultation.edit`, with the patient app in Layer 5 (ADR-0028 K4-18) | Layer 4 kickoff |
+| Content version status for assignment | Decided: `PUBLISHED` versions only, enforced by a trigger (ADR-0028 K4-18) | Layer 4 kickoff |
+| UD-23, UD-31, UD-11 | Confirmed: void with a reason, minors out of scope; the hand-off; estimates only (ADR-0028 K4-01, K4-13, K4-16) | Layer 4 kickoff |
 | Simulation visibility after revocation | Spec §4.7 checks only `RELEASED_TO_PATIENT` for simulations, while photos also need a current `PATIENT_APP` grant; what revoking that grant does to a released simulation is not specified | Layer 5 / Layer 8 (UD-20) |
 | Patient-app offline | Spec §8 describes the provider app's clinical cache only | Layer 5 |
 | Message delivery and audit | What marks a message `DELIVERED` is not specified, and the catalog has no event for `DELIVERED`, `READ` or `FAILED` although spec §5.4 says every transition is audited | Layer 5 (UD-19) |
